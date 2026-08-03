@@ -1,14 +1,13 @@
 SHELL := /bin/sh
 
-APP_NAME := WhiteDNS Desktop
+APP_NAME := WhiteVPN Desktop
 DEFAULT_VERSION := 1.0.0-beta6
 VERSION_FROM_ARGS := $(shell set -- $(MAKECMDGOALS); while [ "$$1" != "" ]; do if [ "$$1" = "--version" ]; then shift; if [ "$$1" != "" ]; then printf '%s' "$$1"; fi; exit; fi; shift; done)
 VERSION ?= $(if $(VERSION_FROM_ARGS),$(VERSION_FROM_ARGS),$(DEFAULT_VERSION))
 APP_VERSION := $(strip $(VERSION))
 export VERSION := $(APP_VERSION)
-RELEASE_ASSET_PREFIX ?= WhiteDNS-Desktop
+RELEASE_ASSET_PREFIX ?= WhiteVPN-Desktop
 ROOT_DIR := ..
-MASTERDNS_DIR := $(ROOT_DIR)/MasterDnsVPN
 WAILS ?= wails
 GO_BUILD_CACHE ?= $(CURDIR)/.cache/go-build
 GO_ENV_FILE ?= $(CURDIR)/.cache/go-env
@@ -45,11 +44,6 @@ WAILS_OPTIONAL_UPX_FLAGS :=
 endif
 GOOS_VALUE := $(shell go env GOOS)
 GOARCH_VALUE := $(shell go env GOARCH)
-HELPER_NAME := masterdns-client-$(GOOS_VALUE)-$(GOARCH_VALUE)
-ifeq ($(GOOS_VALUE),windows)
-HELPER_NAME := $(HELPER_NAME).exe
-endif
-HELPER_BIN := clients/$(HELPER_NAME)
 MACOS_PLATFORMS ?= darwin/$(GOARCH_VALUE)
 MACOS_CLIENT_ARCH ?= $(GOARCH_VALUE)
 WINDOWS_PLATFORMS ?= windows/amd64
@@ -71,24 +65,24 @@ $(error --version requires a value; use `make all -- --version 1.0.0-beta6`)
 endif
 endif
 
-.PHONY: help deps frontend-deps tidy dev build build-mac build-windows build-linux build-all all check-linux-builder frontend-build backend-build prepare-package prepare-macos-go-env prepare-embedded-client prepare-embedded-macos-clients prepare-embedded-core prepare-embedded-platform prepare-embedded-platforms prepare-embedded-macos-cores macos-app-bundle validate-version package package-mac package-windows package-linux package-linux-distros package-linux-all-docker package-linux-fedora-rpm-docker package-all stage-artifacts archive-artifacts package-helper package-assets test test-backend test-frontend test-masterdns test-stormdns masterdns-client masterdns-client-target stormdns-client stormdns-client-target stormdns-client-darwin-amd64 stormdns-client-darwin-arm64 stormdns-client-windows-amd64 stormdns-client-linux-amd64 xray-core xray-core-all xray-core-target singbox-core singbox-core-all singbox-core-target clean --version
+.PHONY: help deps frontend-deps tidy dev build build-mac build-windows build-linux build-all all check-linux-builder frontend-build backend-build prepare-package prepare-macos-go-env prepare-embedded-core prepare-embedded-platform prepare-embedded-platforms prepare-embedded-macos-cores macos-app-bundle validate-version package package-mac package-windows package-linux package-linux-distros package-linux-all-docker package-linux-fedora-rpm-docker package-all stage-artifacts archive-artifacts package-helper package-assets test test-backend test-frontend xray-core xray-core-all xray-core-target clean --version
 ifneq ($(VERSION_FROM_ARGS),)
 .PHONY: $(VERSION_FROM_ARGS)
 endif
 
 help:
 	@printf '%s\n' \
-		'WhiteDNS Desktop targets:' \
+		'WhiteVPN Desktop targets:' \
 		'' \
 		'  make deps             Install npm deps and tidy Go modules' \
-		'  make dev              Build helper and run wails dev' \
+		'  make dev              Fetch the Xray core and run wails dev' \
 		'  make build            Build frontend and Go desktop binary' \
 		'  make build-mac        Build/package macOS app ($(MACOS_PLATFORMS))' \
 		'  make build-windows    Build/package Windows app (windows/amd64)' \
 		'  make build-linux      Build/package Linux app (linux/amd64)' \
 		'  make build-all        Build release packages for the desktop matrix' \
 		'  make all              Build minified packages for the desktop release matrix' \
-		'  make package          Build package with the matching embedded helper' \
+		'  make package          Build package with the matching embedded Xray core' \
 		'  make package-linux-distros  Build Linux .deb/.rpm packages from the Linux app build' \
 		'  make package-linux-all-docker  Build Linux release packages through Docker' \
 		'  make package-linux-fedora-rpm-docker  Build Fedora 42+ compatible WebKitGTK 4.1 RPM' \
@@ -98,10 +92,9 @@ help:
 		'  make package-windows UPX=1  Build Windows package with UPX compression' \
 		'  make package-linux UPX=1    Build Linux package with UPX compression' \
 		'  make test             Run desktop Go tests and frontend TypeScript build' \
-		'  make masterdns-client Build local MasterDNS helper into clients/' \
 		'  make xray-core        Install matching Xray core into cores/' \
 		'  make xray-core-all    Cache macOS, Windows, and Linux Xray cores' \
-		'  make clean            Remove build output and helper binaries'
+		'  make clean            Remove build output and cached cores'
 
 deps: frontend-deps tidy
 
@@ -111,10 +104,10 @@ frontend-deps:
 tidy:
 	go mod tidy
 
-dev: masterdns-client xray-core
+dev: xray-core
 	wails dev
 
-build: masterdns-client xray-core frontend-build backend-build
+build: xray-core frontend-build backend-build
 
 build-mac: package-mac
 
@@ -180,7 +173,7 @@ frontend-build:
 	npm run build --prefix frontend
 
 backend-build: frontend-build
-	go build -o build/bin/whitedns-desktop .
+	go build -o build/bin/whitevpn-desktop .
 
 prepare-package:
 	mkdir -p "$(GO_BUILD_CACHE)"
@@ -209,24 +202,10 @@ package: validate-version
 		$(MAKE) package-mac; \
 	else \
 		$(MAKE) prepare-package; \
-		$(MAKE) prepare-embedded-client TARGET_GOOS="$(GOOS_VALUE)" TARGET_GOARCH="$(GOARCH_VALUE)"; \
 		$(MAKE) prepare-embedded-core TARGET_GOOS="$(GOOS_VALUE)" TARGET_GOARCH="$(GOARCH_VALUE)"; \
 		GOCACHE="$(GO_BUILD_CACHE)" $(WAILS) build $(WAILS_RELEASE_FLAGS) $(WAILS_OPTIONAL_UPX_FLAGS); \
 		$(MAKE) package-assets; \
 	fi
-
-prepare-embedded-client:
-	@if [ -z "$(TARGET_GOOS)" ] || [ -z "$(TARGET_GOARCH)" ]; then \
-		printf 'TARGET_GOOS and TARGET_GOARCH are required\n' >&2; \
-		exit 1; \
-	fi
-	rm -rf clients
-	mkdir -p clients
-	@: > clients/.keep
-	$(MAKE) masterdns-client-target TARGET_GOOS="$(TARGET_GOOS)" TARGET_GOARCH="$(TARGET_GOARCH)"
-
-prepare-embedded-macos-clients:
-	$(MAKE) prepare-embedded-client TARGET_GOOS=darwin TARGET_GOARCH="$(MACOS_CLIENT_ARCH)"
 
 prepare-embedded-core:
 	@if [ -z "$(TARGET_GOOS)" ] || [ -z "$(TARGET_GOARCH)" ]; then \
@@ -259,7 +238,6 @@ prepare-embedded-platform:
 		printf 'TARGET_GOOS and TARGET_GOARCH are required\n' >&2; \
 		exit 1; \
 	fi
-	$(MAKE) masterdns-client-target TARGET_GOOS="$(TARGET_GOOS)" TARGET_GOARCH="$(TARGET_GOARCH)"
 	$(MAKE) xray-core-target TARGET_GOOS="$(TARGET_GOOS)" TARGET_GOARCH="$(TARGET_GOARCH)"
 	@set -e; \
 	core="xray-$(TARGET_GOOS)-$(TARGET_GOARCH)"; \
@@ -283,9 +261,8 @@ prepare-embedded-platforms:
 		printf 'TARGET_PLATFORMS is required\n' >&2; \
 		exit 1; \
 	fi
-	rm -rf clients cores
-	mkdir -p clients cores
-	@: > clients/.keep
+	rm -rf cores
+	mkdir -p cores
 	@: > cores/.keep
 	@set -e; \
 	for platform in $$(printf '%s' "$(TARGET_PLATFORMS)" | tr ',' ' '); do \
@@ -311,10 +288,8 @@ prepare-embedded-macos-cores:
 package-mac: validate-version prepare-macos-go-env frontend-build
 	@case "$(MACOS_PLATFORMS)" in \
 		*universal*) \
-			$(MAKE) prepare-embedded-client TARGET_GOOS=darwin TARGET_GOARCH=amd64; \
 			$(MAKE) prepare-embedded-core TARGET_GOOS=darwin TARGET_GOARCH=amd64; \
 			MACOSX_DEPLOYMENT_TARGET="$(MACOS_DEPLOYMENT_TARGET_AMD64)" GOENV="$(GO_ENV_FILE)" GOOS=darwin GOARCH=amd64 CGO_ENABLED=1 go build -buildvcs=false -trimpath -tags "$(MACOS_GO_TAGS)" -ldflags "$(MACOS_GO_LDFLAGS)" -o "build/bin/$(APP_NAME)-amd64" .; \
-			$(MAKE) prepare-embedded-client TARGET_GOOS=darwin TARGET_GOARCH=arm64; \
 			$(MAKE) prepare-embedded-core TARGET_GOOS=darwin TARGET_GOARCH=arm64; \
 			MACOSX_DEPLOYMENT_TARGET="$(MACOS_DEPLOYMENT_TARGET_ARM64)" GOENV="$(GO_ENV_FILE)" GOOS=darwin GOARCH=arm64 CGO_ENABLED=1 go build -buildvcs=false -trimpath -tags "$(MACOS_GO_TAGS)" -ldflags "$(MACOS_GO_LDFLAGS)" -o "build/bin/$(APP_NAME)-arm64" .; \
 			lipo -create -output "build/bin/$(APP_NAME)" "build/bin/$(APP_NAME)-amd64" "build/bin/$(APP_NAME)-arm64"; \
@@ -330,7 +305,6 @@ package-mac: validate-version prepare-macos-go-env frontend-build
 			fi; \
 			deployment_target="$(MACOS_DEPLOYMENT_TARGET_AMD64)"; \
 			if [ "$$target_arch" = "arm64" ]; then deployment_target="$(MACOS_DEPLOYMENT_TARGET_ARM64)"; fi; \
-			$(MAKE) prepare-embedded-client TARGET_GOOS=darwin TARGET_GOARCH="$$target_arch"; \
 			$(MAKE) prepare-embedded-core TARGET_GOOS=darwin TARGET_GOARCH="$$target_arch"; \
 			MACOSX_DEPLOYMENT_TARGET="$$deployment_target" GOENV="$(GO_ENV_FILE)" GOOS=darwin GOARCH="$$target_arch" CGO_ENABLED=1 go build -buildvcs=false -trimpath -tags "$(MACOS_GO_TAGS)" -ldflags "$(MACOS_GO_LDFLAGS)" -o "build/bin/$(APP_NAME)" .; \
 			;; \
@@ -350,7 +324,7 @@ macos-app-bundle:
 		printf '%s\n' '  <key>CFBundlePackageType</key><string>APPL</string>'; \
 		printf '%s\n' '  <key>CFBundleName</key><string>$(APP_NAME)</string>'; \
 		printf '%s\n' '  <key>CFBundleExecutable</key><string>$(APP_NAME)</string>'; \
-		printf '%s\n' '  <key>CFBundleIdentifier</key><string>com.whitedns.desktop</string>'; \
+		printf '%s\n' '  <key>CFBundleIdentifier</key><string>com.whitedns.vpn</string>'; \
 		printf '%s\n' '  <key>CFBundleIconFile</key><string>appicon.icns</string>'; \
 		printf '%s\n' '  <key>CFBundleVersion</key><string>$(APP_VERSION)</string>'; \
 		printf '%s\n' '  <key>CFBundleShortVersionString</key><string>$(APP_VERSION)</string>'; \
@@ -364,7 +338,6 @@ macos-app-bundle:
 	rm -f "build/bin/$(APP_NAME)"
 
 package-windows: validate-version prepare-package
-	$(MAKE) prepare-embedded-client TARGET_GOOS=windows TARGET_GOARCH="$(WINDOWS_CLIENT_ARCH)"
 	$(MAKE) prepare-embedded-core TARGET_GOOS=windows TARGET_GOARCH="$(WINDOWS_CLIENT_ARCH)"
 	GOCACHE="$(GO_BUILD_CACHE)" $(WAILS) build -clean $(WAILS_RELEASE_FLAGS) $(WAILS_OPTIONAL_UPX_FLAGS) -platform $(WINDOWS_PLATFORMS)
 	$(MAKE) package-assets
@@ -374,7 +347,6 @@ package-linux: validate-version prepare-package
 		printf 'Wails Linux packaging must run on a Linux host; current host is %s. Use this target in a Linux CI/job.\n' "$(GOOS_VALUE)" >&2; \
 		exit 1; \
 	fi
-	$(MAKE) prepare-embedded-client TARGET_GOOS=linux TARGET_GOARCH="$(LINUX_CLIENT_ARCH)"
 	$(MAKE) prepare-embedded-core TARGET_GOOS=linux TARGET_GOARCH="$(LINUX_CLIENT_ARCH)"
 	GOCACHE="$(GO_BUILD_CACHE)" $(WAILS) build -clean $(WAILS_RELEASE_FLAGS) $(LINUX_WAILS_TAG_FLAGS) $(WAILS_OPTIONAL_UPX_FLAGS) -platform $(LINUX_PLATFORMS)
 	$(MAKE) package-assets
@@ -464,7 +436,7 @@ archive-artifacts: validate-version
 	( cd "$$stage_parent" && zip -qry "$$archive_name" "$$stage_name" ); \
 	printf 'Created compressed artifact %s\n' "$$stage_parent/$$archive_name"
 
-package-helper: masterdns-client xray-core package-assets
+package-helper: xray-core package-assets
 
 package-assets:
 	@printf 'Runtime helpers and proxy cores are embedded in the app binary\n'
@@ -476,44 +448,6 @@ test-backend:
 
 test-frontend:
 	npm run build --prefix frontend
-
-test-masterdns:
-	cd $(MASTERDNS_DIR) && go test ./...
-
-test-stormdns: test-masterdns
-
-masterdns-client: stormdns-client
-
-stormdns-client:
-	$(MAKE) prepare-embedded-client TARGET_GOOS=$(GOOS_VALUE) TARGET_GOARCH=$(GOARCH_VALUE)
-
-stormdns-client-darwin-amd64:
-	$(MAKE) stormdns-client-target TARGET_GOOS=darwin TARGET_GOARCH=amd64
-
-stormdns-client-darwin-arm64:
-	$(MAKE) stormdns-client-target TARGET_GOOS=darwin TARGET_GOARCH=arm64
-
-stormdns-client-windows-amd64:
-	$(MAKE) stormdns-client-target TARGET_GOOS=windows TARGET_GOARCH=amd64
-
-stormdns-client-linux-amd64:
-	$(MAKE) stormdns-client-target TARGET_GOOS=linux TARGET_GOARCH=amd64
-
-masterdns-client-target:
-	$(MAKE) stormdns-client-target TARGET_GOOS="$(TARGET_GOOS)" TARGET_GOARCH="$(TARGET_GOARCH)"
-
-stormdns-client-target:
-	@set -e; \
-	if [ -z "$(TARGET_GOOS)" ] || [ -z "$(TARGET_GOARCH)" ]; then \
-		printf 'TARGET_GOOS and TARGET_GOARCH are required\n' >&2; \
-		exit 1; \
-	fi; \
-	helper="masterdns-client-$(TARGET_GOOS)-$(TARGET_GOARCH)"; \
-	if [ "$(TARGET_GOOS)" = "windows" ]; then helper="$$helper.exe"; fi; \
-	mkdir -p clients "$(GO_BUILD_CACHE)"; \
-	(cd "$(MASTERDNS_DIR)" && GOCACHE="$(GO_BUILD_CACHE)" GOOS="$(TARGET_GOOS)" GOARCH="$(TARGET_GOARCH)" go build -trimpath -ldflags "$(HELPER_GO_LDFLAGS)" -o "../desktop/clients/$$helper" ./cmd/client); \
-	chmod 755 "clients/$$helper"; \
-	printf 'Built %s\n' "clients/$$helper"
 
 xray-core:
 	$(MAKE) prepare-embedded-core TARGET_GOOS=$(GOOS_VALUE) TARGET_GOARCH=$(GOARCH_VALUE)
@@ -554,22 +488,9 @@ xray-core-target:
 		TARGET_GOOS="$(TARGET_GOOS)" TARGET_GOARCH="$(TARGET_GOARCH)" XRAY_DEST_DIR="$(XRAY_CACHE_DIR)" XRAY_CORE_VERSION="$(XRAY_CORE_VERSION)" ./scripts/install-xray-core.sh; \
 	fi
 
-singbox-core:
-	@printf 'Deprecated: use make xray-core. Installing Xray core instead.\n' >&2
-	$(MAKE) xray-core
-
-singbox-core-all:
-	@printf 'Deprecated: use make xray-core-all. Installing Xray cores instead.\n' >&2
-	$(MAKE) xray-core-all
-
-singbox-core-target:
-	@printf 'Deprecated: use make xray-core-target. Installing Xray core instead.\n' >&2
-	$(MAKE) xray-core-target TARGET_GOOS="$(TARGET_GOOS)" TARGET_GOARCH="$(TARGET_GOARCH)"
-
 clean:
-	rm -rf build clients cores .cache
-	mkdir -p clients cores
-	@: > clients/.keep
+	rm -rf build cores .cache
+	mkdir -p cores
 	@: > cores/.keep
 
 --version:

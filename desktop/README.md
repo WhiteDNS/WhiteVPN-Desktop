@@ -1,6 +1,9 @@
-# WhiteDNS Desktop
+# WhiteVPN Desktop
 
-Wails v2 desktop client for running the MasterDNS/StormDNS Go client behind a managed Xray local proxy.
+Wails v2 desktop client for the WhiteDNS VPN tunnel and V2Ray profiles, both served by a managed Xray core.
+
+The MasterDNS/StormDNS side of the original combined app lives on in
+[WhiteDNS-Desktop](https://github.com/WhiteDNS/WhiteDNS-Desktop).
 
 ## Release notes
 
@@ -28,13 +31,11 @@ make test
 make dev
 ```
 
-The app can extract embedded runtime binaries from `clients/masterdns-client-<goos>-<goarch>` and `cores/xray-<goos>-<goarch>`. Package targets reset `clients/` and `cores/`, prepare only the binaries and Xray geodata for the target platform, and embed them into the app binary. Release packages do not need separate `clients/` or `cores/` folders beside the app.
+The app extracts its embedded Xray core from `cores/xray-<goos>-<goarch>`. Package targets reset `cores/`, prepare only the core and Xray geodata for the target platform, and embed them into the app binary. Release packages do not need a separate `cores/` folder beside the app.
 
-If you keep client binaries outside the app directory, set `WHITEDNS_CLIENTS_DIR=/absolute/path/to/clients` before launching the app.
+The public proxy is always served by Xray-core pinned to `v26.3.27`. During packaging, `make` reuses a matching core from `.cache/xray/` or `cores/`; if missing, it downloads the requested XTLS release asset. For development overrides, set `WHITEVPN_XRAY_BIN=/absolute/path/to/xray`.
 
-The public proxy is always served by Xray-core pinned to `v26.3.27`. During packaging, `make` reuses a matching core from `.cache/xray/` or `cores/`; if missing, it downloads the requested XTLS release asset. For development overrides, set `WHITEDNS_XRAY_BIN=/absolute/path/to/xray`.
-
-Runtime profile data is stored under the platform user config directory in `WhiteDNS Desktop/state.json`.
+Runtime profile data is stored under the platform user config directory in `WhiteVPN Desktop/state.json`.
 
 `make build-mac` and `make build-windows` can run from macOS. `make all` builds Linux packages from non-Linux hosts through Docker. If Docker is not available, run `make build-linux` on a Linux host or use the `Desktop Release Builds` GitHub Actions workflow.
 
@@ -44,14 +45,13 @@ Linux release jobs also publish native distro packages and an amd64 AppImage. Li
 
 For newer RPM-based distributions that provide WebKitGTK 4.1 instead of 4.0, use the `linux-amd64-webkit41.rpm` asset. The older WebKitGTK 4.0 Linux assets remain for older distributions.
 
-Pass the release version with `VERSION=1.0.0-beta6`, or use the GNU-make-safe flag form `make all -- --version 1.0.0-beta6`. Release staging writes platform folders under `build/releases/all/` and versioned compressed assets such as `WhiteDNS-Desktop-1.0.0-beta6-macos-arm64.zip`.
+Pass the release version with `VERSION=1.0.0-beta6`, or use the GNU-make-safe flag form `make all -- --version 1.0.0-beta6`. Release staging writes platform folders under `build/releases/all/` and versioned compressed assets such as `WhiteVPN-Desktop-1.0.0-beta6-macos-arm64.zip`.
 
 For Ubuntu 24.04+ Linux builds, pass `LINUX_GO_TAGS=webkit2_41` and install `libwebkit2gtk-4.1-dev`. Ubuntu 22.04 builds can use the default WebKitGTK 4.0 dependency. To build native Linux packages locally, install `dpkg-deb` and `rpmbuild`, then run `make package-linux-distros`. To include an amd64 AppImage, also include `appimage` in `LINUX_PACKAGE_FORMATS`; the packaging script downloads linuxdeploy unless `LINUXDEPLOY_BIN` points to an executable local copy.
 
 Useful targets:
 
 ```bash
-make masterdns-client
 make xray-core
 make build
 make package

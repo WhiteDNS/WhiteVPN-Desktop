@@ -48,8 +48,8 @@ for platform in $(printf '%s' "$platforms" | tr ',' ' '); do
 
   target_name="linux-$target_arch"
   docker_platform="linux/$target_arch"
-  npm_cache_volume="whitedns-desktop-npm-$target_arch"
-  gomod_volume="whitedns-desktop-go-mod"
+  npm_cache_volume="whitevpn-desktop-npm-$target_arch"
+  gomod_volume="whitevpn-desktop-go-mod"
 
   printf 'Building %s in Docker (%s)\n' "$target_name" "$docker_platform"
   "$docker_bin" run --rm \

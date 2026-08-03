@@ -1,8 +1,8 @@
 #!/bin/sh
 set -eu
 
-app_name="${APP_NAME:-WhiteDNS Desktop}"
-package_name="${LINUX_PACKAGE_NAME:-whitedns-desktop}"
+app_name="${APP_NAME:-WhiteVPN Desktop}"
+package_name="${LINUX_PACKAGE_NAME:-whitevpn-desktop}"
 version="${VERSION:-${APP_VERSION:-1.0.0-beta6}}"
 source_dir="${PACKAGE_SOURCE_DIR:-build/bin}"
 output_dir="${PACKAGE_OUTPUT_DIR:-build/releases}"

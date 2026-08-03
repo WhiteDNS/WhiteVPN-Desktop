@@ -43,8 +43,8 @@ printf 'Building Fedora 44 WebKitGTK 4.1 RPM for %s\n' "$target_arch"
 "$docker_bin" run --rm \
   --platform "$docker_platform" \
   -v "$repo_dir:/workspace" \
-  -v "whitedns-desktop-fedora-npm-$target_arch:/root/.npm" \
-  -v "whitedns-desktop-fedora-go-mod-$target_arch:/go/pkg/mod" \
+  -v "whitevpn-desktop-fedora-npm-$target_arch:/root/.npm" \
+  -v "whitevpn-desktop-fedora-go-mod-$target_arch:/go/pkg/mod" \
   --mount type=volume,target=/workspace/desktop/frontend/node_modules \
   -e VERSION="$version" \
   -e TARGET_ARCH="$target_arch" \
