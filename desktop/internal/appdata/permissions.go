@@ -48,14 +48,14 @@ func EnsureAppDataWritableWithOptions(ctx context.Context, dir string, options O
 	if err := probe(clean); err == nil {
 		return nil
 	} else if !isPermissionError(err) {
-		return fmt.Errorf("WhiteDNS Desktop data directory %q is not writable: %w", clean, err)
+		return fmt.Errorf("WhiteVPN Desktop data directory %q is not writable: %w", clean, err)
 	} else {
 		if repairErr := repairAppDataPermissions(ctx, clean, options); repairErr != nil {
-			return fmt.Errorf("WhiteDNS Desktop data directory %q is not writable and automatic repair failed: %w (initial write error: %v)", clean, repairErr, err)
+			return fmt.Errorf("WhiteVPN Desktop data directory %q is not writable and automatic repair failed: %w (initial write error: %v)", clean, repairErr, err)
 		}
 	}
 	if err := probe(clean); err != nil {
-		return fmt.Errorf("WhiteDNS Desktop data directory %q repair completed but the directory is still not writable: %w", clean, err)
+		return fmt.Errorf("WhiteVPN Desktop data directory %q repair completed but the directory is still not writable: %w", clean, err)
 	}
 	return nil
 }
@@ -63,9 +63,9 @@ func EnsureAppDataWritableWithOptions(ctx context.Context, dir string, options O
 func validateAppDataDir(dir string) (string, error) {
 	clean := filepath.Clean(strings.TrimSpace(dir))
 	if clean == "" || clean == "." || clean == string(filepath.Separator) {
-		return "", fmt.Errorf("invalid WhiteDNS Desktop data directory %q", dir)
+		return "", fmt.Errorf("invalid WhiteVPN Desktop data directory %q", dir)
 	}
-	if filepath.Base(clean) != "WhiteDNS Desktop" {
+	if filepath.Base(clean) != "WhiteVPN Desktop" {
 		return "", fmt.Errorf("refusing to repair non-WhiteDNS data directory %q", dir)
 	}
 	if info, err := os.Lstat(clean); err == nil && info.Mode()&os.ModeSymlink != 0 {

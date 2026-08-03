@@ -425,9 +425,9 @@ func TestRenderV2RayConfigSupportsAdditionalXrayOutbounds(t *testing.T) {
 }
 
 func TestRenderedConfigsValidateWithXrayBinary(t *testing.T) {
-	xrayBin := strings.TrimSpace(os.Getenv("WHITEDNS_XRAY_TEST_BIN"))
+	xrayBin := strings.TrimSpace(os.Getenv("WHITEVPN_XRAY_TEST_BIN"))
 	if xrayBin == "" {
-		t.Skip("WHITEDNS_XRAY_TEST_BIN is not set")
+		t.Skip("WHITEVPN_XRAY_TEST_BIN is not set")
 	}
 	masterSettings := model.DefaultSettingsProfile()
 	masterConfig, err := RenderConfig(masterSettings)

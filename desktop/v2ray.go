@@ -618,8 +618,8 @@ func (a *App) speedTestV2RayProfile(ctx context.Context, profile model.V2RayProf
 		defer closeHTTPClientIdleConnections(client)
 
 		var lastErr error
-		for _, endpoint := range parallelSpeedTestURLs {
-			speedResult := downloadSpeedFromURL(ctx, client, endpoint, parallelSpeedTestMaxBytes)
+		for _, endpoint := range speedTestURLs {
+			speedResult := downloadSpeedFromURL(ctx, client, endpoint, speedTestMaxBytes)
 			if speedResult.bytesPerSecond > 0 {
 				result.OK = true
 				result.SpeedOK = true
@@ -724,7 +724,7 @@ func (a *App) runTemporaryV2RayProfile(ctx context.Context, profile model.V2RayP
 	if err != nil {
 		return err
 	}
-	manager, cleanup, err := a.newParallelRuntimeManager(profile.ID, "v2ray-"+phase, runtimemgr.Callbacks{})
+	manager, cleanup, err := a.newProbeRuntimeManager(profile.ID, "v2ray-"+phase, runtimemgr.Callbacks{})
 	if err != nil {
 		return err
 	}
@@ -953,10 +953,6 @@ func (a *App) GetDefaultV2RaySettingsProfile() model.V2RaySettingsProfile {
 }
 
 func (a *App) StartV2RayConnection() (model.AppState, error) {
-	if a.parallelTestRunning() {
-		return a.GetAppState(), fmt.Errorf("parallel test is running")
-	}
-	a.clearFinishedParallelTest()
 	return a.startV2RayConnection(context.Background())
 }
 
@@ -1405,4 +1401,11 @@ func uniqueImportedV2RayID(existingIDs map[string]struct{}, baseID int64, index 
 			return id
 		}
 	}
+}
+
+func pluralSuffix(count int) string {
+	if count == 1 {
+		return ""
+	}
+	return "s"
 }

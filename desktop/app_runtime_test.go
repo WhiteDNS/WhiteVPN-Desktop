@@ -1,14 +1,12 @@
 package main
 
 import (
-	"context"
-	"path/filepath"
+	"encoding/json"
 	"reflect"
 	"strings"
 	"testing"
 
 	"whitevpn-desktop/internal/model"
-	runtimemgr "whitevpn-desktop/internal/runtime"
 )
 
 func TestHandleRuntimeStateFailedSetsTerminalProgress(t *testing.T) {
@@ -277,13 +275,6 @@ func TestHandleRuntimeLiveCallbacksIgnoredAfterTerminalState(t *testing.T) {
 			app.state.Runtime = testCase.initialState
 
 			app.handleProgress(model.ConnectionProgress{Phase: "mtu", Percent: 80, Completed: 8, Total: 10})
-			app.handleResolverState(model.ResolverRuntimeState{
-				ActiveResolvers: []string{"1.1.1.1"},
-				ValidResolvers:  []string{"1.1.1.1"},
-				TotalCount:      1,
-				ActiveCount:     1,
-				ValidCount:      1,
-			})
 			app.handleStats(model.TrafficStats{
 				DownloadBytes:               100,
 				UploadBytes:                 50,
@@ -296,9 +287,6 @@ func TestHandleRuntimeLiveCallbacksIgnoredAfterTerminalState(t *testing.T) {
 			if runtimeState.Progress != testCase.initialState.Progress {
 				t.Fatalf("expected progress callback to be ignored, got %#v", runtimeState.Progress)
 			}
-			if !reflect.DeepEqual(runtimeState.ResolverState, model.ResolverRuntimeState{}) {
-				t.Fatalf("expected resolver callback to be ignored, got %#v", runtimeState.ResolverState)
-			}
 			if runtimeState.Stats != (model.TrafficStats{}) {
 				t.Fatalf("expected stats callback to be ignored, got %#v", runtimeState.Stats)
 			}
@@ -306,76 +294,26 @@ func TestHandleRuntimeLiveCallbacksIgnoredAfterTerminalState(t *testing.T) {
 	}
 }
 
-func TestStartConnectionEmitsFirewallNotificationOnStateChange(t *testing.T) {
-	state := model.DefaultAppState()
-	state.ConnectionProfiles[0].Domain = "example.com"
-	state.ConnectionProfiles[0].EncryptionKey = "secret"
-	state.ResolverProfiles[0].ResolverText = "1.1.1.1"
+func TestClearRuntimeLogsReturnsEmptyLogArray(t *testing.T) {
+	app := &App{state: model.DefaultAppState()}
+	app.state.Runtime.Logs = []string{"first log"}
 
-	firewallStatus := model.FirewallStatus{
-		Enabled:   true,
-		Supported: true,
-		Name:      "Test Firewall",
-		Message:   "Firewall is on. WhiteDNS may need local proxy/DNS traffic allowed.",
+	state := app.ClearRuntimeLogs()
+	if state.Runtime.Logs == nil {
+		t.Fatal("expected cleared logs to be an empty slice, got nil")
 	}
-	firewallChecks := 0
-	var firewallEvents []model.FirewallStatus
-
-	app := &App{
-		state: state,
-		manager: runtimemgr.NewManager(
-			runtimemgr.Options{
-				RuntimeDir: filepath.Join(t.TempDir(), "runtime"),
-				BinaryPath: filepath.Join(t.TempDir(), "missing-masterdns-client"),
-			},
-			runtimemgr.Callbacks{},
-		),
-		firewallChecker: func(context.Context) model.FirewallStatus {
-			firewallChecks++
-			return firewallStatus
-		},
-		emitHook: func(name string, payload any) {
-			if name == "firewall:enabled" {
-				firewallEvents = append(firewallEvents, payload.(model.FirewallStatus))
-			}
-		},
+	if len(state.Runtime.Logs) != 0 {
+		t.Fatalf("expected logs to be empty, got %#v", state.Runtime.Logs)
 	}
 
-	if _, err := app.StartConnection(); err == nil {
-		t.Fatal("expected missing runtime binary error")
+	raw, err := json.Marshal(state.Runtime)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if firewallChecks != 1 {
-		t.Fatalf("expected one firewall check, got %d", firewallChecks)
+	if strings.Contains(string(raw), `"logs":null`) {
+		t.Fatalf("cleared logs serialized as null: %s", raw)
 	}
-	if len(firewallEvents) != 1 {
-		t.Fatalf("expected one firewall event, got %#v", firewallEvents)
-	}
-
-	if _, err := app.StartConnection(); err == nil {
-		t.Fatal("expected missing runtime binary error")
-	}
-	if firewallChecks != 2 {
-		t.Fatalf("expected second firewall check, got %d", firewallChecks)
-	}
-	if len(firewallEvents) != 1 {
-		t.Fatalf("expected duplicate firewall state to be suppressed, got %#v", firewallEvents)
-	}
-
-	firewallStatus.Enabled = false
-	firewallStatus.Message = "Firewall is off."
-	if _, err := app.StartConnection(); err == nil {
-		t.Fatal("expected missing runtime binary error")
-	}
-	if len(firewallEvents) != 1 {
-		t.Fatalf("expected disabled firewall state not to emit, got %#v", firewallEvents)
-	}
-
-	firewallStatus.Enabled = true
-	firewallStatus.Message = "Firewall is on. WhiteDNS may need local proxy/DNS traffic allowed."
-	if _, err := app.StartConnection(); err == nil {
-		t.Fatal("expected missing runtime binary error")
-	}
-	if len(firewallEvents) != 2 {
-		t.Fatalf("expected firewall event after state changed back to enabled, got %#v", firewallEvents)
+	if !strings.Contains(string(raw), `"logs":[]`) {
+		t.Fatalf("cleared logs should serialize as an empty array: %s", raw)
 	}
 }

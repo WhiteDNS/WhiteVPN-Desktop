@@ -11,9 +11,6 @@ import (
 //go:embed all:frontend/dist
 var assets embed.FS
 
-//go:embed all:clients
-var clientAssets embed.FS
-
 //go:embed all:cores
 var coreAssets embed.FS
 
@@ -28,7 +25,7 @@ func main() {
 	}
 
 	err = wails.Run(&options.App{
-		Title:             "WhiteDNS Desktop",
+		Title:             "WhiteVPN Desktop",
 		Width:             1280,
 		Height:            820,
 		MinWidth:          860,

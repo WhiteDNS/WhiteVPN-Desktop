@@ -181,8 +181,8 @@ func TestRunTemporaryV2RayProfileUsesFakeXrayRuntime(t *testing.T) {
 	stopped := false
 	callbackCalled := false
 	app := &App{
-		runtimeManagerFactory: func(_ string, _ runtimemgr.Callbacks) parallelRuntimeManager {
-			return fakeParallelRuntimeManager{
+		runtimeManagerFactory: func(_ string, _ runtimemgr.Callbacks) probeRuntimeManager {
+			return fakeProbeRuntimeManager{
 				startXray: func(_ context.Context, cfg runtimemgr.XrayLaunchConfig) error {
 					started = true
 					gotConfig = cfg
@@ -252,8 +252,8 @@ func TestRunTemporaryV2RayProfileStopsRuntimeAfterCancellation(t *testing.T) {
 	defer cancel()
 	stopped := false
 	app := &App{
-		runtimeManagerFactory: func(_ string, _ runtimemgr.Callbacks) parallelRuntimeManager {
-			return fakeParallelRuntimeManager{
+		runtimeManagerFactory: func(_ string, _ runtimemgr.Callbacks) probeRuntimeManager {
+			return fakeProbeRuntimeManager{
 				startXray: func(_ context.Context, _ runtimemgr.XrayLaunchConfig) error {
 					return nil
 				},
@@ -297,4 +297,23 @@ func containsV2RayProfile(items []model.V2RayProfile, id string) bool {
 		}
 	}
 	return false
+}
+
+type fakeProbeRuntimeManager struct {
+	startXray func(context.Context, runtimemgr.XrayLaunchConfig) error
+	stop      func() error
+}
+
+func (m fakeProbeRuntimeManager) StartXray(ctx context.Context, cfg runtimemgr.XrayLaunchConfig) error {
+	if m.startXray != nil {
+		return m.startXray(ctx, cfg)
+	}
+	return nil
+}
+
+func (m fakeProbeRuntimeManager) Stop() error {
+	if m.stop != nil {
+		return m.stop()
+	}
+	return nil
 }

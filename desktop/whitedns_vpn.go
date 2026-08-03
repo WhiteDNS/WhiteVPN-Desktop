@@ -66,10 +66,6 @@ func fetchWhiteDNSVPNFrontingIPListDocument(ctx context.Context) (string, error)
 }
 
 func (a *App) StartWhiteDNSVPNConnection() (model.AppState, error) {
-	if a.parallelTestRunning() {
-		return a.GetAppState(), fmt.Errorf("parallel test is running")
-	}
-	a.clearFinishedParallelTest()
 
 	a.mu.Lock()
 	if a.state.Runtime.Status != model.RuntimeDisconnected && a.state.Runtime.Status != model.RuntimeFailed {
@@ -98,10 +94,6 @@ func (a *App) StartWhiteDNSVPNConnection() (model.AppState, error) {
 }
 
 func (a *App) RefreshWhiteDNSVPNConnection() (model.AppState, error) {
-	if a.parallelTestRunning() {
-		return a.GetAppState(), fmt.Errorf("parallel test is running")
-	}
-	a.clearFinishedParallelTest()
 
 	exclude, ok := a.activeWhiteDNSVPNStartupExclusion()
 	if !ok {

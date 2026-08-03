@@ -1440,3 +1440,10 @@ func (a *App) emitValidatorProgress(state validatorProgressEvent, pending []mode
 	}
 	a.emit("validator:progress", state)
 }
+
+func maxInt(left, right int) int {
+	if left > right {
+		return left
+	}
+	return right
+}

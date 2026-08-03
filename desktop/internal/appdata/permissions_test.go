@@ -12,7 +12,7 @@ import (
 
 func TestEnsureAppDataWritableSkipsRepairWhenWritable(t *testing.T) {
 	runner := &fakeRunner{}
-	err := EnsureAppDataWritableWithOptions(context.Background(), filepath.Join(t.TempDir(), "WhiteDNS Desktop"), Options{
+	err := EnsureAppDataWritableWithOptions(context.Background(), filepath.Join(t.TempDir(), "WhiteVPN Desktop"), Options{
 		Platform: "darwin",
 		Runner:   runner.run,
 		Probe:    func(string) error { return nil },
@@ -29,7 +29,7 @@ func TestEnsureAppDataWritableSkipsRepairWhenWritable(t *testing.T) {
 
 func TestEnsureAppDataWritableRepairsDarwinWithAdministratorPrompt(t *testing.T) {
 	runner := &fakeRunner{}
-	dir := filepath.Join(t.TempDir(), "WhiteDNS Desktop")
+	dir := filepath.Join(t.TempDir(), "WhiteVPN Desktop")
 
 	err := EnsureAppDataWritableWithOptions(context.Background(), dir, Options{
 		Platform: "darwin",
@@ -51,7 +51,7 @@ func TestEnsureAppDataWritableRepairsDarwinWithAdministratorPrompt(t *testing.T)
 
 func TestEnsureAppDataWritableRepairsLinuxWithPkexec(t *testing.T) {
 	runner := &fakeRunner{}
-	dir := filepath.Join(t.TempDir(), "WhiteDNS Desktop")
+	dir := filepath.Join(t.TempDir(), "WhiteVPN Desktop")
 
 	err := EnsureAppDataWritableWithOptions(context.Background(), dir, Options{
 		Platform: "linux",
@@ -73,7 +73,7 @@ func TestEnsureAppDataWritableRepairsLinuxWithPkexec(t *testing.T) {
 
 func TestEnsureAppDataWritableReportsMissingPkexec(t *testing.T) {
 	runner := &fakeRunner{err: exec.ErrNotFound}
-	dir := filepath.Join(t.TempDir(), "WhiteDNS Desktop")
+	dir := filepath.Join(t.TempDir(), "WhiteVPN Desktop")
 
 	err := EnsureAppDataWritableWithOptions(context.Background(), dir, Options{
 		Platform: "linux",
@@ -89,7 +89,7 @@ func TestEnsureAppDataWritableReportsMissingPkexec(t *testing.T) {
 
 func TestEnsureAppDataWritableRepairsWindowsWithUACAndSID(t *testing.T) {
 	runner := &fakeRunner{}
-	dir := filepath.Join(t.TempDir(), "WhiteDNS Desktop")
+	dir := filepath.Join(t.TempDir(), "WhiteVPN Desktop")
 
 	err := EnsureAppDataWritableWithOptions(context.Background(), dir, Options{
 		Platform: "windows",
@@ -127,7 +127,7 @@ func TestEnsureAppDataWritableRefusesNonWhiteDNSDirectory(t *testing.T) {
 
 func TestEnsureAppDataWritableReportsStillUnwritableAfterRepair(t *testing.T) {
 	runner := &fakeRunner{}
-	dir := filepath.Join(t.TempDir(), "WhiteDNS Desktop")
+	dir := filepath.Join(t.TempDir(), "WhiteVPN Desktop")
 
 	err := EnsureAppDataWritableWithOptions(context.Background(), dir, Options{
 		Platform: "darwin",
