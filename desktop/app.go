@@ -59,6 +59,8 @@ type App struct {
 	validatorResultsDir        string
 	validatorDone              chan struct{}
 
+	legacyImport profiles.LegacyImport
+
 	firewallChecker       firewallChecker
 	runtimeManagerFactory runtimeManagerFactory
 	lastFirewallStatusKey string
@@ -78,7 +80,15 @@ func NewApp() (*App, error) {
 		return nil, err
 	}
 	runtimeDir := filepath.Join(configDir, "runtime")
-	store := profiles.NewStore(filepath.Join(configDir, "state.json"))
+	statePath := filepath.Join(configDir, "state.json")
+	// Look for a WhiteDNS Desktop install to inherit from, but only before this
+	// app has a state file of its own - after that the user has made their own
+	// choices here and we must not second-guess them.
+	firstRun := false
+	if _, err := os.Stat(statePath); os.IsNotExist(err) {
+		firstRun = true
+	}
+	store := profiles.NewStore(statePath)
 	app := &App{
 		store:               store,
 		configDir:           configDir,
@@ -103,7 +113,50 @@ func NewApp() (*App, error) {
 		return nil, err
 	}
 	app.state = state
+	if firstRun {
+		app.legacyImport = profiles.ReadLegacyImport(legacyWhiteDNSStatePath())
+	}
 	return app, nil
+}
+
+// legacyWhiteDNSStatePath is where WhiteDNS Desktop keeps its state. It is only
+// ever read from.
+func legacyWhiteDNSStatePath() string {
+	base, err := os.UserConfigDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(base, "WhiteDNS Desktop", "state.json")
+}
+
+// GetLegacyImportOffer reports whether there are WhiteDNS Desktop profiles
+// worth importing. It is empty on every launch but the first.
+func (a *App) GetLegacyImportOffer() profiles.LegacyImport {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.legacyImport
+}
+
+// ImportLegacyProfiles copies the offered profiles in. The offer is cleared
+// either way, so declining is remembered for the rest of the session and
+// accepting cannot run twice.
+func (a *App) ImportLegacyProfiles() (model.AppState, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	offer := a.legacyImport
+	a.legacyImport = profiles.LegacyImport{}
+	if !offer.Available {
+		return a.state, nil
+	}
+	a.state = offer.Apply(a.state)
+	return a.saveLocked()
+}
+
+// DismissLegacyImportOffer declines the offer without importing anything.
+func (a *App) DismissLegacyImportOffer() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.legacyImport = profiles.LegacyImport{}
 }
 
 func runtimeManagerOptions(runtimeDir string) runtimemgr.Options {

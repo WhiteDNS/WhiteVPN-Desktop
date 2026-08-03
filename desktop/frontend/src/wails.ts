@@ -19,6 +19,7 @@ import type {
   ValidatorRequest,
   ValidatorResultFile,
   ValidatorState,
+  LegacyImportOffer,
 } from "./types";
 
 type WailsNotificationOptions = {
@@ -80,6 +81,9 @@ type AppApi = {
   ListValidatorResultFiles(): Promise<ValidatorResultFile[]>;
   OpenValidatorResultFile(name: string): Promise<void>;
   DeleteValidatorResultFile(name: string): Promise<ValidatorResultFile[]>;
+  GetLegacyImportOffer(): Promise<LegacyImportOffer>;
+  ImportLegacyProfiles(): Promise<AppState>;
+  DismissLegacyImportOffer(): Promise<void>;
   ExportBackup(): Promise<string>;
   ImportBackup(rawText: string): Promise<AppState>;
   Quit(): Promise<void>;
@@ -163,6 +167,9 @@ export const backend = {
   listValidatorResultFiles: () => app().ListValidatorResultFiles(),
   openValidatorResultFile: (name: string) => app().OpenValidatorResultFile(name),
   deleteValidatorResultFile: (name: string) => app().DeleteValidatorResultFile(name),
+  getLegacyImportOffer: () => app().GetLegacyImportOffer(),
+  importLegacyProfiles: () => app().ImportLegacyProfiles(),
+  dismissLegacyImportOffer: () => app().DismissLegacyImportOffer(),
   exportBackup: () => app().ExportBackup(),
   importBackup: (rawText: string) => app().ImportBackup(rawText),
   quit: () => app().Quit(),

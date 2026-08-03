@@ -125,6 +125,7 @@ import { cn } from "@/lib/utils";
 import type {
   AppState,
   ConnectionProfile,
+  LegacyImportOffer,
   FirewallStatus,
   ImportType,
   RuntimeLogEntry,
@@ -875,6 +876,7 @@ const navGroups: NavGroup[] = [
 
 function App() {
   const [state, setState] = useState<AppState | null>(null);
+  const [legacyOffer, setLegacyOffer] = useState<LegacyImportOffer | null>(null);
   const [page, setPage] = useState<Page>("whitedns-vpn");
   const [errorToast, setErrorToast] = useState<AppErrorToast | null>(null);
   const [successToast, setSuccessToast] = useState<AppErrorToast | null>(null);
@@ -928,6 +930,10 @@ function App() {
       .getAppState()
       .then(applyState)
       .catch((err) => showError(messageFromError(err)));
+    backend
+      .getLegacyImportOffer()
+      .then((offer) => setLegacyOffer(offer?.available ? offer : null))
+      .catch(() => setLegacyOffer(null));
     backend
       .getValidatorState()
       .then(applyValidatorState)
@@ -1178,6 +1184,26 @@ function App() {
     }
   }
 
+  async function acceptLegacyImport() {
+    setLegacyOffer(null);
+    try {
+      applyState(await backend.importLegacyProfiles());
+      showSuccess("Imported your WhiteDNS Desktop profiles.");
+    } catch (err) {
+      showError(messageFromError(err));
+    }
+  }
+
+  async function declineLegacyImport() {
+    setLegacyOffer(null);
+    try {
+      await backend.dismissLegacyImportOffer();
+    } catch {
+      // Declining is only a session-level preference; a failure here is not
+      // worth interrupting startup for.
+    }
+  }
+
   if (!state) {
     return (
       <>
@@ -1278,6 +1304,11 @@ function App() {
           </main>
         </SidebarInset>
 
+        <LegacyImportDialog
+          offer={legacyOffer}
+          onImport={acceptLegacyImport}
+          onDismiss={declineLegacyImport}
+        />
       </SidebarProvider>
     </TooltipProvider>
   );
@@ -6634,3 +6665,43 @@ function messageFromError(err: unknown): string {
 }
 
 export default App;
+
+function LegacyImportDialog({
+  offer,
+  onImport,
+  onDismiss,
+}: {
+  offer: LegacyImportOffer | null;
+  onImport: () => void;
+  onDismiss: () => void;
+}) {
+  if (!offer) {
+    return null;
+  }
+
+  const found = [
+    offer.profiles > 0 ? `${offer.profiles} profile${offer.profiles === 1 ? "" : "s"}` : "",
+    offer.subscriptions > 0 ? `${offer.subscriptions} subscription${offer.subscriptions === 1 ? "" : "s"}` : "",
+    offer.frontingIps > 0 ? `${offer.frontingIps} fronting IP${offer.frontingIps === 1 ? "" : "s"}` : "",
+  ].filter(Boolean);
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onDismiss()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Bring your profiles over?</DialogTitle>
+          <DialogDescription>
+            WhiteDNS Desktop is installed and has {found.join(", ")} saved. They can be copied into
+            WhiteVPN Desktop now. Nothing in WhiteDNS Desktop is changed or removed.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" onClick={onDismiss}>
+            Not now
+          </Button>
+          <Button onClick={onImport}>Import</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}

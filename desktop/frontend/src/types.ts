@@ -590,3 +590,11 @@ export interface ParallelTestState {
   startedAt: number;
   finishedAt: number;
 }
+
+export type LegacyImportOffer = {
+  available: boolean;
+  profiles: number;
+  subscriptions: number;
+  frontingIps: number;
+  sourcePath: string;
+};
