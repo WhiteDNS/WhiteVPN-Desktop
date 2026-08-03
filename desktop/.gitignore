@@ -1,0 +1,83 @@
+# macOS / Windows local files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Editor / IDE state
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.local
+*.secret
+secrets/
+credentials/
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.csr
+*.mobileprovision
+*.keystore
+*.jks
+id_rsa*
+id_ed25519*
+
+# Logs and diagnostics
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+coverage/
+coverage.out
+*.prof
+*.trace
+
+# Go / Wails build output
+build/*
+!build/windows/
+build/windows/*
+!build/windows/wails.exe.manifest
+.cache/
+bin/
+dist/
+*.test
+*.out
+go.work
+go.work.sum
+
+# Runtime cores and client binaries/config
+clients/*
+!clients/.keep
+cores/*
+!cores/.keep
+
+# Frontend dependencies and generated output
+frontend/node_modules/
+frontend/dist/
+frontend/wailsjs/
+frontend/.vite/
+frontend/package.json.md5
+
+# Packaged release artifacts
+*.dmg
+*.pkg
+*.msi
+*.exe
+*.deb
+*.rpm
+*.AppImage
+*.zip
+*.tar.gz
+*.tgz
+*.7z
+*.sha256
