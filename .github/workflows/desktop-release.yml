@@ -1,15 +1,15 @@
-name: Desktop Release Builds
+name: WhiteVPN Desktop Release Builds
 
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Desktop release version. Defaults to the desktop-v* tag suffix or the Makefile default."
+        description: "Desktop release version. Defaults to the vpn-v* tag suffix or the Makefile default."
         required: false
         type: string
   push:
     tags:
-      - "desktop-v*"
+      - "vpn-v*"
 
 permissions:
   contents: write
@@ -25,27 +25,27 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - artifact: whitedns-desktop-macos-amd64
+          - artifact: whitevpn-desktop-macos-amd64
             os: macos-latest
             kind: macos
             platform: darwin/amd64
             arch: amd64
-          - artifact: whitedns-desktop-macos-arm64
+          - artifact: whitevpn-desktop-macos-arm64
             os: macos-latest
             kind: macos
             platform: darwin/arm64
             arch: arm64
-          - artifact: whitedns-desktop-windows-x64
+          - artifact: whitevpn-desktop-windows-x64
             os: macos-latest
             kind: windows
             platform: windows/amd64
             arch: amd64
-          - artifact: whitedns-desktop-windows-arm64-windows-on-arm
+          - artifact: whitevpn-desktop-windows-arm64-windows-on-arm
             os: macos-latest
             kind: windows
             platform: windows/arm64
             arch: arm64
-          - artifact: whitedns-desktop-linux-amd64
+          - artifact: whitevpn-desktop-linux-amd64
             os: ubuntu-22.04
             kind: linux
             platform: linux/amd64
@@ -53,7 +53,7 @@ jobs:
             webkit: "4.0"
             linux_tags: ""
             package_formats: deb,rpm
-          - artifact: whitedns-desktop-linux-amd64-webkit41
+          - artifact: whitevpn-desktop-linux-amd64-webkit41
             os: ubuntu-24.04
             kind: linux
             platform: linux/amd64
@@ -61,7 +61,7 @@ jobs:
             webkit: "4.1"
             linux_tags: webkit2_41
             package_formats: deb,rpm,appimage
-          - artifact: whitedns-desktop-linux-arm64
+          - artifact: whitevpn-desktop-linux-arm64
             os: ubuntu-24.04-arm
             kind: linux
             platform: linux/arm64
@@ -84,8 +84,8 @@ jobs:
         run: |
           set -euo pipefail
           version="$INPUT_VERSION"
-          if [ -z "$version" ] && [[ "${GITHUB_REF_NAME}" == desktop-v* ]]; then
-            version="${GITHUB_REF_NAME#desktop-v}"
+          if [ -z "$version" ] && [[ "${GITHUB_REF_NAME}" == vpn-v* ]]; then
+            version="${GITHUB_REF_NAME#vpn-v}"
           fi
           if [ -z "$version" ]; then
             version="1.0.0-beta2"
@@ -99,7 +99,6 @@ jobs:
           cache: true
           cache-dependency-path: |
             desktop/go.sum
-            StormDNS/go.sum
 
       - name: Setup Node
         uses: actions/setup-node@v6
@@ -153,27 +152,27 @@ jobs:
           source_dir="desktop/build/releases/${{ matrix.artifact }}"
           desktop_version="${{ steps.desktop-version.outputs.version }}"
           asset_platform="${{ matrix.artifact }}"
-          asset_platform="${asset_platform#whitedns-desktop-}"
+          asset_platform="${asset_platform#whitevpn-desktop-}"
           paths=""
           case "${{ matrix.kind }}" in
             macos)
-              archive="desktop/build/releases/WhiteDNS-Desktop-${desktop_version}-${asset_platform}.zip"
-              (cd "$source_dir" && ditto -c -k --sequesterRsrc --keepParent "WhiteDNS Desktop.app" "../$(basename "$archive")")
+              archive="desktop/build/releases/WhiteVPN-Desktop-${desktop_version}-${asset_platform}.zip"
+              (cd "$source_dir" && ditto -c -k --sequesterRsrc --keepParent "WhiteVPN Desktop.app" "../$(basename "$archive")")
               paths="$archive"
               ;;
             windows)
-              archive="desktop/build/releases/WhiteDNS-Desktop-${desktop_version}-${asset_platform}.zip"
+              archive="desktop/build/releases/WhiteVPN-Desktop-${desktop_version}-${asset_platform}.zip"
               (cd "$source_dir" && zip -qry "../$(basename "$archive")" .)
               paths="$archive"
               ;;
             linux)
-              archive="desktop/build/releases/WhiteDNS-Desktop-${desktop_version}-${asset_platform}.tar.gz"
+              archive="desktop/build/releases/WhiteVPN-Desktop-${desktop_version}-${asset_platform}.tar.gz"
               tar -czf "$archive" -C "$source_dir" .
               package_formats="${{ matrix.package_formats }}"
               if [ -z "$package_formats" ]; then
                 package_formats="deb,rpm"
               fi
-              APP_NAME="WhiteDNS Desktop" \
+              APP_NAME="WhiteVPN Desktop" \
                 VERSION="$desktop_version" \
                 PACKAGE_SOURCE_DIR="build/releases/${{ matrix.artifact }}" \
                 PACKAGE_OUTPUT_DIR="build/releases" \
@@ -183,16 +182,16 @@ jobs:
                 LINUX_PACKAGE_FORMATS="$package_formats" \
                 desktop/scripts/package-linux-dist.sh
               paths="$archive"
-              for package in desktop/build/releases/WhiteDNS-Desktop-${desktop_version}-${asset_platform}.deb desktop/build/releases/WhiteDNS-Desktop-${desktop_version}-${asset_platform}.rpm; do
+              for package in desktop/build/releases/WhiteVPN-Desktop-${desktop_version}-${asset_platform}.deb desktop/build/releases/WhiteVPN-Desktop-${desktop_version}-${asset_platform}.rpm; do
                 paths="${paths}"$'\n'"$package"
               done
-              rpm_package="desktop/build/releases/WhiteDNS-Desktop-${desktop_version}-${asset_platform}.rpm"
+              rpm_package="desktop/build/releases/WhiteVPN-Desktop-${desktop_version}-${asset_platform}.rpm"
               if rpm -qpR "$rpm_package" | grep -E '^webkit2gtk4\.[01]($|[[:space:]])'; then
                 echo "RPM contains a hard-coded WebKitGTK package dependency" >&2
                 exit 1
               fi
               if [[ ",$package_formats," == *",appimage,"* ]]; then
-                appimage="desktop/build/releases/WhiteDNS-Desktop-${desktop_version}-${asset_platform}.AppImage"
+                appimage="desktop/build/releases/WhiteVPN-Desktop-${desktop_version}-${asset_platform}.AppImage"
                 test -x "$appimage"
                 paths="${paths}"$'\n'"$appimage"
               fi
@@ -214,7 +213,7 @@ jobs:
 
   publish:
     name: Publish release assets
-    if: startsWith(github.ref, 'refs/tags/desktop-v')
+    if: startsWith(github.ref, 'refs/tags/vpn-v')
     needs: build
     runs-on: ubuntu-22.04
     steps:
