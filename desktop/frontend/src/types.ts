@@ -338,6 +338,7 @@ export interface AppState {
   v2raySubscriptions: V2RaySubscription[];
   v2raySettingsProfiles: V2RaySettingsProfile[];
   whiteDNSVPNFrontingIps: string[];
+  whiteVpn: WhiteVPNSettings;
   runtime: RuntimeStatus;
 }
 
@@ -597,4 +598,44 @@ export type LegacyImportOffer = {
   subscriptions: number;
   frontingIps: number;
   sourcePath: string;
+};
+
+export type DNSPrivacyMode = "automatic" | "doh" | "dot";
+export type SplitTunnelMode = "off" | "bypass_selected" | "vpn_only_selected";
+
+export type AmneziaNoiseSettings = {
+  enabled: boolean;
+  count: number;
+  minSize: number;
+  maxSize: number;
+};
+
+export type DNSPrivacySettings = {
+  mode: DNSPrivacyMode;
+  dohUrl: string;
+  dotEndpoint: string;
+};
+
+export type SplitTunnelSettings = {
+  mode: SplitTunnelMode;
+  processes: string[];
+};
+
+export type KillSwitchSettings = {
+  enabled: boolean;
+};
+
+// Mirrors model.WhiteVPNSettings. Every field here is a setting WhiteVPN for
+// Android exposes, so that someone moving from the phone finds the same options.
+export type WhiteVPNSettings = {
+  countryCode: string;
+  splitTunnel: SplitTunnelSettings;
+  tlsIntegrityEnabled: boolean;
+  amneziaNoise: AmneziaNoiseSettings;
+  frontingIps: string[];
+  dnsPrivacy: DNSPrivacySettings;
+  killSwitch: KillSwitchSettings;
+  language: string;
+  tunEnabled: boolean;
+  acceptedPrivacyPolicyVersion: number;
 };

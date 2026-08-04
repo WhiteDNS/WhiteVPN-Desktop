@@ -34,8 +34,8 @@ about the visual language changes; only the content is ported.
 | 1.2 | Connection (node pick) | `white_dns_connection_selection` / `profile:<subId>` | unset = Automatic | VPN page row → connection dialog | `[ ]` |
 | 1.3 | Connection type filter | `white_dns_connection_selection` / `types:<subId>` | empty = all types | Inside the connection dialog | `[ ]` |
 | 1.4 | Sort by delay | `white_dns_connection_selection` / `delay-sort:<subId>` | `false` | Toggle in the connection dialog | `[ ]` |
-| 1.5 | Split tunnel mode | `white_dns_split_tunnel` / `mode` | `off` | VPN page row → split-tunnel dialog | `[ ]` |
-| 1.6 | Split tunnel selection | `white_dns_split_tunnel` / `packages` | empty | **Adapted**: Windows processes/`.exe` instead of Android packages | `[ ]` |
+| 1.5 | Split tunnel mode | `white_dns_split_tunnel` / `mode` | `off` | VPN page row → split-tunnel dialog | `[x]` |
+| 1.6 | Split tunnel selection | `white_dns_split_tunnel` / `packages` | empty | **Adapted**: Windows processes/`.exe` instead of Android packages | `[x]` |
 
 Split tunnel keeps all three Android modes: `off`, `bypass_selected`
 (selected apps skip the VPN), `vpn_only_selected` (only selected apps use it).
@@ -51,7 +51,7 @@ Android refuses to save `vpn_only_selected` with nothing selected; so does this.
 
 | Setting | Store / key | Default | Status |
 |---|---|---|---|
-| TLS integrity | `white_dns_tls_integrity` / `enabled` | `false` | `[ ]` |
+| TLS integrity | `white_dns_tls_integrity` / `enabled` | `false` | `[x]` |
 
 Probes certificate validity and quarantines a failing endpoint for 24 h
 (`white_dns_scan_state` → `tls_quarantine:*`).
@@ -60,10 +60,10 @@ Probes certificate validity and quarantines a failing endpoint for 24 h
 
 | Setting | Store / key | Default | Range | Status |
 |---|---|---|---|---|
-| Noise enabled | `white_dns_connection_options` / `amnezia_noise_enabled` | `false` | — | `[ ]` |
-| Noise count | `…` / `noise_count` | `5` | 1–20 | `[ ]` |
-| Noise min size | `…` / `noise_min_size` | `50` | 1–1280 | `[ ]` |
-| Noise max size | `…` / `noise_max_size` | `100` | 1–1280 | `[ ]` |
+| Noise enabled | `white_dns_connection_options` / `amnezia_noise_enabled` | `false` | — | `[x]` |
+| Noise count | `…` / `noise_count` | `5` | 1–20 | `[x]` |
+| Noise min size | `…` / `noise_min_size` | `50` | 1–1280 | `[x]` |
+| Noise max size | `…` / `noise_max_size` | `100` | 1–1280 | `[x]` |
 
 Three numeric fields plus an Apply button, exactly as on the phone. Validation
 must reject out-of-range values rather than clamping them silently.
@@ -72,7 +72,7 @@ must reject out-of-range values rather than clamping them silently.
 
 | Setting | Store / key | Default | Status |
 |---|---|---|---|
-| Fronting IPs | `white_dns_fronting_ip` / `fronting_ip` | unset | `[ ]` |
+| Fronting IPs | `white_dns_fronting_ip` / `fronting_ip` | unset | `[x]` |
 
 Comma-separated, **at most 5** entries of `IP` or `IP:port`. Port preference
 order when connecting: 443, 8443, then 2053, 2083, 2087, 2096.
@@ -81,9 +81,9 @@ order when connecting: 443, 8443, then 2053, 2083, 2087, 2096.
 
 | Setting | Store / key | Default | Status |
 |---|---|---|---|
-| Mode | `white_dns_privacy` / `mode` | `automatic` (`automatic` \| `doh` \| `dot`) | `[ ]` |
-| DoH URL | `…` / `doh_url` | `https://1.1.1.1/dns-query` | `[ ]` |
-| DoT endpoint | `…` / `dot_endpoint` | `tls://1.1.1.1:853` | `[ ]` |
+| Mode | `white_dns_privacy` / `mode` | `automatic` (`automatic` \| `doh` \| `dot`) | `[x]` |
+| DoH URL | `…` / `doh_url` | `https://1.1.1.1/dns-query` | `[x]` |
+| DoT endpoint | `…` / `dot_endpoint` | `tls://1.1.1.1:853` | `[x]` |
 
 Server order per mode, as Android builds it:
 - **Automatic** — `https://1.1.1.1/dns-query`, `https://8.8.8.8/dns-query`, `tls://1.1.1.1:853`, `tls://8.8.8.8:853`

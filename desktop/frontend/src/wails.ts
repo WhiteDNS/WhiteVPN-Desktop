@@ -20,6 +20,7 @@ import type {
   ValidatorResultFile,
   ValidatorState,
   LegacyImportOffer,
+  WhiteVPNSettings,
 } from "./types";
 
 type WailsNotificationOptions = {
@@ -81,6 +82,8 @@ type AppApi = {
   ListValidatorResultFiles(): Promise<ValidatorResultFile[]>;
   OpenValidatorResultFile(name: string): Promise<void>;
   DeleteValidatorResultFile(name: string): Promise<ValidatorResultFile[]>;
+  GetWhiteVPNSettings(): Promise<WhiteVPNSettings>;
+  SaveWhiteVPNSettings(settings: WhiteVPNSettings): Promise<AppState>;
   GetLegacyImportOffer(): Promise<LegacyImportOffer>;
   ImportLegacyProfiles(): Promise<AppState>;
   DismissLegacyImportOffer(): Promise<void>;
@@ -167,6 +170,8 @@ export const backend = {
   listValidatorResultFiles: () => app().ListValidatorResultFiles(),
   openValidatorResultFile: (name: string) => app().OpenValidatorResultFile(name),
   deleteValidatorResultFile: (name: string) => app().DeleteValidatorResultFile(name),
+  getWhiteVpnSettings: () => app().GetWhiteVPNSettings(),
+  saveWhiteVpnSettings: (settings: WhiteVPNSettings) => app().SaveWhiteVPNSettings(settings),
   getLegacyImportOffer: () => app().GetLegacyImportOffer(),
   importLegacyProfiles: () => app().ImportLegacyProfiles(),
   dismissLegacyImportOffer: () => app().DismissLegacyImportOffer(),

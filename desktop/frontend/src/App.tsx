@@ -126,6 +126,9 @@ import type {
   AppState,
   ConnectionProfile,
   LegacyImportOffer,
+  WhiteVPNSettings,
+  DNSPrivacyMode,
+  SplitTunnelMode,
   FirewallStatus,
   ImportType,
   RuntimeLogEntry,
@@ -145,9 +148,9 @@ import type {
 } from "./types";
 import { backend, initializeNotifications, onRuntimeEvent, openExternalUrl, sendFirewallNotification } from "./wails";
 
-type Page = "whitedns-vpn" | "whitedns-vpn-logs" | "v2ray-dashboard" | "v2ray-profiles" | "v2ray-subscriptions" | "v2ray-settings" | "v2ray-logs" | "v2ray-white-ips" | "validator" | "backup";
+type Page = "vpn" | "servers" | "subscriptions" | "settings" | "engine-settings" | "logs" | "white-ips" | "validator" | "backup";
 type NavItem = { id: Page; label: string; icon: ReactNode };
-type NavGroup = { id: "whitedns" | "v2ray" | "tools"; label: string; items: NavItem[] };
+type NavGroup = { id: "whitevpn" | "tools"; label: string; items: NavItem[] };
 type V2RayPingSortDirection = "none" | "asc" | "desc";
 type V2RayProfileTestKind = "" | "ping" | "speed" | "delay";
 type V2RayProfileSortColumn = "none" | "delay" | "speed";
@@ -228,6 +231,13 @@ const v2rayProfileTableColumns: V2RayProfileTableColumn[] = [
   { id: "actions", label: "Actions", defaultWidth: 128, minWidth: 112, maxWidth: 176, align: "right", sticky: "right" },
 ];
 const whiteDnsTelegramUrl = "https://t.me/whitedns";
+// Mirrors the limits in internal/model/whitevpn_settings.go. Values outside them
+// are repaired on save, so these only decide when a control stops accepting more.
+const maxFrontingIPs = 5;
+const minNoiseCount = 1;
+const maxNoiseCount = 20;
+const minNoiseSize = 1;
+const maxNoiseSize = 1280;
 const whiteDNSVPNSubscriptionID = "whitedns-vpn";
 const v2rayProtocolOptions: Array<[V2RayProtocol, string]> = [
   ["vless", "VLESS"],
@@ -845,29 +855,22 @@ function normalizeValidatorState(next: ValidatorStateUpdate, current: ValidatorS
 }
 
 const navGroups: NavGroup[] = [
-	{
-		id: "whitedns",
-		label: "WhiteDNS VPN",
-		items: [
-			{ id: "whitedns-vpn", label: "WhiteDNS VPN", icon: <Power /> },
-			{ id: "whitedns-vpn-logs", label: "Logs", icon: <ScrollText /> },
-		],
-	},
   {
-    id: "v2ray",
-    label: "V2Ray",
+    id: "whitevpn",
+    label: "WhiteVPN",
     items: [
-      { id: "v2ray-profiles", label: "Dashboard", icon: <Shield /> },
-      { id: "v2ray-subscriptions", label: "Subscriptions", icon: <ListChecks /> },
-      { id: "v2ray-settings", label: "Settings", icon: <Settings /> },
-      { id: "v2ray-logs", label: "Logs", icon: <ScrollText /> },
+      { id: "vpn", label: "VPN", icon: <Power /> },
+      { id: "servers", label: "Servers", icon: <Shield /> },
+      { id: "subscriptions", label: "Subscriptions", icon: <ListChecks /> },
+      { id: "settings", label: "Settings", icon: <Settings /> },
+      { id: "logs", label: "Logs", icon: <ScrollText /> },
     ],
   },
   {
     id: "tools",
     label: "Tools",
     items: [
-      { id: "v2ray-white-ips", label: "V2Ray White IP Generator", icon: <Share2 /> },
+      { id: "white-ips", label: "White IP Generator", icon: <Share2 /> },
       { id: "validator", label: "Validator", icon: <ListChecks /> },
       { id: "backup", label: "Full Backup", icon: <Save /> },
     ],
@@ -877,7 +880,7 @@ const navGroups: NavGroup[] = [
 function App() {
   const [state, setState] = useState<AppState | null>(null);
   const [legacyOffer, setLegacyOffer] = useState<LegacyImportOffer | null>(null);
-  const [page, setPage] = useState<Page>("whitedns-vpn");
+  const [page, setPage] = useState<Page>("vpn");
   const [errorToast, setErrorToast] = useState<AppErrorToast | null>(null);
   const [successToast, setSuccessToast] = useState<AppErrorToast | null>(null);
   const [validatorState, setValidatorState] = useState<ValidatorState>(defaultValidatorState);
@@ -1221,7 +1224,7 @@ function App() {
     scanningIds: v2rayPingScanningIds,
     checkedAt: v2rayPingCheckedAt,
   };
-  const activePage = page === "v2ray-dashboard" ? "v2ray-profiles" : page;
+  const activePage = page;
 
   return (
     <TooltipProvider>
@@ -1242,22 +1245,11 @@ function App() {
               <ErrorToast toast={errorToast} onDismiss={clearErrorToast} />
               <SuccessToast toast={successToast} onDismiss={clearSuccessToast} />
 
-              {activePage === "whitedns-vpn" && (
+              {activePage === "vpn" && (
                 <WhiteDNSVPNPage state={state} onState={applyState} onError={showError} />
               )}
 
-              {activePage === "whitedns-vpn-logs" && (
-                <LogsPage
-                  runtime={state.runtime}
-                  runtimeType="v2ray"
-                  title="WhiteDNS VPN Diagnostics"
-                  description="WhiteDNS VPN runtime diagnostics."
-                  onState={applyState}
-                  onError={showError}
-                />
-              )}
-
-              {activePage === "v2ray-profiles" && (
+              {activePage === "servers" && (
                 <V2RayProfilesPage
                   state={state}
                   ping={v2rayPing}
@@ -1271,7 +1263,7 @@ function App() {
                 />
               )}
 
-              {activePage === "v2ray-subscriptions" && (
+              {activePage === "subscriptions" && (
                 <V2RaySubscriptionsPage
                   state={state}
                   ping={v2rayPing}
@@ -1282,13 +1274,23 @@ function App() {
                 />
               )}
 
-              {activePage === "v2ray-settings" && (
+              {activePage === "settings" && (
+                <WhiteVPNSettingsPage
+                  state={state}
+                  onState={applyState}
+                  onError={showError}
+                  onSuccess={showSuccess}
+                  onNavigate={setPage}
+                />
+              )}
+
+              {activePage === "engine-settings" && (
                 <V2RaySettingsPage state={state} onState={applyState} onError={showError} />
               )}
 
-              {activePage === "v2ray-logs" && <LogsPage runtime={state.runtime} runtimeType="v2ray" onState={applyState} onError={showError} />}
+              {activePage === "logs" && <LogsPage runtime={state.runtime} runtimeType="v2ray" onState={applyState} onError={showError} />}
 
-              {activePage === "v2ray-white-ips" && (
+              {activePage === "white-ips" && (
                 <V2RayWhiteIPsPage onState={applyState} onError={showError} onSuccess={showSuccess} />
               )}
 
@@ -1484,8 +1486,7 @@ function AppSidebar({
 }) {
   const sidebarEndpoint = runtimeProxyDisplayEndpoint(runtime);
   const [openGroups, setOpenGroups] = useState<Record<NavGroup["id"], boolean>>({
-    whitedns: true,
-    v2ray: true,
+    whitevpn: true,
     tools: true,
   });
 
@@ -6703,5 +6704,386 @@ function LegacyImportDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+
+// The settings WhiteVPN for Android exposes, in the order it shows them, so
+// that someone arriving from the phone recognises the screen.
+//
+// Built from the components the rest of the app already uses: PageShell for the
+// header, a Card per section, and the same bordered switch row the VPN page uses
+// for its controls. Nothing new is introduced for the sake of these settings.
+function WhiteVPNSettingsPage({
+  state,
+  onState,
+  onError,
+  onSuccess,
+  onNavigate,
+}: {
+  state: AppState;
+  onState: (state: AppState) => void;
+  onError: (message: string) => void;
+  onSuccess: (message: string) => void;
+  onNavigate: (page: Page) => void;
+}) {
+  const stored = state.whiteVpn;
+  const [draft, setDraft] = useState<WhiteVPNSettings>(stored);
+  const [frontingDraft, setFrontingDraft] = useState("");
+  const [processDraft, setProcessDraft] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  // Settings changed elsewhere — a backup restore, most likely — have to reach
+  // this form, or it would go on showing, and then saving, what it loaded with.
+  useEffect(() => {
+    setDraft(stored);
+  }, [stored]);
+
+  const dirty = useMemo(() => JSON.stringify(draft) !== JSON.stringify(stored), [draft, stored]);
+
+  async function save(next: WhiteVPNSettings) {
+    setSaving(true);
+    try {
+      onState(await backend.saveWhiteVpnSettings(next));
+      onSuccess("Settings saved.");
+    } catch (err) {
+      onError(messageFromError(err));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function patch(changes: Partial<WhiteVPNSettings>) {
+    setDraft((current) => ({ ...current, ...changes }));
+  }
+
+  function addFrontingIP() {
+    const value = frontingDraft.trim();
+    if (!value) {
+      return;
+    }
+    if (draft.frontingIps.includes(value)) {
+      setFrontingDraft("");
+      return;
+    }
+    if (draft.frontingIps.length >= maxFrontingIPs) {
+      onError("Up to " + maxFrontingIPs + " fronting addresses can be used.");
+      return;
+    }
+    patch({ frontingIps: [...draft.frontingIps, value] });
+    setFrontingDraft("");
+  }
+
+  function addProcess() {
+    const value = processDraft.trim();
+    if (!value) {
+      return;
+    }
+    if (draft.splitTunnel.processes.includes(value)) {
+      setProcessDraft("");
+      return;
+    }
+    patch({ splitTunnel: { ...draft.splitTunnel, processes: [...draft.splitTunnel.processes, value] } });
+    setProcessDraft("");
+  }
+
+  const dnsMode = draft.dnsPrivacy.mode;
+
+  return (
+    <PageShell
+      eyebrow="WhiteVPN"
+      title="Settings"
+      actions={
+        <>
+          <Button variant="outline" onClick={() => setDraft(stored)} disabled={!dirty || saving}>
+            Discard
+          </Button>
+          <Button onClick={() => void save(draft)} disabled={!dirty || saving}>
+            <Save />
+            Save changes
+          </Button>
+        </>
+      }
+    >
+      <SettingsSection title="Connection" description="How traffic reaches your machine.">
+        <div className="grid gap-2 sm:grid-cols-2">
+          <SettingSwitchRow
+            label="Tunnel (TUN)"
+            checked={draft.tunEnabled}
+            onCheckedChange={(checked) => patch({ tunEnabled: checked })}
+          />
+          <SettingSwitchRow
+            label="Kill switch"
+            checked={draft.killSwitch.enabled}
+            onCheckedChange={(checked) => patch({ killSwitch: { enabled: checked } })}
+          />
+        </div>
+        <FieldDescription>
+          The tunnel carries every program on the machine and needs Administrator to create its
+          adapter. Without it, only programs pointed at the local proxy are carried.
+        </FieldDescription>
+      </SettingsSection>
+
+      <SettingsSection title="Security" description="Checks applied to a server before it is trusted with traffic.">
+        <div className="grid gap-2 sm:grid-cols-2">
+          <SettingSwitchRow
+            label="TLS integrity"
+            checked={draft.tlsIntegrityEnabled}
+            onCheckedChange={(checked) => patch({ tlsIntegrityEnabled: checked })}
+          />
+        </div>
+        <FieldDescription>
+          Verifies a server&apos;s certificate before connecting, and sets aside any that fail for a day.
+        </FieldDescription>
+      </SettingsSection>
+
+      <SettingsSection title="DNS privacy" description="Where name lookups go, and over what.">
+        <FieldGroup className="grid gap-4 md:grid-cols-3">
+          <Field>
+            <FieldLabel>Mode</FieldLabel>
+            <Select
+              value={dnsMode}
+              onValueChange={(value) =>
+                patch({ dnsPrivacy: { ...draft.dnsPrivacy, mode: value as DNSPrivacyMode } })
+              }
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent position="popper">
+                <SelectItem value="automatic">Automatic</SelectItem>
+                <SelectItem value="doh">DNS over HTTPS</SelectItem>
+                <SelectItem value="dot">DNS over TLS</SelectItem>
+              </SelectContent>
+            </Select>
+            <FieldDescription>Automatic offers both, encrypted either way.</FieldDescription>
+          </Field>
+          <TextField
+            label="DoH server"
+            value={draft.dnsPrivacy.dohUrl}
+            placeholder="https://1.1.1.1/dns-query"
+            disabled={dnsMode !== "doh"}
+            onChange={(value) => patch({ dnsPrivacy: { ...draft.dnsPrivacy, dohUrl: value } })}
+          />
+          <TextField
+            label="DoT server"
+            value={draft.dnsPrivacy.dotEndpoint}
+            placeholder="tls://1.1.1.1:853"
+            disabled={dnsMode !== "dot"}
+            onChange={(value) => patch({ dnsPrivacy: { ...draft.dnsPrivacy, dotEndpoint: value } })}
+          />
+        </FieldGroup>
+      </SettingsSection>
+
+      <SettingsSection
+        title="IP fronting"
+        description={"Reach a server through a different address while keeping its name. Up to " + maxFrontingIPs + "."}
+      >
+        <div className="flex flex-wrap gap-2">
+          <Input
+            value={frontingDraft}
+            placeholder="1.2.3.4 or 1.2.3.4:443"
+            className="max-w-xs"
+            onChange={(event) => setFrontingDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                addFrontingIP();
+              }
+            }}
+          />
+          <Button variant="outline" onClick={addFrontingIP} disabled={draft.frontingIps.length >= maxFrontingIPs}>
+            Add
+          </Button>
+        </div>
+        <RemovableBadges
+          values={draft.frontingIps}
+          emptyLabel="No fronting addresses. Servers are reached directly."
+          onRemove={(value) => patch({ frontingIps: draft.frontingIps.filter((entry) => entry !== value) })}
+        />
+      </SettingsSection>
+
+      <SettingsSection title="Split tunnel" description="Choose which programs the tunnel carries.">
+        <FieldGroup className="grid gap-4 md:grid-cols-2">
+          <Field>
+            <FieldLabel>Mode</FieldLabel>
+            <Select
+              value={draft.splitTunnel.mode}
+              onValueChange={(value) =>
+                patch({ splitTunnel: { ...draft.splitTunnel, mode: value as SplitTunnelMode } })
+              }
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent position="popper">
+                <SelectItem value="off">Off — carry everything</SelectItem>
+                <SelectItem value="bypass_selected">Bypass selected programs</SelectItem>
+                <SelectItem value="vpn_only_selected">Only selected programs</SelectItem>
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field>
+            <FieldLabel>Program</FieldLabel>
+            <div className="flex gap-2">
+              <Input
+                value={processDraft}
+                placeholder="firefox.exe"
+                disabled={draft.splitTunnel.mode === "off"}
+                onChange={(event) => setProcessDraft(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    addProcess();
+                  }
+                }}
+              />
+              <Button variant="outline" onClick={addProcess} disabled={draft.splitTunnel.mode === "off"}>
+                Add
+              </Button>
+            </div>
+            <FieldDescription>
+              Matched on the executable&apos;s file name, so two programs installed under the same name
+              cannot be told apart.
+            </FieldDescription>
+          </Field>
+        </FieldGroup>
+        <RemovableBadges
+          values={draft.splitTunnel.processes}
+          emptyLabel="No programs selected."
+          onRemove={(value) =>
+            patch({
+              splitTunnel: {
+                ...draft.splitTunnel,
+                processes: draft.splitTunnel.processes.filter((entry) => entry !== value),
+              },
+            })
+          }
+        />
+      </SettingsSection>
+
+      <SettingsSection title="Obfuscation" description="Pad the connection with noise so its shape is less recognisable.">
+        <div className="grid gap-2 sm:grid-cols-2">
+          <SettingSwitchRow
+            label="Amnezia noise"
+            checked={draft.amneziaNoise.enabled}
+            onCheckedChange={(checked) => patch({ amneziaNoise: { ...draft.amneziaNoise, enabled: checked } })}
+          />
+        </div>
+        <FieldGroup className="grid gap-4 md:grid-cols-3">
+          <NumberField
+            label="Packets"
+            value={draft.amneziaNoise.count}
+            min={minNoiseCount}
+            max={maxNoiseCount}
+            disabled={!draft.amneziaNoise.enabled}
+            onChange={(value) => patch({ amneziaNoise: { ...draft.amneziaNoise, count: value } })}
+          />
+          <NumberField
+            label="Smallest (bytes)"
+            value={draft.amneziaNoise.minSize}
+            min={minNoiseSize}
+            max={maxNoiseSize}
+            disabled={!draft.amneziaNoise.enabled}
+            onChange={(value) => patch({ amneziaNoise: { ...draft.amneziaNoise, minSize: value } })}
+          />
+          <NumberField
+            label="Largest (bytes)"
+            value={draft.amneziaNoise.maxSize}
+            min={minNoiseSize}
+            max={maxNoiseSize}
+            disabled={!draft.amneziaNoise.enabled}
+            onChange={(value) => patch({ amneziaNoise: { ...draft.amneziaNoise, maxSize: value } })}
+          />
+        </FieldGroup>
+      </SettingsSection>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Engine settings</CardTitle>
+          <CardDescription>
+            Listen port, inbound type and the rest of the engine plumbing, which the phone does not expose.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Button variant="outline" onClick={() => onNavigate("engine-settings")}>
+            <Settings />
+            Open engine settings
+          </Button>
+        </CardContent>
+      </Card>
+    </PageShell>
+  );
+}
+
+function SettingsSection({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description: string;
+  children: ReactNode;
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{title}</CardTitle>
+        <CardDescription>{description}</CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">{children}</CardContent>
+    </Card>
+  );
+}
+
+// The same bordered row the VPN page uses for its controls, so a switch looks
+// and behaves the same wherever it appears.
+function SettingSwitchRow({
+  label,
+  checked,
+  disabled,
+  onCheckedChange,
+}: {
+  label: string;
+  checked: boolean;
+  disabled?: boolean;
+  onCheckedChange: (checked: boolean) => void;
+}) {
+  return (
+    <label className="flex h-9 items-center justify-between gap-3 rounded-md border bg-background px-2.5 text-xs font-medium">
+      <span>{label}</span>
+      <Switch checked={checked} disabled={disabled} onCheckedChange={onCheckedChange} aria-label={label} />
+    </label>
+  );
+}
+
+function RemovableBadges({
+  values,
+  emptyLabel,
+  onRemove,
+}: {
+  values: string[];
+  emptyLabel: string;
+  onRemove: (value: string) => void;
+}) {
+  if (values.length === 0) {
+    return <p className="text-xs text-muted-foreground">{emptyLabel}</p>;
+  }
+  return (
+    <div className="flex flex-wrap gap-2">
+      {values.map((value) => (
+        <Badge key={value} variant="secondary" className="gap-1 font-mono text-xs">
+          {value}
+          <button
+            type="button"
+            className="ml-1 rounded-sm opacity-70 transition-opacity hover:opacity-100"
+            onClick={() => onRemove(value)}
+            aria-label={"Remove " + value}
+          >
+            <X className="size-3" />
+          </button>
+        </Badge>
+      ))}
+    </div>
   );
 }
