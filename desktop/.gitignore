@@ -61,6 +61,11 @@ clients/*
 cores/*
 !cores/.keep
 
+# Engine source fetched by scripts/setup-mihomo-core.sh. Deliberately not
+# committed: it is large, it is regenerable from pinned refs, and vendoring it
+# would hide the fact that the FlClash commit has to be re-applied on every bump.
+third_party/
+
 # Frontend dependencies and generated output
 frontend/node_modules/
 frontend/dist/

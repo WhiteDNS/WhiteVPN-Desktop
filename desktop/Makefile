@@ -65,7 +65,7 @@ $(error --version requires a value; use `make all -- --version 1.0.0-beta6`)
 endif
 endif
 
-.PHONY: help deps frontend-deps tidy dev build build-mac build-windows build-linux build-all all check-linux-builder frontend-build backend-build prepare-package prepare-macos-go-env prepare-embedded-core prepare-embedded-platform prepare-embedded-platforms prepare-embedded-macos-cores macos-app-bundle validate-version package package-mac package-windows package-linux package-linux-distros package-linux-all-docker package-linux-fedora-rpm-docker package-all stage-artifacts archive-artifacts package-helper package-assets test test-backend test-frontend xray-core xray-core-all xray-core-target clean --version
+.PHONY: help deps frontend-deps tidy dev build build-mac build-windows build-linux build-all all check-linux-builder frontend-build backend-build prepare-package prepare-macos-go-env prepare-embedded-core prepare-embedded-platform prepare-embedded-platforms prepare-embedded-macos-cores macos-app-bundle validate-version package package-mac package-windows package-linux package-linux-distros package-linux-all-docker package-linux-fedora-rpm-docker package-all stage-artifacts archive-artifacts package-helper package-assets test test-backend test-frontend xray-core xray-core-all xray-core-target mihomo-core mihomo-core-setup clean --version
 ifneq ($(VERSION_FROM_ARGS),)
 .PHONY: $(VERSION_FROM_ARGS)
 endif
@@ -92,6 +92,8 @@ help:
 		'  make package-windows UPX=1  Build Windows package with UPX compression' \
 		'  make package-linux UPX=1    Build Linux package with UPX compression' \
 		'  make test             Run desktop Go tests and frontend TypeScript build' \
+		'  make mihomo-core      Fetch and build the mihomo engine into cores/' \
+		'  make mihomo-core-setup  Fetch the pinned engine source only' \
 		'  make xray-core        Install matching Xray core into cores/' \
 		'  make xray-core-all    Cache macOS, Windows, and Linux Xray cores' \
 		'  make clean            Remove build output and cached cores'
@@ -448,6 +450,13 @@ test-backend:
 
 test-frontend:
 	npm run build --prefix frontend
+
+# The mihomo engine, pinned to the same refs WhiteVPN for Android builds.
+mihomo-core-setup:
+	./scripts/setup-mihomo-core.sh
+
+mihomo-core: mihomo-core-setup
+	TARGET_GOOS="$(TARGET_GOOS)" TARGET_GOARCH="$(TARGET_GOARCH)" ./scripts/build-mihomo-core.sh
 
 xray-core:
 	$(MAKE) prepare-embedded-core TARGET_GOOS=$(GOOS_VALUE) TARGET_GOARCH=$(GOARCH_VALUE)
