@@ -291,6 +291,7 @@ export interface ProxyCountryLookupResult {
 
 export interface RuntimeStatus {
   status: RuntimeStatusName;
+  engine: string;
   runtimeType: RuntimeType;
   message: string;
   activeConnectionId: string;

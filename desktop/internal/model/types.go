@@ -261,7 +261,16 @@ type SettingsProfile struct {
 }
 
 type RuntimeStatus struct {
-	Status                string               `json:"status"`
+	Status string `json:"status"`
+	// Engine names what is running: "mihomo" for the engine the phone app uses,
+	// empty for the Xray path.
+	//
+	// The interface needs this because it otherwise recognises its own connection
+	// by matching ActiveConnectionID against a stored V2Ray profile. A mihomo
+	// session has no such profile - it connects straight from the subscription -
+	// so without this the app reports its own working connection as belonging to
+	// something else.
+	Engine                string               `json:"engine"`
 	RuntimeType           string               `json:"runtimeType"`
 	Message               string               `json:"message"`
 	ActiveConnectionID    string               `json:"activeConnectionId"`

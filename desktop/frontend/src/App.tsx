@@ -731,6 +731,13 @@ function v2RayRuntimeActive(state: AppState): boolean {
 }
 
 function whiteDNSVPNRuntimeActive(state: AppState): boolean {
+  // A mihomo session connects straight from the subscription and stores no
+  // profile, so there is no activeConnectionId to match. Recognising it by its
+  // engine is what stops the app reporting its own working connection as
+  // belonging to something else.
+  if (state.runtime.engine === "mihomo") {
+    return true;
+  }
   return v2RayRuntimeActive(state) && state.v2rayProfiles.some((profile) => (
     profile.id === state.runtime.activeConnectionId && profile.subscriptionId === whiteDNSVPNSubscriptionID
   ));

@@ -128,13 +128,20 @@ func (a *App) stopMihomo() bool {
 		return false
 	}
 	_ = current.Close()
+	a.mu.Lock()
+	a.state.Runtime.Engine = ""
+	a.mu.Unlock()
 	a.handleRuntimeState(model.RuntimeDisconnected, "Disconnected")
 	return true
 }
 
+// EngineMihomo marks a runtime as belonging to the mihomo session.
+const EngineMihomo = "mihomo"
+
 func (a *App) setMihomoRuntimeType() {
 	a.mu.Lock()
 	a.state.Runtime.RuntimeType = model.RuntimeTypeV2Ray
+	a.state.Runtime.Engine = EngineMihomo
 	a.mu.Unlock()
 }
 

@@ -100,6 +100,7 @@ func Spawn(ctx context.Context, opts SpawnOptions) (*Process, error) {
 	cmd.Dir = opts.WorkingDir
 	cmd.Stdout = opts.Stdout
 	cmd.Stderr = opts.Stderr
+	configureCommand(cmd)
 	if err := cmd.Start(); err != nil {
 		_ = listener.Close()
 		cleanupEndpoint(endpoint)
