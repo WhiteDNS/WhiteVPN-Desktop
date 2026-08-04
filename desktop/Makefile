@@ -1,7 +1,7 @@
 SHELL := /bin/sh
 
 APP_NAME := WhiteVPN Desktop
-DEFAULT_VERSION := 1.0.0-beta6
+DEFAULT_VERSION := 1.0.0
 VERSION_FROM_ARGS := $(shell set -- $(MAKECMDGOALS); while [ "$$1" != "" ]; do if [ "$$1" = "--version" ]; then shift; if [ "$$1" != "" ]; then printf '%s' "$$1"; fi; exit; fi; shift; done)
 VERSION ?= $(if $(VERSION_FROM_ARGS),$(VERSION_FROM_ARGS),$(DEFAULT_VERSION))
 APP_VERSION := $(strip $(VERSION))
@@ -61,7 +61,7 @@ MACOS_APP_INFO_PLIST := build/bin/$(APP_NAME).app/Contents/Info.plist
 
 ifeq ($(filter --version,$(MAKECMDGOALS)),--version)
 ifeq ($(VERSION_FROM_ARGS),)
-$(error --version requires a value; use `make all -- --version 1.0.0-beta6`)
+$(error --version requires a value; use `make all -- --version 1.0.0`)
 endif
 endif
 
@@ -87,8 +87,8 @@ help:
 		'  make package-linux-all-docker  Build Linux release packages through Docker' \
 		'  make package-linux-fedora-rpm-docker  Build Fedora 42+ compatible WebKitGTK 4.1 RPM' \
 		'  make package-all      Alias for build-all' \
-		'  make all VERSION=1.0.0-beta6         Build release assets with this version' \
-		'  make all -- --version 1.0.0-beta6    Alternate flag form' \
+		'  make all VERSION=1.0.0         Build release assets with this version' \
+		'  make all -- --version 1.0.0    Alternate flag form' \
 		'  make package-windows UPX=1  Build Windows package with UPX compression' \
 		'  make package-linux UPX=1    Build Linux package with UPX compression' \
 		'  make test             Run desktop Go tests and frontend TypeScript build' \

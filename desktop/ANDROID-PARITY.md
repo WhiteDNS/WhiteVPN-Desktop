@@ -108,7 +108,7 @@ that outlives the app leaves the user with no internet and no obvious cause.
 
 | Setting | Store / key | Default | Options | Status |
 |---|---|---|---|---|
-| Theme | `white_dns_theme` / `theme` | `system` | System, Light, Dark | `[ ]` |
+| Theme | `white_dns_theme` / `theme` | `system` | System, Light, Dark | `[x]` |
 | Language | `white_dns_language` / `language` | `fa` | Persian, English | `[ ]` |
 
 Android ships 202 strings in each of `values/strings.xml` and
@@ -134,7 +134,7 @@ keys here, not copied literals.
 
 | Item | Behaviour | Status |
 |---|---|---|
-| HTTP health gate | A real request through the local proxy must succeed **before** the tunnel is reported up. URLs: letsencrypt `valid-isrgrootx1`, gstatic `generate_204`, cloudflare `cdn-cgi/trace`. 12 s budget, 2 s quiet probe | `[ ]` |
+| HTTP health gate | A real request through the local proxy must succeed **before** the tunnel is reported up. URLs: letsencrypt `valid-isrgrootx1`, gstatic `generate_204`, cloudflare `cdn-cgi/trace`. 12 s budget, 2 s quiet probe | `[x]` |
 | Delay probes | Metrics only — a failed probe must **not** block connecting | `[ ]` |
 | Startup IP selection | Cached endpoint first; on failure fall through to a fresh scan | `[ ]` |
 | Clean-IP scan | Encrypted IP list, concurrency 200, 4 probes for loss, budgets 3 s / 12 s / 60 s, cache 10 per port | `[ ]` |
