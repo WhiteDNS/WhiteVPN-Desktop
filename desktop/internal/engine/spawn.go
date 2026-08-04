@@ -46,14 +46,51 @@ type SpawnOptions struct {
 
 	// Stdout and Stderr receive the core's own output. Worth capturing: some
 	// startup failures are only ever printed there and never reach a reply.
+	//
+	// They are not honoured under Elevated: a child started through the elevation
+	// prompt cannot inherit this process's pipes.
 	Stdout io.Writer
 	Stderr io.Writer
+
+	// Elevated asks for the core to run as Administrator, which it must to create
+	// a tunnel adapter. The user is prompted once per start.
+	//
+	// Only the core is elevated. The interface stays as the user, which is where
+	// it belongs, and the two still meet on the same pipe because the core is the
+	// side that dials.
+	Elevated bool
+}
+
+// childProcess is the running core, however it was started. The elevated path
+// does not produce an *exec.Cmd — the process is created by the shell on our
+// behalf — so both are reached through this.
+type childProcess interface {
+	PID() int
+	Wait() error
+	Kill() error
+}
+
+// ordinaryChild wraps a normally started core.
+type ordinaryChild struct{ cmd *exec.Cmd }
+
+func (c ordinaryChild) PID() int {
+	if c.cmd.Process == nil {
+		return 0
+	}
+	return c.cmd.Process.Pid
+}
+func (c ordinaryChild) Wait() error { return c.cmd.Wait() }
+func (c ordinaryChild) Kill() error {
+	if c.cmd.Process == nil {
+		return nil
+	}
+	return c.cmd.Process.Kill()
 }
 
 // Process is a running core together with the client talking to it.
 type Process struct {
 	*Client
-	cmd      *exec.Cmd
+	child    childProcess
 	listener net.Listener
 	exited   chan error
 }
@@ -63,10 +100,10 @@ func (p *Process) Exited() <-chan error { return p.exited }
 
 // PID is the core's process id, or zero once it has gone.
 func (p *Process) PID() int {
-	if p.cmd == nil || p.cmd.Process == nil {
+	if p.child == nil {
 		return 0
 	}
-	return p.cmd.Process.Pid
+	return p.child.PID()
 }
 
 // Spawn starts a core and returns it connected.
@@ -96,47 +133,58 @@ func Spawn(ctx context.Context, opts SpawnOptions) (*Process, error) {
 		return nil, fmt.Errorf("engine: listen on %s: %w", endpoint, err)
 	}
 
-	cmd := exec.CommandContext(ctx, opts.CorePath, endpoint)
-	cmd.Dir = opts.WorkingDir
-	cmd.Stdout = opts.Stdout
-	cmd.Stderr = opts.Stderr
-	configureCommand(cmd)
-	if err := cmd.Start(); err != nil {
-		_ = listener.Close()
-		cleanupEndpoint(endpoint)
-		return nil, fmt.Errorf("engine: start %s: %w", opts.CorePath, err)
-	}
-
-	if opts.Supervise != nil {
-		if err := opts.Supervise(cmd); err != nil {
-			_ = cmd.Process.Kill()
-			_, _ = cmd.Process.Wait()
+	var child childProcess
+	if opts.Elevated {
+		elevated, err := startElevatedChild(opts.CorePath, endpoint, opts.WorkingDir)
+		if err != nil {
 			_ = listener.Close()
 			cleanupEndpoint(endpoint)
-			// An unsupervised core is the exact thing Supervise exists to prevent,
-			// so this fails the spawn rather than carrying on without it.
-			return nil, fmt.Errorf("engine: supervise: %w", err)
+			return nil, err
 		}
+		child = elevated
+	} else {
+		cmd := exec.CommandContext(ctx, opts.CorePath, endpoint)
+		cmd.Dir = opts.WorkingDir
+		cmd.Stdout = opts.Stdout
+		cmd.Stderr = opts.Stderr
+		configureCommand(cmd)
+		if err := cmd.Start(); err != nil {
+			_ = listener.Close()
+			cleanupEndpoint(endpoint)
+			return nil, fmt.Errorf("engine: start %s: %w", opts.CorePath, err)
+		}
+		if opts.Supervise != nil {
+			if err := opts.Supervise(cmd); err != nil {
+				_ = cmd.Process.Kill()
+				_, _ = cmd.Process.Wait()
+				_ = listener.Close()
+				cleanupEndpoint(endpoint)
+				// An unsupervised core is the exact thing Supervise exists to
+				// prevent, so this fails the spawn rather than carrying on.
+				return nil, fmt.Errorf("engine: supervise: %w", err)
+			}
+		}
+		child = ordinaryChild{cmd: cmd}
 	}
 
-	conn, exited, err := acceptWithin(listener, cmd, opts.ConnectTimeout)
+	conn, exited, err := acceptWithin(listener, child, opts.ConnectTimeout)
 	if err != nil {
 		_ = listener.Close()
-		_ = cmd.Process.Kill()
+		_ = child.Kill()
 		cleanupEndpoint(endpoint)
 		return nil, err
 	}
 
 	return &Process{
 		Client:   NewClient(conn, opts.EventBuffer),
-		cmd:      cmd,
+		child:    child,
 		listener: listener,
 		exited:   exited,
 	}, nil
 }
 
 // acceptWithin waits for the core to dial back, giving up early if it dies.
-func acceptWithin(listener net.Listener, cmd *exec.Cmd, timeout time.Duration) (net.Conn, chan error, error) {
+func acceptWithin(listener net.Listener, child childProcess, timeout time.Duration) (net.Conn, chan error, error) {
 	type accepted struct {
 		conn net.Conn
 		err  error
@@ -149,7 +197,7 @@ func acceptWithin(listener net.Listener, cmd *exec.Cmd, timeout time.Duration) (
 
 	exited := make(chan error, 1)
 	waited := make(chan error, 1)
-	go func() { waited <- cmd.Wait() }()
+	go func() { waited <- child.Wait() }()
 
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
@@ -182,7 +230,7 @@ func (p *Process) Stop(ctx context.Context) error {
 	if p.listener != nil {
 		_ = p.listener.Close()
 	}
-	if p.cmd == nil || p.cmd.Process == nil {
+	if p.child == nil {
 		return nil
 	}
 
@@ -190,10 +238,10 @@ func (p *Process) Stop(ctx context.Context) error {
 	case err := <-p.exited:
 		return err
 	case <-time.After(5 * time.Second):
-		_ = p.cmd.Process.Kill()
+		_ = p.child.Kill()
 		return errors.New("engine: core did not exit cleanly and was killed")
 	case <-ctx.Done():
-		_ = p.cmd.Process.Kill()
+		_ = p.child.Kill()
 		return ctx.Err()
 	}
 }

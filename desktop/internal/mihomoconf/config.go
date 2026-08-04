@@ -247,7 +247,10 @@ func Render(subscriptionYAML string, opts Options) string {
 	out.WriteString("log-level: warning\n")
 	fmt.Fprintf(&out, "ipv6: %t\n", opts.Tun.IPv6)
 	out.WriteString("unified-delay: true\n")
-	out.WriteString("global-client-fingerprint: chrome\n")
+	// global-client-fingerprint is deliberately not written. mihomo removed it,
+	// and this engine logs an error and ignores it. Nothing is lost: the
+	// converter already sets client-fingerprint on every proxy that carries TLS,
+	// which is the only kind the setting ever applied to.
 
 	out.WriteString("dns:\n")
 	out.WriteString("  enable: true\n")

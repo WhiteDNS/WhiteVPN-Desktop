@@ -6055,10 +6055,11 @@ function LogsPage({
   const logs = normalizedQuery
     ? runtimeLogs.filter((line) => line.toLowerCase().includes(normalizedQuery))
     : runtimeLogs;
-  const title = titleOverride || (runtimeType === "v2ray" ? "V2Ray Diagnostics" : "MasterDNS Diagnostics");
-  const description = descriptionOverride || (runtimeType === "v2ray"
-    ? "Xray, V2Ray proxy, and health-check logs."
-    : "MasterDNS/StormDNS runtime diagnostics.");
+  // Named after what is running rather than what used to. The app runs mihomo;
+  // Xray survives only behind WHITEVPN_ENGINE=xray, so naming the page after it
+  // describes almost nobody's session.
+  const title = titleOverride || "Diagnostics";
+  const description = descriptionOverride || "Engine output and health checks.";
   const pageRuntimeActive = normalizeRuntimeType(runtime.runtimeType) === runtimeType;
   const pageStatus = pageRuntimeActive ? runtime.status : "disconnected";
 
@@ -6827,8 +6828,9 @@ function WhiteVPNSettingsPage({
           />
         </div>
         <FieldDescription>
-          The tunnel carries every program on the machine and needs Administrator to create its
-          adapter. Without it, only programs pointed at the local proxy are carried.
+          The tunnel carries every program on the machine. Turning it on asks for Administrator when
+          connecting, because creating the network adapter needs it. Left off, only programs pointed
+          at the local proxy are carried.
         </FieldDescription>
         <FieldDescription>
           The kill switch is not built yet, so it stays off. Enforcing it means a firewall rule that

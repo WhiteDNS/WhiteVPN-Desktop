@@ -101,11 +101,14 @@ func Connect(ctx context.Context, opts Options) (*Session, error) {
 	}
 
 	process, err := engine.Spawn(ctx, engine.SpawnOptions{
-		CorePath:           opts.CorePath,
-		WorkingDir:         opts.HomeDir,
-		ConnectTimeout:     20 * time.Second,
-		Stdout:             opts.CoreStdout,
-		Stderr:             opts.CoreStderr,
+		CorePath:       opts.CorePath,
+		WorkingDir:     opts.HomeDir,
+		ConnectTimeout: 20 * time.Second,
+		Stdout:         opts.CoreStdout,
+		Stderr:         opts.CoreStderr,
+		// A tunnel adapter cannot be created without Administrator, so asking for
+		// it follows the tunnel setting rather than being a separate choice.
+		Elevated:           opts.Tun.Enabled,
 		SecurityDescriptor: opts.PipeSecurityDescriptor,
 	})
 	if err != nil {
