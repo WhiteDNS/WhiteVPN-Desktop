@@ -75,6 +75,10 @@ func (a *App) StartWhiteDNSVPNConnection() (model.AppState, error) {
 	}
 	a.mu.Unlock()
 
+	if mihomoEngineSelected() {
+		return a.startWhiteDNSVPNWithMihomo()
+	}
+
 	if _, err := a.prepareWhiteDNSVPNConnection(context.Background(), fetchWhiteDNSVPNSubscriptionDocument); err != nil {
 		return a.GetAppState(), err
 	}

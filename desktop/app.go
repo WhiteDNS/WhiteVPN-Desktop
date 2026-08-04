@@ -61,6 +61,8 @@ type App struct {
 
 	legacyImport profiles.LegacyImport
 
+	mihomo mihomoState
+
 	firewallChecker       firewallChecker
 	runtimeManagerFactory runtimeManagerFactory
 	lastFirewallStatusKey string
@@ -174,6 +176,7 @@ func (a *App) startup(ctx context.Context) {
 }
 
 func (a *App) shutdown(ctx context.Context) {
+	a.stopMihomo()
 	_ = a.manager.Stop()
 	_ = a.CancelV2RayProfileTests()
 	_, _ = a.CancelValidatorScan()
@@ -205,6 +208,11 @@ func validatorEndpointDisplay(host string, port int) string {
 }
 
 func (a *App) StopConnection() (model.AppState, error) {
+	// A mihomo session and an Xray one are never both running, so stopping the
+	// one that exists is the whole job.
+	if a.stopMihomo() {
+		return a.GetAppState(), nil
+	}
 	err := a.manager.Stop()
 	if err == nil {
 		a.handleRuntimeState(model.RuntimeDisconnected, "Disconnected")
