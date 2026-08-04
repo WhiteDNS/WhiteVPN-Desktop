@@ -1253,7 +1253,7 @@ function App() {
               <SuccessToast toast={successToast} onDismiss={clearSuccessToast} />
 
               {activePage === "vpn" && (
-                <WhiteDNSVPNPage state={state} onState={applyState} onError={showError} />
+                <WhiteDNSVPNPage state={state} onState={applyState} onError={showError} onNavigate={setPage} />
               )}
 
               {activePage === "servers" && (
@@ -1637,10 +1637,12 @@ function WhiteDNSVPNPage({
   state,
   onState,
   onError,
+  onNavigate,
 }: {
   state: AppState;
   onState: (state: AppState) => void;
   onError: (message: string) => void;
+  onNavigate: (page: Page) => void;
 }) {
   const runtime = state.runtime;
   const selectedSettings = effectiveV2RaySettingsProfile(state);
@@ -1652,14 +1654,8 @@ function WhiteDNSVPNPage({
   const setupStatus = localConnectPending ? "connecting" : active ? runtime.status : runtimeBusy ? "connecting" : "disconnected";
   const setupStatusLabel = localConnectPending || (active && runtime.status === "connecting") ? "Connecting VPN" : active ? statusLabel(runtime.status) : runtimeBusy ? "Busy" : "Disconnected";
   const localProxyEndpoint = runtimeProxyDisplayEndpoint(runtime) || (selectedSettings ? proxyEndpoint(selectedSettings.listenIp, selectedSettings.listenPort) : "-");
-  const allowLanEnabled = Boolean(selectedSettings?.allowLan);
-  const tunModeEnabled = Boolean(selectedSettings?.tunEnabled);
-  const systemProxyEffective = Boolean(selectedSettings?.setSystemProxy);
-  const settingsControlsDisabled = settingsSaving || (active && runtime.status === "connecting") || (runtimeBusy && !active);
   const selectedSettingsMissing = !selectedSettings || !selectedSettings.listenIp.trim() || selectedSettings.listenPort <= 0;
   const connectDisabled = !canStart || settingsSaving || selectedSettingsMissing || (runtimeBusy && !active);
-  const settingsSelectorLabel = selectedSettings?.name || "Default Proxy";
-  const settingsSelectorEndpoint = selectedSettings ? `${selectedSettings.listenIp}:${selectedSettings.listenPort}` : "No local proxy";
   const connectedFrontingIP = active ? runtime.frontingIp : "";
   const dashboardTitle = localConnectPending
     ? "Connecting WhiteDNS VPN"
@@ -1685,7 +1681,6 @@ function WhiteDNSVPNPage({
       : runtimeBusy
         ? "Disconnect the active runtime before starting WhiteDNS VPN."
         : "Runtime idle";
-  const frontingIps = Array.isArray(state.whiteDNSVPNFrontingIps) ? state.whiteDNSVPNFrontingIps : [];
   const [frontingInput, setFrontingInput] = useState("");
   const statusMetrics = [
     { label: "Local proxy", value: localProxyEndpoint, icon: Monitor },
@@ -1736,104 +1731,13 @@ function WhiteDNSVPNPage({
     }
   }
 
-  async function applyWhiteDNSSettingsChange(change: () => Promise<AppState>) {
-    if (settingsControlsDisabled) {
-      return;
-    }
-    const shouldRestart = active && runtime.status === "connected";
-    onError("");
-    setSettingsSaving(true);
-    try {
-      if (shouldRestart) {
-        onState(await backend.stopConnection());
-      }
-      onState(await change());
-      if (shouldRestart) {
-        onState(await backend.startWhiteDNSVPNConnection());
-      }
-    } catch (err) {
-      onError(messageFromError(err));
-    } finally {
-      setSettingsSaving(false);
-    }
-  }
 
-  function editableWhiteDNSSettings(suffix: string): V2RaySettingsProfile | null {
-    if (!selectedSettings) {
-      return null;
-    }
-    if (selectedSettings.id !== "v2ray-settings-default") {
-      return selectedSettings;
-    }
-    return {
-      ...selectedSettings,
-      id: makeV2RaySettingsProfileId(state.v2raySettingsProfiles),
-      name: `${selectedSettings.name || "Default"} ${suffix}`,
-    };
-  }
 
-  async function updateSelectedSettings(mutator: (profile: V2RaySettingsProfile) => V2RaySettingsProfile, suffix: string) {
-    const editable = editableWhiteDNSSettings(suffix);
-    if (!editable) {
-      return;
-    }
-    await applyWhiteDNSSettingsChange(() => backend.saveV2RaySettingsProfile(normalizeV2RaySettingsProfile(mutator(editable))));
-  }
 
-  async function updateSystemProxy(setSystemProxy: boolean) {
-    if (!selectedSettings || Boolean(selectedSettings.setSystemProxy) === setSystemProxy) {
-      return;
-    }
-    await updateSelectedSettings((profile) => ({ ...profile, setSystemProxy }), "Proxy");
-  }
 
-  async function updateTunMode(tunEnabled: boolean) {
-    if (!selectedSettings || Boolean(selectedSettings.tunEnabled) === tunEnabled) {
-      return;
-    }
-    await updateSelectedSettings((profile) => ({ ...profile, tunEnabled }), "TUN");
-  }
 
-  async function updateAllowLAN(allowLan: boolean) {
-    if (!selectedSettings || Boolean(selectedSettings.allowLan) === allowLan) {
-      return;
-    }
-    await updateSelectedSettings((profile) => withV2RaySettingsAllowLan(profile, allowLan), "LAN");
-  }
 
-  async function saveWhiteDNSFrontingIps(rawText = frontingInput, append = true) {
-    if (settingsSaving) {
-      return;
-    }
-    const pendingText = rawText.trim();
-    if (append && !pendingText) {
-      return;
-    }
-    const nextText = append ? [...frontingIps, pendingText].join(",") : rawText;
-    const shouldRestart = active && runtime.status === "connected";
-    onError("");
-    setSettingsSaving(true);
-    try {
-      if (shouldRestart) {
-        onState(await backend.stopConnection());
-      }
-      onState(await backend.saveWhiteDNSVPNFrontingIps(nextText));
-      if (append) {
-        setFrontingInput("");
-      }
-      if (shouldRestart) {
-        onState(await backend.startWhiteDNSVPNConnection());
-      }
-    } catch (err) {
-      onError(messageFromError(err));
-    } finally {
-      setSettingsSaving(false);
-    }
-  }
 
-  function removeWhiteDNSFrontingIp(ip: string) {
-    void saveWhiteDNSFrontingIps(frontingIps.filter((item) => item !== ip).join(","), false);
-  }
 
   return (
     <PageShell eyebrow="WhiteDNS VPN" title="WhiteDNS VPN">
@@ -1951,94 +1855,19 @@ function WhiteDNSVPNPage({
               Controls
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-2 p-3 pt-0">
-            <div className="flex h-9 min-w-0 items-center justify-between gap-3 rounded-md border bg-background px-2.5 text-xs">
-              <span className="truncate font-medium">{settingsSelectorLabel}</span>
-              <span className="shrink-0 font-mono text-muted-foreground">{settingsSelectorEndpoint}</span>
-            </div>
-
-            <div className="space-y-2 rounded-md border bg-background p-2">
-              <div className="flex min-w-0 gap-2">
-                <Input
-                  value={frontingInput}
-                  disabled={settingsSaving}
-                  placeholder="Add custom fronting IPs"
-                  className="h-8 min-w-0 font-mono text-xs"
-                  onChange={(event) => setFrontingInput(event.target.value)}
-                  onPaste={(event) => {
-                    const text = event.clipboardData.getData("text");
-                    if (text.includes(",")) {
-                      event.preventDefault();
-                      void saveWhiteDNSFrontingIps(text);
-                    }
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      event.preventDefault();
-                      void saveWhiteDNSFrontingIps();
-                    }
-                  }}
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-8 shrink-0"
-                  disabled={settingsSaving || !frontingInput.trim()}
-                  onClick={() => void saveWhiteDNSFrontingIps()}
-                >
-                  Add
-                </Button>
-              </div>
-              {frontingIps.length > 0 && (
-                <div className="flex flex-wrap gap-1.5">
-                  {frontingIps.map((ip) => (
-                    <Badge key={ip} variant="outline" className="h-6 gap-1 px-2 font-mono">
-                      {ip}
-                      <button
-                        type="button"
-                        className="rounded-sm text-muted-foreground hover:text-foreground"
-                        disabled={settingsSaving}
-                        onClick={() => removeWhiteDNSFrontingIp(ip)}
-                        aria-label={`Remove ${ip}`}
-                      >
-                        <X className="size-3" />
-                      </button>
-                    </Badge>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="grid gap-2 sm:grid-cols-2">
-              <label className="flex h-9 items-center justify-between gap-3 rounded-md border bg-background px-2.5 text-xs font-medium">
-                <span>System proxy</span>
-                <Switch
-                  checked={systemProxyEffective}
-                  disabled={!selectedSettings || settingsControlsDisabled}
-                  onCheckedChange={(checked) => void updateSystemProxy(checked)}
-                  aria-label="Set WhiteDNS VPN system proxy"
-                />
-              </label>
-              <label className="flex h-9 items-center justify-between gap-3 rounded-md border bg-background px-2.5 text-xs font-medium">
-                <span>TUN</span>
-                <Switch
-                  checked={tunModeEnabled}
-                  disabled={!selectedSettings || settingsControlsDisabled}
-                  onCheckedChange={(checked) => void updateTunMode(checked)}
-                  aria-label="Enable WhiteDNS VPN TUN mode"
-                />
-              </label>
-              <label className="flex h-9 items-center justify-between gap-3 rounded-md border bg-background px-2.5 text-xs font-medium">
-                <span>Allow LAN</span>
-                <Switch
-                  checked={allowLanEnabled}
-                  disabled={!selectedSettings || settingsControlsDisabled}
-                  onCheckedChange={(checked) => void updateAllowLAN(checked)}
-                  aria-label="Allow LAN connection"
-                />
-              </label>
-            </div>
+          <CardContent className="p-3 pt-0">
+            {/* These controls used to live here and wrote to the V2Ray settings
+                profile, which only the Xray path reads. Under the engine this
+                app now runs they changed nothing, and the tunnel switch in
+                particular contradicted the one on the Settings page that does
+                work. One place to change a setting is worth more than two. */}
+            <p className="text-xs text-muted-foreground">
+              The tunnel, DNS privacy, split tunnel and the rest are on the Settings page.
+            </p>
+            <Button variant="outline" size="sm" className="mt-2" onClick={() => onNavigate("settings")}>
+              <Settings />
+              Open settings
+            </Button>
           </CardContent>
         </Card>
 
