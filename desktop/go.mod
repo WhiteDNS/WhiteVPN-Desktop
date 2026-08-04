@@ -7,7 +7,10 @@ require (
 	tunnelcheck/engine v0.0.0
 )
 
-require github.com/Microsoft/go-winio v0.6.2
+require (
+	github.com/Microsoft/go-winio v0.6.2
+	gopkg.in/yaml.v3 v3.0.1
+)
 
 replace tunnelcheck/engine => ../WhitednsTC/engine
 
