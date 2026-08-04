@@ -109,7 +109,7 @@ that outlives the app leaves the user with no internet and no obvious cause.
 | Setting | Store / key | Default | Options | Status |
 |---|---|---|---|---|
 | Theme | `white_dns_theme` / `theme` | `system` | System, Light, Dark | `[x]` |
-| Language | `white_dns_language` / `language` | `fa` | Persian, English | `[ ]` |
+| Language | `white_dns_language` / `language` | `fa` | Persian, English | `[~]` layer, RTL and switcher done; most screen strings not keyed yet |
 
 Android ships 202 strings in each of `values/strings.xml` and
 `values-fa/strings.xml`; both catalogues can be lifted directly. Persian also
@@ -135,7 +135,7 @@ keys here, not copied literals.
 | Item | Behaviour | Status |
 |---|---|---|
 | HTTP health gate | A real request through the local proxy must succeed **before** the tunnel is reported up. URLs: letsencrypt `valid-isrgrootx1`, gstatic `generate_204`, cloudflare `cdn-cgi/trace`. 12 s budget, 2 s quiet probe | `[x]` |
-| Delay probes | Metrics only — a failed probe must **not** block connecting | `[ ]` |
+| Delay probes | Metrics only — a failed probe must **not** block connecting | `[x]` satisfied by construction: `internal/session` never probes delay, so nothing on the connect path can be blocked by one. Keep it that way when the connection dialog adds per-row delay |
 | Startup IP selection | Cached endpoint first; on failure fall through to a fresh scan | `[ ]` |
 | Clean-IP scan | Encrypted IP list, concurrency 200, 4 probes for loss, budgets 3 s / 12 s / 60 s, cache 10 per port | `[ ]` |
 | Connect button states | Connect · Connecting… · Disconnect · Disconnecting… · Retry. Disabled only while Stopping | `[ ]` |
@@ -173,3 +173,67 @@ Three places where copying Android exactly would be wrong:
    connect time, never assumed**.
 
 3. **Split tunnel matches processes, not packages.** See §1.6.
+
+---
+
+## Picking this up in a new session
+
+Everything below is what someone needs to resume without reading the history.
+
+### Where things stand
+
+The engine is mihomo, the one WhiteVPN for Android runs, built from the same
+pinned sources. Connecting works end to end and is verified against the live
+catalogue: 864 links in, 845 proxies out, a node selected explicitly, and a real
+HTTP request through the proxy before anything is reported connected. The tunnel
+works too, with only the engine elevated. The interface has the phone's shape and
+the phone's settings, and Persian with right-to-left is wired but only the
+navigation is keyed so far.
+
+### Suggested order
+
+1. **Connect button states** — small, and the most visible remaining gap.
+2. **The four dashboard rows** (location, node pick, type filter, delay sort) —
+   they are one dialog between them, and together they are what makes the app
+   feel like the phone. `desktop/country.go` already resolves countries.
+3. **Finish the translation** — mechanical: add a key to `frontend/src/i18n.ts`,
+   swap the literal for `t(...)`. Android's `values-fa/strings.xml` has 202
+   strings already translated; take the wording from there rather than inventing
+   it, so both apps say the same thing.
+4. **Subscriptions** — selection, user-added entries, import formats.
+5. **Clean-IP scan** and **the kill switch** — each is its own session.
+
+### Things that will bite
+
+- **`validateConfig` only catches unparseable YAML.** Measured. It accepts
+  unknown proxy types, impossible ports, groups naming absent proxies and empty
+  documents. Never treat it as evidence a config will work; the health check is
+  what settles that.
+- **`startListener` reports success even when the tunnel failed to come up.**
+  Confirm a tunnel by looking at the machine's adapters, not by asking the engine.
+- **Action `data` is a JSON string for most methods and a bare bool for the
+  traffic ones.** The wrong shape panics inside the core rather than returning an
+  error. Use the wrappers in `internal/engine/actions.go`.
+- **Unknown methods get no reply at all.** Every call needs a deadline.
+- **IPv6 containment rests on route metric, not on removing routes.** The
+  physical v6 defaults remain and are merely outranked, so containment has to be
+  verified after connecting, never assumed.
+- **A control that writes to `V2RaySettingsProfile` does nothing.** Only the Xray
+  path reads it. Two rounds of dead switches came from this.
+
+### Verifying a change
+
+    cd desktop
+    go build ./... && go vet ./... && go test ./...
+    cd frontend && npx tsc --noEmit --noUnusedLocals && npm run build
+
+Four Go tests fail on Windows and did before any of this work: they build
+`#!/bin/sh` helpers. Anything beyond those four is yours.
+
+The end-to-end tests need the engine built and the catalogue credentials:
+
+    make mihomo-core
+    WHITEVPN_CATALOGUE_URL=... WHITEVPN_CATALOGUE_KEY=... go test ./internal/session -run Live -v
+
+`git tag ui-checkpoint-pre-android-nav` is the last interface that predates the
+restructure, if one is ever needed.
