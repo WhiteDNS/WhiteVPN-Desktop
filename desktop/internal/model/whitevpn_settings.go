@@ -1,0 +1,201 @@
+package model
+
+import "strings"
+
+// The settings WhiteVPN for Android exposes, so that someone moving from the
+// phone finds the same options here under the same names and with the same
+// defaults. Every field below corresponds to a key in ANDROID-PARITY.md; keep
+// the two in step.
+//
+// The phone stores these across a dozen SharedPreferences files. One struct is
+// enough here, and it rides along in AppState so it is backed up and restored
+// with everything else.
+
+// DNS privacy modes, matching `white_dns_privacy/mode`.
+const (
+	DNSPrivacyAutomatic = "automatic"
+	DNSPrivacyDoH       = "doh"
+	DNSPrivacyDoT       = "dot"
+)
+
+// Split tunnel modes, matching `white_dns_split_tunnel/mode`.
+//
+// The phone selects Android packages. Windows has no equivalent, so the same
+// three modes select executables instead — see SplitTunnelSettings.Processes.
+const (
+	SplitTunnelOff         = "off"
+	SplitTunnelBypass      = "bypass_selected"
+	SplitTunnelVPNOnly     = "vpn_only_selected"
+	DefaultDoHURL          = "https://1.1.1.1/dns-query"
+	DefaultDoTEndpoint     = "tls://1.1.1.1:853"
+	DefaultNoiseCount      = 5
+	DefaultNoiseMinSize    = 50
+	DefaultNoiseMaxSize    = 100
+	MinNoiseCount          = 1
+	MaxNoiseCount          = 20
+	MinNoiseSize           = 1
+	MaxNoiseSize           = 1280
+	MaxFrontingIPs         = 5
+	CurrentPrivacyPolicyID = 1
+)
+
+// AmneziaNoiseSettings is the WARP/Amnezia obfuscation noise.
+type AmneziaNoiseSettings struct {
+	Enabled bool `json:"enabled"`
+	Count   int  `json:"count"`
+	MinSize int  `json:"minSize"`
+	MaxSize int  `json:"maxSize"`
+}
+
+// DNSPrivacySettings is the encrypted-DNS choice.
+type DNSPrivacySettings struct {
+	Mode        string `json:"mode"`
+	DoHURL      string `json:"dohUrl"`
+	DoTEndpoint string `json:"dotEndpoint"`
+}
+
+// SplitTunnelSettings routes some programs around the tunnel, or only some
+// through it.
+type SplitTunnelSettings struct {
+	Mode string `json:"mode"`
+	// Processes are executable names, because that is what mihomo's
+	// `process-name` rules match on Windows. Matching is by file name, so two
+	// programs installed under the same executable name cannot be told apart —
+	// the UI has to say so rather than let a user discover it.
+	Processes []string `json:"processes"`
+}
+
+// KillSwitchSettings blocks traffic that would otherwise leave outside the
+// tunnel.
+//
+// This one is more than a port. Android does not implement a kill switch at all:
+// the OS provides always-on/lockdown and the app only reports its state. Windows
+// has no equivalent, so the app has to enforce it, which also means it has to
+// remove the block on a clean exit, after a crash, and on uninstall — a rule
+// that outlives the app leaves a user with no internet and no visible cause.
+type KillSwitchSettings struct {
+	Enabled bool `json:"enabled"`
+}
+
+// WhiteVPNSettings is everything the phone lets a user change.
+type WhiteVPNSettings struct {
+	// Dashboard rows.
+	CountryCode string              `json:"countryCode"`
+	SplitTunnel SplitTunnelSettings `json:"splitTunnel"`
+
+	// Settings sections, in the order the phone shows them.
+	TLSIntegrityEnabled bool                 `json:"tlsIntegrityEnabled"`
+	AmneziaNoise        AmneziaNoiseSettings `json:"amneziaNoise"`
+	FrontingIPs         []string             `json:"frontingIps"`
+	DNSPrivacy          DNSPrivacySettings   `json:"dnsPrivacy"`
+	KillSwitch          KillSwitchSettings   `json:"killSwitch"`
+
+	// Appearance. The phone defaults to Persian; this defaults to the system
+	// language, because a desktop user who installed an English build and is
+	// shown Persian will assume the app is broken.
+	Language string `json:"language"`
+
+	// Tunnel. Not a phone setting: there, VpnService always provides the tunnel.
+	// Here it can be turned off, and off is the only mode that works without
+	// Administrator.
+	TunEnabled bool `json:"tunEnabled"`
+
+	AcceptedPrivacyPolicyVersion int `json:"acceptedPrivacyPolicyVersion"`
+}
+
+// DefaultWhiteVPNSettings mirrors the phone's defaults.
+func DefaultWhiteVPNSettings() WhiteVPNSettings {
+	return WhiteVPNSettings{
+		CountryCode:         "", // unset means automatic
+		SplitTunnel:         SplitTunnelSettings{Mode: SplitTunnelOff, Processes: []string{}},
+		TLSIntegrityEnabled: false,
+		AmneziaNoise: AmneziaNoiseSettings{
+			Enabled: false,
+			Count:   DefaultNoiseCount,
+			MinSize: DefaultNoiseMinSize,
+			MaxSize: DefaultNoiseMaxSize,
+		},
+		FrontingIPs: []string{},
+		DNSPrivacy: DNSPrivacySettings{
+			Mode:        DNSPrivacyAutomatic,
+			DoHURL:      DefaultDoHURL,
+			DoTEndpoint: DefaultDoTEndpoint,
+		},
+		KillSwitch: KillSwitchSettings{Enabled: false},
+		Language:   "",
+		TunEnabled: false,
+	}
+}
+
+// NormalizeWhiteVPNSettings repairs a settings block read from disk.
+//
+// Anything out of range is replaced with the default rather than clamped: a
+// value a user never chose is better than one silently bent into shape, and a
+// clamped noise size looks like the app ignoring what was typed.
+func NormalizeWhiteVPNSettings(settings WhiteVPNSettings) WhiteVPNSettings {
+	defaults := DefaultWhiteVPNSettings()
+
+	switch settings.SplitTunnel.Mode {
+	case SplitTunnelOff, SplitTunnelBypass, SplitTunnelVPNOnly:
+	default:
+		settings.SplitTunnel.Mode = SplitTunnelOff
+	}
+	settings.SplitTunnel.Processes = nonEmptyStrings(settings.SplitTunnel.Processes)
+	// Selecting nothing in VPN-only mode would route no traffic at all, which
+	// looks exactly like a broken tunnel.
+	if settings.SplitTunnel.Mode == SplitTunnelVPNOnly && len(settings.SplitTunnel.Processes) == 0 {
+		settings.SplitTunnel.Mode = SplitTunnelOff
+	}
+
+	if settings.AmneziaNoise.Count < MinNoiseCount || settings.AmneziaNoise.Count > MaxNoiseCount {
+		settings.AmneziaNoise.Count = defaults.AmneziaNoise.Count
+	}
+	if settings.AmneziaNoise.MinSize < MinNoiseSize || settings.AmneziaNoise.MinSize > MaxNoiseSize {
+		settings.AmneziaNoise.MinSize = defaults.AmneziaNoise.MinSize
+	}
+	if settings.AmneziaNoise.MaxSize < MinNoiseSize || settings.AmneziaNoise.MaxSize > MaxNoiseSize {
+		settings.AmneziaNoise.MaxSize = defaults.AmneziaNoise.MaxSize
+	}
+	if settings.AmneziaNoise.MinSize > settings.AmneziaNoise.MaxSize {
+		settings.AmneziaNoise.MinSize, settings.AmneziaNoise.MaxSize = defaults.AmneziaNoise.MinSize, defaults.AmneziaNoise.MaxSize
+	}
+
+	settings.FrontingIPs = nonEmptyStrings(settings.FrontingIPs)
+	if len(settings.FrontingIPs) > MaxFrontingIPs {
+		settings.FrontingIPs = settings.FrontingIPs[:MaxFrontingIPs]
+	}
+
+	switch settings.DNSPrivacy.Mode {
+	case DNSPrivacyAutomatic, DNSPrivacyDoH, DNSPrivacyDoT:
+	default:
+		settings.DNSPrivacy.Mode = DNSPrivacyAutomatic
+	}
+	if trimmed := strings.TrimSpace(settings.DNSPrivacy.DoHURL); trimmed == "" {
+		settings.DNSPrivacy.DoHURL = defaults.DNSPrivacy.DoHURL
+	} else {
+		settings.DNSPrivacy.DoHURL = trimmed
+	}
+	if trimmed := strings.TrimSpace(settings.DNSPrivacy.DoTEndpoint); trimmed == "" {
+		settings.DNSPrivacy.DoTEndpoint = defaults.DNSPrivacy.DoTEndpoint
+	} else {
+		settings.DNSPrivacy.DoTEndpoint = trimmed
+	}
+
+	settings.CountryCode = strings.TrimSpace(settings.CountryCode)
+	settings.Language = strings.TrimSpace(settings.Language)
+	return settings
+}
+
+func nonEmptyStrings(values []string) []string {
+	out := make([]string, 0, len(values))
+	seen := map[string]bool{}
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" || seen[trimmed] {
+			continue
+		}
+		seen[trimmed] = true
+		out = append(out, trimmed)
+	}
+	return out
+}

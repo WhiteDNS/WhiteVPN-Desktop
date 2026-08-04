@@ -8,18 +8,21 @@ import (
 	"testing"
 )
 
-func TestMihomoEngineSelectedOnlyOnAnExactOptIn(t *testing.T) {
-	for value, want := range map[string]bool{
-		"mihomo":     true,
-		"MIHOMO":     true,
-		" mihomo ":   true,
-		"xray":       false,
-		"":           false,
-		"mihomo-ish": false,
+// mihomo is the default, matching the phone. Only an explicit opt-out returns
+// to Xray, so a stray or misspelled value cannot silently change engines.
+func TestEngineDefaultsToMihomoAndOptsOutOnlyOnXray(t *testing.T) {
+	for value, wantMihomo := range map[string]bool{
+		"":         true,
+		"mihomo":   true,
+		"anything": true,
+		"xray-ish": true,
+		"xray":     false,
+		"XRAY":     false,
+		"  xray  ": false,
 	} {
 		t.Setenv(engineEnvVar, value)
-		if got := mihomoEngineSelected(); got != want {
-			t.Errorf("%s=%q selected=%v, want %v", engineEnvVar, value, got, want)
+		if got := mihomoEngineSelected(); got != wantMihomo {
+			t.Errorf("%s=%q mihomo=%v, want %v", engineEnvVar, value, got, wantMihomo)
 		}
 	}
 }

@@ -252,6 +252,7 @@ func NormalizeState(state model.AppState) model.AppState {
 	state.V2RayProfiles = normalizeV2RayProfiles(state.V2RayProfiles)
 	state.V2RaySubscriptions = normalizeV2RaySubscriptions(state.V2RaySubscriptions)
 	state.V2RaySettingsProfiles = normalizeV2RaySettingsProfiles(state.V2RaySettingsProfiles)
+	state.WhiteVPN = model.NormalizeWhiteVPNSettings(state.WhiteVPN)
 	state.WhiteDNSVPNFrontingIPs = NormalizeWhiteDNSVPNFrontingIPs(state.WhiteDNSVPNFrontingIPs)
 
 	if !hasConnection(state.ConnectionProfiles, state.SelectedConnectionProfileID) {

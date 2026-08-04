@@ -14,19 +14,20 @@ import (
 	"whitevpn-desktop/internal/session"
 )
 
-// The mihomo engine, behind a switch.
+// The engine.
 //
-// WhiteVPN for Android runs mihomo; this app has run Xray. Putting the phone's
-// engine underneath the desktop is the point of the port, but flipping it for
-// everyone at once would make one large change impossible to bisect, so both
-// paths exist for now and WHITEVPN_ENGINE chooses between them. The default
-// stays Xray until the mihomo path covers everything the Xray one does.
+// mihomo is what WhiteVPN for Android runs, and so it is what this runs: an app
+// that shares a name, a subscription and a backend with the phone should not
+// behave differently from it.
 //
-// Set WHITEVPN_ENGINE=mihomo to use it.
+// The Xray path it replaced is still reachable with WHITEVPN_ENGINE=xray. It is
+// kept for a while because when someone reports that a server works on one and
+// not the other, being able to switch is how that gets diagnosed rather than
+// argued about.
 const engineEnvVar = "WHITEVPN_ENGINE"
 
 func mihomoEngineSelected() bool {
-	return strings.EqualFold(strings.TrimSpace(os.Getenv(engineEnvVar)), "mihomo")
+	return !strings.EqualFold(strings.TrimSpace(os.Getenv(engineEnvVar)), "xray")
 }
 
 // mihomoState is the running mihomo session, if there is one.
@@ -80,16 +81,18 @@ func (a *App) startWhiteDNSVPNWithMihomo() (model.AppState, error) {
 	homeDir := filepath.Join(a.configDir, "mihomo")
 	a.handleRuntimeState(model.RuntimeConnecting, "Starting engine")
 
-	// Proxy mode. Creating a tunnel needs Administrator, which the app does not
-	// have yet; until the privileged helper exists, connecting through the local
-	// proxy is the honest thing to offer rather than a tunnel that silently is
-	// not one.
+	a.mu.Lock()
+	settings := model.NormalizeWhiteVPNSettings(a.state.WhiteVPN)
+	a.mu.Unlock()
+
 	connected, err := session.Connect(ctx, session.Options{
 		CorePath:     corePath,
 		HomeDir:      homeDir,
 		Subscription: subscription,
-		DNSPrivacy:   mihomoconf.DNSAutomatic,
-		Tun:          mihomoconf.TunOptions{Enabled: false},
+		DNSPrivacy:   dnsPrivacyMode(settings.DNSPrivacy.Mode),
+		DoHURL:       settings.DNSPrivacy.DoHURL,
+		DoTEndpoint:  settings.DNSPrivacy.DoTEndpoint,
+		Tun:          tunOptionsFor(settings),
 		CoreStdout:   mihomoLogWriter{app: a},
 		CoreStderr:   mihomoLogWriter{app: a},
 	})
@@ -176,4 +179,31 @@ func findMihomoCore() (string, error) {
 		}
 	}
 	return "", fmt.Errorf("the mihomo engine (%s) is not built; run `make mihomo-core`", name)
+}
+
+// dnsPrivacyMode maps the stored setting onto the engine's.
+func dnsPrivacyMode(mode string) mihomoconf.DNSPrivacyMode {
+	switch mode {
+	case model.DNSPrivacyDoH:
+		return mihomoconf.DNSOverHTTPS
+	case model.DNSPrivacyDoT:
+		return mihomoconf.DNSOverTLS
+	default:
+		return mihomoconf.DNSAutomatic
+	}
+}
+
+// tunOptionsFor turns the tunnel setting into engine options.
+//
+// Turning the tunnel on is attempted even though creating its adapter needs
+// Administrator, which this process does not have until the privileged helper
+// exists. Attempting and failing is better than refusing: the engine will report
+// itself started either way, and the health check is what catches the difference,
+// so the user is told the connection carried no traffic rather than told nothing
+// and left with a switch that does nothing.
+func tunOptionsFor(settings model.WhiteVPNSettings) mihomoconf.TunOptions {
+	if !settings.TunEnabled {
+		return mihomoconf.TunOptions{Enabled: false}
+	}
+	return mihomoconf.DefaultTunOptions()
 }

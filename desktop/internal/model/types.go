@@ -309,6 +309,7 @@ type AppState struct {
 	V2RaySubscriptions          []V2RaySubscription    `json:"v2raySubscriptions"`
 	V2RaySettingsProfiles       []V2RaySettingsProfile `json:"v2raySettingsProfiles"`
 	WhiteDNSVPNFrontingIPs      []string               `json:"whiteDNSVPNFrontingIps"`
+	WhiteVPN                    WhiteVPNSettings       `json:"whiteVpn"`
 	Runtime                     RuntimeStatus          `json:"runtime"`
 }
 
@@ -810,6 +811,7 @@ func DefaultAppState() AppState {
 		V2RaySubscriptions:          []V2RaySubscription{},
 		V2RaySettingsProfiles:       []V2RaySettingsProfile{DefaultV2RaySettingsProfile()},
 		WhiteDNSVPNFrontingIPs:      []string{},
+		WhiteVPN:                    DefaultWhiteVPNSettings(),
 		Runtime: RuntimeStatus{
 			Status: RuntimeDisconnected,
 			Logs:   []string{"Idle"},
