@@ -1658,16 +1658,16 @@ function WhiteDNSVPNPage({
   const connectDisabled = !canStart || settingsSaving || selectedSettingsMissing || (runtimeBusy && !active);
   const connectedFrontingIP = active ? runtime.frontingIp : "";
   const dashboardTitle = localConnectPending
-    ? "Connecting WhiteDNS VPN"
+    ? "Connecting WhiteVPN"
     : active
       ? runtime.status === "connecting"
-        ? "Connecting WhiteDNS VPN"
+        ? "Connecting WhiteVPN"
         : runtime.status === "connected"
-          ? "WhiteDNS VPN connected"
-          : runtime.message || "WhiteDNS VPN"
+          ? "WhiteVPN connected"
+          : runtime.message || "WhiteVPN"
       : runtimeBusy
         ? "Another runtime is active"
-        : "WhiteDNS VPN ready";
+        : "WhiteVPN ready";
   const dashboardDescription = localConnectPending
     ? "Testing available connections before starting VPN."
     : active
@@ -1677,9 +1677,9 @@ function WhiteDNSVPNPage({
           ? runtime.progress.phase
             ? progressLabel(runtime.progress.phase, runtime.progress.percent)
             : "Starting secure connection."
-          : runtime.message || "WhiteDNS VPN runtime"
+          : runtime.message || "WhiteVPN runtime"
       : runtimeBusy
-        ? "Disconnect the active runtime before starting WhiteDNS VPN."
+        ? "Disconnect the active runtime before starting WhiteVPN."
         : "Runtime idle";
   const [frontingInput, setFrontingInput] = useState("");
   const statusMetrics = [
@@ -1740,7 +1740,7 @@ function WhiteDNSVPNPage({
 
 
   return (
-    <PageShell eyebrow="WhiteDNS VPN" title="WhiteDNS VPN">
+    <PageShell eyebrow="WhiteVPN" title="VPN">
       <div className="grid gap-3">
         <Card className={cn("relative overflow-hidden transition-all duration-500", statusCardTone(setupStatus))}>
           {setupStatus === "connected" && (
@@ -1877,14 +1877,14 @@ function WhiteDNSVPNPage({
         <Alert className="border-amber-200 bg-amber-50 text-amber-950">
           <AlertCircle />
           <AlertTitle>V2Ray settings required</AlertTitle>
-          <AlertDescription>Choose a valid V2Ray local settings profile before connecting WhiteDNS VPN.</AlertDescription>
+          <AlertDescription>Choose a valid V2Ray local settings profile before connecting WhiteVPN.</AlertDescription>
         </Alert>
       )}
       {runtimeBusy && !active && (
         <Alert>
           <AlertCircle />
           <AlertTitle>Another runtime is active</AlertTitle>
-          <AlertDescription>Disconnect the active runtime before starting WhiteDNS VPN.</AlertDescription>
+          <AlertDescription>Disconnect the active runtime before starting WhiteVPN.</AlertDescription>
         </Alert>
       )}
     </PageShell>
@@ -1961,9 +1961,6 @@ function V2RayProfilesPage({
         left: sidebar.state === "collapsed" ? "calc(var(--sidebar-width-icon) + 1.5rem)" : "calc(var(--sidebar-width) + 1.5rem)",
         right: "1.5rem",
       };
-  const allowLanEnabled = Boolean(selectedSettings?.allowLan);
-  const tunModeEnabled = Boolean(selectedSettings?.tunEnabled);
-  const systemProxyEffective = Boolean(selectedSettings?.setSystemProxy);
   const settingsControlsDisabled = settingsSaving || (v2rayRuntimeActiveForSetup && runtime.status === "connecting") || (runtimeBusy && !v2rayRuntimeActiveForSetup);
   const settingsItems = useMemo(
     () => state.v2raySettingsProfiles.map((profile) => ({ id: profile.id, title: profile.name })),
@@ -2497,19 +2494,6 @@ function V2RayProfilesPage({
     }
   }
 
-  function editableV2RaySettings(suffix: string): V2RaySettingsProfile | null {
-    if (!selectedSettings) {
-      return null;
-    }
-    if (selectedSettings.id !== "v2ray-settings-default") {
-      return selectedSettings;
-    }
-    return {
-      ...selectedSettings,
-      id: makeV2RaySettingsProfileId(state.v2raySettingsProfiles),
-      name: `${selectedSettings.name || "Default"} ${suffix}`,
-    };
-  }
 
   async function selectSettingsProfile(id: string) {
     if (!id || id === selectedSettings?.id) {
@@ -2518,42 +2502,10 @@ function V2RayProfilesPage({
     await applyV2RaySettingsChange(() => backend.selectV2RaySettingsProfile(id));
   }
 
-  async function updateSelectedSettings(mutator: (profile: V2RaySettingsProfile) => V2RaySettingsProfile, suffix: string) {
-    const editable = editableV2RaySettings(suffix);
-    if (!editable) {
-      return;
-    }
-    const nextSettings = normalizeV2RaySettingsProfile(mutator(editable));
-    await applyV2RaySettingsChange(() => backend.saveV2RaySettingsProfile(nextSettings));
-  }
 
-  async function updateSystemProxy(setSystemProxy: boolean) {
-    if (!selectedSettings || Boolean(selectedSettings.setSystemProxy) === setSystemProxy) {
-      return;
-    }
-    await updateSelectedSettings((profile) => ({ ...profile, setSystemProxy }), "Proxy");
-  }
 
-  async function updateTunMode(tunEnabled: boolean) {
-    if (!selectedSettings || Boolean(selectedSettings.tunEnabled) === tunEnabled) {
-      return;
-    }
-    await updateSelectedSettings((profile) => ({ ...profile, tunEnabled }), "TUN");
-  }
 
-  async function updateEnhancedConnection(iranRoutingEnabled: boolean) {
-    if (!selectedSettings || Boolean(selectedSettings.iranRoutingEnabled) === iranRoutingEnabled) {
-      return;
-    }
-    await updateSelectedSettings((profile) => ({ ...profile, iranRoutingEnabled }), "Enhanced");
-  }
 
-  async function updateAllowLAN(allowLan: boolean) {
-    if (!selectedSettings || Boolean(selectedSettings.allowLan) === allowLan) {
-      return;
-    }
-    await updateSelectedSettings((profile) => withV2RaySettingsAllowLan(profile, allowLan), "LAN");
-  }
 
   async function connectProfile(profile: V2RayProfile) {
     if (runtimeBusy || settingsSaving || !isConnectableV2RayProfile(profile)) {
@@ -2716,8 +2668,8 @@ function V2RayProfilesPage({
   return (
     <>
       <PageShell
-        eyebrow="V2Ray"
-        title="V2Ray Setup"
+        eyebrow="WhiteVPN"
+        title="Servers"
         actions={
           <>
             <Button variant="outline" disabled={!hasExportableProfiles} onClick={exportAllProfiles}>
@@ -3255,42 +3207,6 @@ function V2RayProfilesPage({
                 </SelectContent>
               </Select>
 
-              <label className="inline-flex h-8 items-center gap-2 rounded-md border bg-card px-2 text-xs font-medium">
-                <span>System proxy</span>
-                <Switch
-                  checked={systemProxyEffective}
-                  disabled={!selectedSettings || settingsControlsDisabled}
-                  onCheckedChange={(checked) => void updateSystemProxy(checked)}
-                  aria-label="Set V2Ray system proxy"
-                />
-              </label>
-              <label className="inline-flex h-8 items-center gap-2 rounded-md border bg-card px-2 text-xs font-medium">
-                <span>TUN</span>
-                <Switch
-                  checked={tunModeEnabled}
-                  disabled={!selectedSettings || settingsControlsDisabled}
-                  onCheckedChange={(checked) => void updateTunMode(checked)}
-                  aria-label="Enable V2Ray TUN mode"
-                />
-              </label>
-              <label className="inline-flex h-8 items-center gap-2 rounded-md border bg-card px-2 text-xs font-medium">
-                <span>Enhanced</span>
-                <Switch
-                  checked={Boolean(selectedSettings?.iranRoutingEnabled)}
-                  disabled={!selectedSettings || settingsControlsDisabled}
-                  onCheckedChange={(checked) => void updateEnhancedConnection(checked)}
-                  aria-label={`Enable ${enhancedConnectionLabel}`}
-                />
-              </label>
-              <label className="inline-flex h-8 items-center gap-2 rounded-md border bg-card px-2 text-xs font-medium">
-                <span>Allow LAN</span>
-                <Switch
-                  checked={allowLanEnabled}
-                  disabled={!selectedSettings || settingsControlsDisabled}
-                  onCheckedChange={(checked) => void updateAllowLAN(checked)}
-                  aria-label="Allow LAN connection"
-                />
-              </label>
 
               {v2rayRuntimeActiveForSetup && runtime.status !== "disconnected" && runtime.status !== "failed" ? (
                 <Button type="button" variant="outline" size="sm" disabled={settingsSaving} onClick={stopRuntime}>
@@ -3726,7 +3642,7 @@ function V2RaySubscriptionsPage({
   return (
     <>
       <PageShell
-        eyebrow="V2Ray"
+        eyebrow="WhiteVPN"
         title="Subscriptions"
         actions={
           <Button type="button" variant="outline" onClick={openNewSubscription}>
@@ -4492,7 +4408,7 @@ function V2RaySettingsPage({
   return (
     <>
       <PageShell
-        eyebrow="V2Ray"
+        eyebrow="WhiteVPN"
         title="V2Ray Settings"
         actions={
           <Button variant="outline" onClick={openNewSettingsProfile}>
