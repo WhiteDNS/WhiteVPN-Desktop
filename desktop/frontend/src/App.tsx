@@ -119,6 +119,7 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useTheme, type Theme } from "@/components/theme-provider";
+import { translate, normalizeLanguage, isRightToLeft, languages, type Language, type StringKey } from "./i18n";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
@@ -149,8 +150,8 @@ import type {
 import { backend, initializeNotifications, onRuntimeEvent, openExternalUrl, sendFirewallNotification } from "./wails";
 
 type Page = "vpn" | "servers" | "subscriptions" | "settings" | "engine-settings" | "logs" | "white-ips" | "validator" | "backup";
-type NavItem = { id: Page; label: string; icon: ReactNode };
-type NavGroup = { id: "whitevpn" | "tools"; label: string; items: NavItem[] };
+type NavItem = { id: Page; label: StringKey; icon: ReactNode };
+type NavGroup = { id: "whitevpn" | "tools"; label: StringKey; items: NavItem[] };
 type V2RayPingSortDirection = "none" | "asc" | "desc";
 type V2RayProfileTestKind = "" | "ping" | "speed" | "delay";
 type V2RayProfileSortColumn = "none" | "delay" | "speed";
@@ -864,28 +865,46 @@ function normalizeValidatorState(next: ValidatorStateUpdate, current: ValidatorS
 const navGroups: NavGroup[] = [
   {
     id: "whitevpn",
-    label: "WhiteVPN",
+    label: "nav.group.whitevpn",
     items: [
-      { id: "vpn", label: "VPN", icon: <Power /> },
-      { id: "servers", label: "Servers", icon: <Shield /> },
-      { id: "subscriptions", label: "Subscriptions", icon: <ListChecks /> },
-      { id: "settings", label: "Settings", icon: <Settings /> },
-      { id: "logs", label: "Logs", icon: <ScrollText /> },
+      { id: "vpn", label: "nav.vpn", icon: <Power /> },
+      { id: "servers", label: "nav.servers", icon: <Shield /> },
+      { id: "subscriptions", label: "nav.subscriptions", icon: <ListChecks /> },
+      { id: "settings", label: "nav.settings", icon: <Settings /> },
+      { id: "logs", label: "nav.logs", icon: <ScrollText /> },
     ],
   },
   {
     id: "tools",
-    label: "Tools",
+    label: "nav.group.tools",
     items: [
-      { id: "white-ips", label: "White IP Generator", icon: <Share2 /> },
-      { id: "validator", label: "Validator", icon: <ListChecks /> },
-      { id: "backup", label: "Full Backup", icon: <Save /> },
+      { id: "white-ips", label: "nav.whiteIps", icon: <Share2 /> },
+      { id: "validator", label: "nav.validator", icon: <ListChecks /> },
+      { id: "backup", label: "nav.backup", icon: <Save /> },
     ],
   },
 ];
 
+// useLanguage resolves the stored setting and keeps the document's direction in
+// step with it.
+function useLanguage(state: AppState | null): { language: Language; t: (key: StringKey) => string } {
+  const language = normalizeLanguage(state?.whiteVpn?.language ?? "");
+
+  useEffect(() => {
+    const root = document.documentElement;
+    root.lang = language;
+    // On the document, not a wrapper: dialogs and toasts render outside the page
+    // tree and would otherwise stay left-to-right inside a right-to-left app.
+    root.dir = isRightToLeft(language) ? "rtl" : "ltr";
+  }, [language]);
+
+  const t = useMemo(() => (key: StringKey) => translate(language, key), [language]);
+  return { language, t };
+}
+
 function App() {
   const [state, setState] = useState<AppState | null>(null);
+  const { t } = useLanguage(state);
   const [legacyOffer, setLegacyOffer] = useState<LegacyImportOffer | null>(null);
   const [page, setPage] = useState<Page>("vpn");
   const [errorToast, setErrorToast] = useState<AppErrorToast | null>(null);
@@ -1236,7 +1255,7 @@ function App() {
   return (
     <TooltipProvider>
       <SidebarProvider defaultOpen>
-        <AppSidebar page={activePage} runtime={state.runtime} onPage={setPage} />
+        <AppSidebar page={activePage} runtime={state.runtime} onPage={setPage} t={t} />
         <SidebarInset className="min-w-0 overflow-x-hidden">
           <main className="min-h-svh min-w-0 overflow-x-hidden bg-muted/30 p-4 md:p-6">
             <div className="mx-auto flex w-full min-w-0 max-w-7xl flex-col gap-4">
@@ -1486,10 +1505,12 @@ function AppSidebar({
   page,
   runtime,
   onPage,
+  t,
 }: {
   page: Page;
   runtime: RuntimeStatus;
   onPage: (page: Page) => void;
+  t: (key: StringKey) => string;
 }) {
   const sidebarEndpoint = runtimeProxyDisplayEndpoint(runtime);
   const [openGroups, setOpenGroups] = useState<Record<NavGroup["id"], boolean>>({
@@ -1553,7 +1574,7 @@ function AppSidebar({
                     className="h-7 cursor-pointer justify-between text-sm font-semibold text-sidebar-foreground"
                   >
                     <button type="button" aria-expanded={isOpen} onClick={() => toggleGroup(group.id)}>
-                      <span className="truncate">{group.label}</span>
+                      <span className="truncate">{t(group.label)}</span>
                       {isOpen ? (
                         <ChevronDown className="ml-auto size-3.5 shrink-0" aria-hidden="true" />
                       ) : (
@@ -1568,11 +1589,11 @@ function AppSidebar({
                         <SidebarMenuItem key={item.id}>
                           <SidebarMenuButton
                             isActive={page === item.id}
-                            tooltip={item.label}
+                            tooltip={t(item.label)}
                             onClick={() => onPage(item.id)}
                           >
                             {item.icon}
-                            <span>{item.label}</span>
+                            <span>{t(item.label)}</span>
                           </SidebarMenuButton>
                         </SidebarMenuItem>
                       ))}
@@ -1681,7 +1702,6 @@ function WhiteDNSVPNPage({
       : runtimeBusy
         ? "Disconnect the active runtime before starting WhiteVPN."
         : "Runtime idle";
-  const [frontingInput, setFrontingInput] = useState("");
   const statusMetrics = [
     { label: "Local proxy", value: localProxyEndpoint, icon: Monitor },
     ...(connectedFrontingIP ? [{ label: "Fronting IP", value: connectedFrontingIP, icon: Shield }] : []),
@@ -4629,13 +4649,6 @@ function v2rayInboundLabel(inboundType: string): string {
   }
 }
 
-function withV2RaySettingsAllowLan(profile: V2RaySettingsProfile, allowLan: boolean): V2RaySettingsProfile {
-  return {
-    ...profile,
-    allowLan,
-    listenIp: allowLan ? "0.0.0.0" : v2rayListenAllowsLan(profile.listenIp) ? "127.0.0.1" : profile.listenIp || "127.0.0.1",
-  };
-}
 
 function withV2RaySettingsListenIp(profile: V2RaySettingsProfile, listenIp: string): V2RaySettingsProfile {
   return {
@@ -6755,6 +6768,36 @@ function WhiteVPNSettingsPage({
             disabled={!draft.amneziaNoise.enabled}
             onChange={(value) => patch({ amneziaNoise: { ...draft.amneziaNoise, maxSize: value } })}
           />
+        </FieldGroup>
+      </SettingsSection>
+
+      <SettingsSection
+        title="Appearance"
+        description="How the app looks and what language it speaks."
+      >
+        <FieldGroup className="grid gap-4 md:grid-cols-2">
+          <Field>
+            <FieldLabel>App language</FieldLabel>
+            <Select
+              value={normalizeLanguage(draft.language)}
+              onValueChange={(value) => patch({ language: value })}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent position="popper">
+                {languages.map((entry) => (
+                  <SelectItem key={entry.value} value={entry.value}>
+                    {entry.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <FieldDescription>
+              Persian lays the interface out right to left. The theme is on the button beside the
+              app name.
+            </FieldDescription>
+          </Field>
         </FieldGroup>
       </SettingsSection>
 
