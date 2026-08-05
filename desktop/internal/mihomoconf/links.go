@@ -2,12 +2,16 @@
 // the engine reads.
 //
 // This file is the share-link converter, ported from SubConvConverter.kt in
-// WhiteDNS/WhiteVPN. Behaviour is matched deliberately, including which links it
-// declines: the phone app understands vless, vmess, trojan and ss and silently
-// skips everything else, so a subscription that yields 845 usable nodes there
-// must yield the same 845 here. Nodes the phone drops — hysteria2, socks, tuic
-// among them — are dropped here too, because a desktop that quietly connected
-// through a node the phone never offers would be a different product.
+// WhiteDNS/WhiteVPN. Behaviour is matched deliberately for the four link types
+// the phone understands — vless, vmess, trojan and ss — so a subscription that
+// yields the same nodes there yields them here.
+//
+// Hysteria2 is the one deliberate addition. The phone skips it; this engine
+// supports it, and a desktop has the bandwidth to make it worth having. That is
+// a divergence from parity, recorded as one in ANDROID-PARITY.md, rather than a
+// gap. Everything else the phone drops — socks, tuic — is still dropped, because
+// a desktop quietly connecting through a node the phone never offers is a
+// different product.
 package mihomoconf
 
 import (
@@ -84,6 +88,8 @@ func ConvertLinks(input string) ([]Proxy, error) {
 			proxy, err = parseTrojan(line, names)
 		case "ss":
 			proxy, err = parseShadowsocks(line, names)
+		case "hysteria2", "hy2":
+			proxy, err = parseHysteria2(line, names)
 		default:
 			continue
 		}
@@ -358,6 +364,62 @@ func parseTrojan(line string, names *nameRegistry) (Proxy, error) {
 }
 
 // --- shadowsocks -------------------------------------------------------------
+
+// parseHysteria2 reads a hysteria2 link.
+//
+// The password is the whole user-info half, not a user:pass pair: hysteria2 has
+// one credential and generators write it either way, so anything before a colon
+// is part of it rather than a username to be dropped.
+func parseHysteria2(line string, names *nameRegistry) (Proxy, error) {
+	uri, err := splitURI(line)
+	if err != nil {
+		return nil, err
+	}
+	endpoint, err := parseEndpoint(uri, false)
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(endpoint.userInfo) == "" {
+		return nil, errSkipLink
+	}
+	query := parseQuery(uri.rawQuery)
+
+	proxy := Proxy{
+		"name":     names.register(decodeComponent(uri.rawFragment)),
+		"type":     "hysteria2",
+		"server":   endpoint.host,
+		"port":     endpoint.port,
+		"password": endpoint.userInfo,
+	}
+	// insecure and allowInsecure both appear in the wild.
+	if insecure, present := query["insecure"]; present {
+		proxy["skip-cert-verify"] = parseBool(insecure)
+	} else if insecure, present := query["allowInsecure"]; present {
+		proxy["skip-cert-verify"] = parseBool(insecure)
+	}
+	if sni := strings.TrimSpace(query["sni"]); sni != "" {
+		proxy["sni"] = sni
+	}
+	if alpn := strings.TrimSpace(query["alpn"]); alpn != "" {
+		proxy["alpn"] = strings.Split(alpn, ",")
+	}
+	// Salamander is the only obfuscation hysteria2 defines, and it is useless
+	// without its password, so neither is carried without the other.
+	if obfs := strings.TrimSpace(query["obfs"]); obfs != "" {
+		if password := strings.TrimSpace(query["obfs-password"]); password != "" {
+			proxy["obfs"] = obfs
+			proxy["obfs-password"] = password
+		}
+	}
+	if ports := strings.TrimSpace(query["mport"]); ports != "" {
+		// Port hopping: the server listens across a range.
+		proxy["ports"] = ports
+	}
+	if fingerprint := strings.TrimSpace(query["pinSHA256"]); fingerprint != "" {
+		proxy["fingerprint"] = fingerprint
+	}
+	return proxy, nil
+}
 
 func parseShadowsocks(line string, names *nameRegistry) (Proxy, error) {
 	content := strings.TrimPrefix(line, "ss://")

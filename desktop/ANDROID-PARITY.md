@@ -262,6 +262,14 @@ Three places where copying Android exactly would be wrong:
 
 3. **Split tunnel matches processes, not packages.** See §1.6.
 
+4. **Hysteria2 is offered here and not on the phone.** The phone's converter
+   skips it; this engine supports it and a desktop has the bandwidth to make it
+   worth having, so `ConvertLinks` reads it. Measured against the live catalogue
+   on 2026-08-04: 11 nodes that were being dropped. Everything else the phone
+   skips — tuic, socks — is still skipped, because the engine cannot carry it.
+   Fronting leaves hysteria2 alone: it is QUIC with its own certificate and has
+   no name to move.
+
 4. **Plain HTTP is allowed to loopback.** The phone requires HTTPS for a
    subscription and so does this, for the same reason: a server list fetched in
    the clear is one anyone on the path can read and replace. There is no path to

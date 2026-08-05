@@ -200,17 +200,17 @@ func TestBase64BodyAndMalformedLinesAreSkipped(t *testing.T) {
 	}
 }
 
-// The phone app understands four schemes and ignores the rest. A desktop that
-// connected through a node the phone never offers would be a different product.
-func TestSchemesThePhoneIgnoresAreIgnoredHere(t *testing.T) {
+// Hysteria2 was on this list until the desktop took it deliberately. The rest
+// are still ignored: the engine cannot carry them, and a desktop connecting
+// through a node it cannot carry would fail in a way nobody could explain.
+func TestSchemesTheEngineCannotUseAreIgnored(t *testing.T) {
 	body := strings.Join([]string{
-		"hysteria2://pw@example.com:443#H2",
 		"tuic://uuid:pw@example.com:443#TUIC",
 		"socks://user:pass@example.com:1080#SOCKS",
 	}, "\n")
 
 	if _, err := ConvertLinks(body); err == nil {
-		t.Fatal("expected no usable proxies from schemes the phone skips")
+		t.Fatal("expected no usable proxies from schemes the engine cannot use")
 	}
 }
 
