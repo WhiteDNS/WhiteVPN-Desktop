@@ -2257,6 +2257,7 @@ function MeasurementCell({
   tested,
   ok,
   pending,
+  reason,
   children,
   quality,
   t,
@@ -2264,6 +2265,7 @@ function MeasurementCell({
   tested: boolean;
   ok: boolean;
   pending: boolean;
+  reason?: string;
   children: ReactNode;
   quality?: "good" | "fair" | "poor";
   t: TranslateFn;
@@ -2280,7 +2282,7 @@ function MeasurementCell({
   }
   if (!ok) {
     return (
-      <span className="text-destructive" title={t("servers.failed.hint")}>
+      <span className="cursor-help text-destructive underline decoration-dotted underline-offset-2" title={reason || t("servers.failed.hint")}>
         {t("servers.failed")}
       </span>
     );
@@ -2327,6 +2329,11 @@ function speedQuality(bytesPerSecond: number): "good" | "fair" | "poor" {
 type NodeSortColumn = "label" | "country" | "type" | "reach" | "delay" | "speed";
 type NodeSort = { column: NodeSortColumn; direction: "asc" | "desc" };
 
+// Mirrors session.DefaultSpeedURL. Ten megabytes: enough that a fast node is
+// not measuring its own start-up, small enough that a slow one is not still
+// going when the budget runs out.
+const defaultSpeedTestURL = "https://speed.cloudflare.com/__down?bytes=10000000";
+
 const defaultNodeTest: NodeTestRequest = {
   nodes: [],
   reachability: true,
@@ -2338,7 +2345,7 @@ const defaultNodeTest: NodeTestRequest = {
   delayWorkers: 16,
   delayUrl: "",
   speedBudgetMs: 8000,
-  speedUrl: "",
+  speedUrl: defaultSpeedTestURL,
 };
 
 function formatRate(bytesPerSecond: number): string {
@@ -2706,6 +2713,7 @@ function NodesPage({
                         tested={node.reachTested}
                         ok={node.reachOk}
                         pending={pendingFor(node.name, "reachability")}
+                        reason={node.reachError}
                         quality={latencyQuality(node.reachMs)}
                         t={t}
                       >
@@ -2717,6 +2725,7 @@ function NodesPage({
                         tested={node.delayTested}
                         ok={node.delayOk}
                         pending={pendingFor(node.name, "delay")}
+                        reason={node.delayError}
                         quality={latencyQuality(node.delayMs)}
                         t={t}
                       >
@@ -2728,6 +2737,7 @@ function NodesPage({
                         tested={node.speedTested}
                         ok={node.speedOk}
                         pending={pendingFor(node.name, "speed")}
+                        reason={node.speedError}
                         quality={speedQuality(node.speedBytesPerSecond)}
                         t={t}
                       >

@@ -433,9 +433,9 @@ func (a *App) storeWhiteVPNNodes(nodes []model.WhiteVPNNode, now time.Time) mode
 	next := make([]model.WhiteVPNNode, 0, len(nodes))
 	for _, node := range nodes {
 		if earlier, ok := previous[node.Name]; ok {
-			node.DelayMs, node.DelayOK, node.DelayTested = earlier.DelayMs, earlier.DelayOK, earlier.DelayTested
-			node.ReachMs, node.ReachOK, node.ReachTested = earlier.ReachMs, earlier.ReachOK, earlier.ReachTested
-			node.SpeedBytesPerSecond, node.SpeedOK, node.SpeedTested = earlier.SpeedBytesPerSecond, earlier.SpeedOK, earlier.SpeedTested
+			node.DelayMs, node.DelayOK, node.DelayTested, node.DelayError = earlier.DelayMs, earlier.DelayOK, earlier.DelayTested, earlier.DelayError
+			node.ReachMs, node.ReachOK, node.ReachTested, node.ReachError = earlier.ReachMs, earlier.ReachOK, earlier.ReachTested, earlier.ReachError
+			node.SpeedBytesPerSecond, node.SpeedOK, node.SpeedTested, node.SpeedError = earlier.SpeedBytesPerSecond, earlier.SpeedOK, earlier.SpeedTested, earlier.SpeedError
 		}
 		next = append(next, node)
 	}

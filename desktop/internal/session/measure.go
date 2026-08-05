@@ -164,6 +164,9 @@ func (m *Measurer) Delay(ctx context.Context, node string, testURL string, timeo
 // one selected node at a time and the download has to travel through it. So it
 // is one node after another, and the caller decides how many are worth the wait.
 func (m *Measurer) Speed(ctx context.Context, node string, testURL string, budget time.Duration) (int64, error) {
+	if testURL == "" {
+		testURL = DefaultSpeedURL
+	}
 	selectCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	err := m.process.ChangeProxy(selectCtx, mihomoconf.SelectGroup, node)
 	cancel()
@@ -175,20 +178,22 @@ func (m *Measurer) Speed(ctx context.Context, node string, testURL string, budge
 	if err != nil {
 		return 0, err
 	}
-	client := &http.Client{
-		Transport: &http.Transport{Proxy: http.ProxyURL(proxyURL)},
-		Timeout:   budget,
-	}
+	// No client timeout: the deadline below covers the whole thing, and a client
+	// timeout would count the handshake against the download budget.
+	client := &http.Client{Transport: &http.Transport{Proxy: http.ProxyURL(proxyURL)}}
 	defer client.CloseIdleConnections()
 
-	downloadCtx, cancelDownload := context.WithTimeout(ctx, budget)
+	// Reaching the far side through a node takes as long as it takes — a
+	// handshake, a TLS negotiation, and the node's own latency — and that is not
+	// what is being measured. It gets its own allowance so that a node with a
+	// slow start reports as slow rather than as failed.
+	deadline, cancelDownload := context.WithTimeout(ctx, budget+speedConnectAllowance)
 	defer cancelDownload()
-	request, err := http.NewRequestWithContext(downloadCtx, http.MethodGet, testURL, nil)
+	request, err := http.NewRequestWithContext(deadline, http.MethodGet, testURL, nil)
 	if err != nil {
 		return 0, err
 	}
 
-	started := time.Now()
 	response, err := client.Do(request)
 	if err != nil {
 		return 0, err
@@ -198,21 +203,45 @@ func (m *Measurer) Speed(ctx context.Context, node string, testURL string, budge
 		return 0, fmt.Errorf("speed test returned HTTP %d", response.StatusCode)
 	}
 
-	// Reading to the end of the budget rather than to the end of the file: what
-	// is being measured is the rate, and a file that finishes early measures it
-	// just as well as one that does not.
-	read, err := io.Copy(io.Discard, response.Body)
+	// The clock starts at the first byte, so the rate is the rate of the
+	// transfer and not of the transfer plus everything it took to begin.
+	started := time.Now()
+	read, err := io.Copy(io.Discard, &deadlineReader{reader: response.Body, deadline: started.Add(budget)})
 	elapsed := time.Since(started)
 	if read == 0 {
 		if err != nil {
 			return 0, err
 		}
-		return 0, fmt.Errorf("speed test read nothing")
+		return 0, fmt.Errorf("the node accepted the request and sent nothing")
 	}
 	if elapsed <= 0 {
 		return 0, fmt.Errorf("speed test finished immediately")
 	}
 	return int64(float64(read) / elapsed.Seconds()), nil
+}
+
+// speedConnectAllowance is what a node gets to reach the far side before the
+// download budget starts counting.
+const speedConnectAllowance = 15 * time.Second
+
+// DefaultSpeedURL is what a speed test downloads when nothing else is asked for.
+// Ten megabytes: enough that a fast node is not measuring its own start-up, and
+// small enough that a slow one is not still going when the budget runs out.
+const DefaultSpeedURL = "https://speed.cloudflare.com/__down?bytes=10000000"
+
+// deadlineReader stops a download at a wall-clock time rather than at the end of
+// the file. What is being measured is a rate; a file that runs out early
+// measures it just as well, and one that does not must not run forever.
+type deadlineReader struct {
+	reader   io.Reader
+	deadline time.Time
+}
+
+func (r *deadlineReader) Read(p []byte) (int, error) {
+	if !time.Now().Before(r.deadline) {
+		return 0, io.EOF
+	}
+	return r.reader.Read(p)
 }
 
 // freePort asks the system for one and hands it straight back, which is as

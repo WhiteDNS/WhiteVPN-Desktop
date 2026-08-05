@@ -526,17 +526,23 @@ type WhiteVPNNode struct {
 	// run and failed, run and measured. Collapsing the first two makes a node
 	// that could not be reached look exactly like one nobody has tested, which
 	// is the difference between "avoid this" and "find out".
-	ReachTested bool `json:"reachTested"`
-	ReachOK     bool `json:"reachOk"`
-	ReachMs     int  `json:"reachMs"`
+	// Each carries why it failed as well as that it did. "Failed" on its own is
+	// a dead end: it tells someone to avoid a node without telling them whether
+	// the node is bad, the test file is unreachable, or the budget was short.
+	ReachTested bool   `json:"reachTested"`
+	ReachOK     bool   `json:"reachOk"`
+	ReachMs     int    `json:"reachMs"`
+	ReachError  string `json:"reachError"`
 
-	DelayTested bool `json:"delayTested"`
-	DelayOK     bool `json:"delayOk"`
-	DelayMs     int  `json:"delayMs"`
+	DelayTested bool   `json:"delayTested"`
+	DelayOK     bool   `json:"delayOk"`
+	DelayMs     int    `json:"delayMs"`
+	DelayError  string `json:"delayError"`
 
-	SpeedTested         bool  `json:"speedTested"`
-	SpeedOK             bool  `json:"speedOk"`
-	SpeedBytesPerSecond int64 `json:"speedBytesPerSecond"`
+	SpeedTested         bool   `json:"speedTested"`
+	SpeedOK             bool   `json:"speedOk"`
+	SpeedBytesPerSecond int64  `json:"speedBytesPerSecond"`
+	SpeedError          string `json:"speedError"`
 }
 
 // NodeTestRequest is one run of the tests: which nodes, which tests, and the

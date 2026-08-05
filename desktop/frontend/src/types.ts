@@ -664,15 +664,20 @@ export type WhiteVPNNode = {
   // Measurements, each in one of three states rather than two: never run, run
   // and failed, run and measured. A node that could not be reached must not
   // look like one nobody has tested.
+  // Each carries why it failed as well as that it did: "failed" on its own
+  // tells someone to avoid a node without telling them why.
   reachTested: boolean;
   reachOk: boolean;
   reachMs: number;
+  reachError: string;
   delayTested: boolean;
   delayOk: boolean;
   delayMs: number;
+  delayError: string;
   speedTested: boolean;
   speedOk: boolean;
   speedBytesPerSecond: number;
+  speedError: string;
 };
 
 // One run of the node tests: which nodes, which tests, and the numbers the user

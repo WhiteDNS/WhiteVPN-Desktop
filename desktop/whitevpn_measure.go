@@ -134,6 +134,7 @@ func (a *App) runNodeTest(ctx context.Context, request model.NodeTestRequest) {
 					node.DelayTested = true
 					node.DelayOK = err == nil
 					node.DelayMs = delayMS
+					node.DelayError = testFailureMessage(err)
 				})
 			})
 	}
@@ -151,10 +152,15 @@ func (a *App) runNodeTest(ctx context.Context, request model.NodeTestRequest) {
 			return
 		}
 		rate, err := measurer.Speed(ctx, node.Name, request.SpeedURL, request.SpeedBudget())
+		if err != nil {
+			// Also to the log, where a run's failures can be read together.
+			a.appendRuntimeLog(fmt.Sprintf("speed test %q: %v", node.Label, err))
+		}
 		a.recordNodeMeasurement(node.Name, func(stored *model.WhiteVPNNode) {
 			stored.SpeedTested = true
 			stored.SpeedOK = err == nil
 			stored.SpeedBytesPerSecond = rate
+			stored.SpeedError = testFailureMessage(err)
 		})
 	}
 }
@@ -197,6 +203,7 @@ func (a *App) measureReachability(ctx context.Context, nodes []model.WhiteVPNNod
 			a.recordNodeMeasurement(target.Name, func(stored *model.WhiteVPNNode) {
 				stored.ReachTested = true
 				stored.ReachOK = err == nil
+				stored.ReachError = testFailureMessage(err)
 				if err == nil {
 					stored.ReachMs = latency
 				} else {
@@ -206,6 +213,18 @@ func (a *App) measureReachability(ctx context.Context, nodes []model.WhiteVPNNod
 		}(node)
 	}
 	wg.Wait()
+}
+
+// testFailureMessage is the reason a test failed, short enough for a tooltip.
+func testFailureMessage(err error) string {
+	if err == nil {
+		return ""
+	}
+	message := strings.TrimSpace(err.Error())
+	if len(message) > 240 {
+		message = message[:240] + "…"
+	}
+	return message
 }
 
 // startMeasurer brings up the engine tests run on, from the same subscription

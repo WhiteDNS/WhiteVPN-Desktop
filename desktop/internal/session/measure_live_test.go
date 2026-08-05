@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"io"
 	"os"
 	"strings"
 	"testing"
@@ -55,3 +56,26 @@ func TestLiveMeasurerStartsAndMeasures(t *testing.T) {
 		t.Fatalf("the engine rejected its configuration: %v", err)
 	}
 }
+
+// The rate is of the transfer, not of the transfer plus everything it took to
+// begin, and a download that would outlast its budget stops at it.
+func TestDeadlineReaderStopsAtItsDeadline(t *testing.T) {
+	reader := &deadlineReader{reader: endlessReader{}, deadline: time.Now().Add(40 * time.Millisecond)}
+	read, err := io.Copy(io.Discard, reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if read == 0 {
+		t.Fatal("expected the reader to pass data through before its deadline")
+	}
+	// It stops rather than running on: a second copy from the same reader is
+	// past the deadline and yields nothing.
+	again, err := io.Copy(io.Discard, reader)
+	if err != nil || again != 0 {
+		t.Fatalf("expected the reader to be finished, got %d bytes and %v", again, err)
+	}
+}
+
+type endlessReader struct{}
+
+func (endlessReader) Read(p []byte) (int, error) { return len(p), nil }
