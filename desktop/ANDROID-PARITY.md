@@ -457,6 +457,16 @@ Measured 2026-08-04, from Windows:
   it; `countryCodeFromNodeName` reads the flag. A catalogue that stops shipping
   flags takes the location filter with it, and the dialog would show one country:
   none.
+- **`ProxyEnable` and `ProxyServer` are not where Windows keeps the proxy.**
+  They are a compatibility shim. The real configuration is a binary blob at
+  `Internet Settings\Connections\DefaultConnectionSettings`, and when the two
+  disagree the blob wins. Writing only the shim let the app set the proxy, read
+  it back, verify it, show a badge — and leave Windows browsing directly,
+  because the blob still said `flags=1`, `PROXY_TYPE_DIRECT`. Change it with
+  `InternetSetOption(INTERNET_OPTION_PER_CONNECTION_OPTION)`, which updates both
+  and cannot drift, and read it back with `InternetQueryOption` rather than from
+  the registry — a read-back that goes where the write went proves only that the
+  write happened.
 - **`wails build -s` skips the frontend.** The Go side rebuilds, the binary
   looks new, and the UI inside it is whatever was in `frontend/dist` from
   whenever it was last built properly. Two rounds of "I fixed that, why is it

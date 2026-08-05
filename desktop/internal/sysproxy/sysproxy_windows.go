@@ -29,6 +29,14 @@ func Current() (State, error) {
 	if enabled, _, err := key.GetIntegerValue("ProxyEnable"); err == nil {
 		state.Enabled = enabled != 0
 	}
+	// WinINET's own answer wins over the shim's, because it is the one that
+	// decides whether traffic goes through a proxy. They disagree exactly when
+	// something has written the shim without going through the API — which is
+	// the bug this package used to have.
+	if flags, err := perConnectionFlags(); err == nil {
+		state.Flags = flags
+		state.Enabled = flags&proxyTypeProxy != 0
+	}
 	if server, _, err := key.GetStringValue("ProxyServer"); err == nil {
 		state.Server = server
 	}
@@ -38,8 +46,16 @@ func Current() (State, error) {
 	return state, nil
 }
 
-// Apply writes a state and tells the system to pick it up.
+// Apply changes the machine's proxy settings.
+//
+// Through WinINET first, because that is what browsers read, and only then the
+// registry shim — which the API also updates, but some software reads it
+// directly and a value left behind by an older write would contradict what was
+// just set.
 func Apply(state State) error {
+	if err := applyPerConnection(state); err != nil {
+		return err
+	}
 	key, err := registry.OpenKey(registry.CURRENT_USER, internetSettingsPath, registry.SET_VALUE)
 	if err != nil {
 		return fmt.Errorf("sysproxy: open settings: %w", err)
@@ -76,7 +92,13 @@ func Pointing(endpoint string) (State, error) {
 	if strings.TrimSpace(endpoint) == "" {
 		return State{}, fmt.Errorf("sysproxy: no proxy address to set")
 	}
-	return State{Enabled: true, Server: endpoint, Override: DefaultBypass}, nil
+	current, err := Current()
+	if err != nil {
+		return State{}, err
+	}
+	// The flags come from what is already configured, so enabling the proxy
+	// adds to them rather than replacing them.
+	return State{Enabled: true, Server: endpoint, Override: DefaultBypass, Flags: current.Flags}, nil
 }
 
 // Verify reads the settings back and reports whether they are what was asked
@@ -86,6 +108,17 @@ func Pointing(endpoint string) (State, error) {
 // program is also writing, and a badge claiming the machine is using this proxy
 // when it is not is worse than no badge at all.
 func Verify(want State) error {
+	// Asked of WinINET, not of the registry: a read-back that goes to the same
+	// place the write went proves only that the write happened, and this has to
+	// prove the machine will use it.
+	enabled, err := perConnectionProxyEnabled()
+	if err != nil {
+		return err
+	}
+	if enabled != want.Enabled {
+		return fmt.Errorf("sysproxy: the settings were written but the system is still set to %s",
+			map[bool]string{true: "use a proxy", false: "connect directly"}[enabled])
+	}
 	got, err := Current()
 	if err != nil {
 		return err
