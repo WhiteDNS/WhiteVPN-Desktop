@@ -389,6 +389,12 @@ Measured 2026-08-04, from Windows:
   traffic ones.** The wrong shape panics inside the core rather than returning an
   error. Use the wrappers in `internal/engine/actions.go`.
 - **Unknown methods get no reply at all.** Every call needs a deadline.
+- **`setupConfig` carries no path.** It tells the core to read
+  `<homeDir>/config.yaml`, so the file has to be written under exactly that
+  name; a second engine gets its own home directory rather than its own file
+  name. This cost a shipped build: the measuring engine wrote `measure.yaml` and
+  every test failed with `GetFileAttributesEx … cannot find the file`.
+  `TestLiveMeasurerStartsAndMeasures` runs a real engine and catches it.
 - **IPv6 containment rests on route metric, not on removing routes.** The
   physical v6 defaults remain and are merely outranked, so containment has to be
   verified after connecting, never assumed.

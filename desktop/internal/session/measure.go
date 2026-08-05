@@ -42,6 +42,10 @@ type MeasureOptions struct {
 
 	CoreStdout io.Writer
 	CoreStderr io.Writer
+
+	// PipeSecurityDescriptor widens the Windows control channel, as it does for
+	// a real session. Leave empty in production.
+	PipeSecurityDescriptor string
 }
 
 // Measurer is a running engine that carries no user traffic.
@@ -87,18 +91,23 @@ func StartMeasurer(ctx context.Context, opts MeasureOptions) (*Measurer, error) 
 	if err := os.MkdirAll(opts.HomeDir, 0o755); err != nil {
 		return nil, fmt.Errorf("session: prepare measuring directory: %w", err)
 	}
-	configPath := filepath.Join(opts.HomeDir, "measure.yaml")
+	// config.yaml, not a name of our choosing: SetupConfig does not carry a path,
+	// it tells the core to read <homeDir>/config.yaml. The measuring engine gets
+	// its own home directory instead, which is what keeps it from treading on the
+	// live session's config.
+	configPath := filepath.Join(opts.HomeDir, "config.yaml")
 	if err := os.WriteFile(configPath, []byte(document), 0o600); err != nil {
 		return nil, fmt.Errorf("session: write measuring config: %w", err)
 	}
 
 	process, err := engine.Spawn(ctx, engine.SpawnOptions{
-		CorePath:       opts.CorePath,
-		WorkingDir:     opts.HomeDir,
-		ConnectTimeout: 20 * time.Second,
-		Stdout:         opts.CoreStdout,
-		Stderr:         opts.CoreStderr,
-		Elevated:       false,
+		CorePath:           opts.CorePath,
+		WorkingDir:         opts.HomeDir,
+		ConnectTimeout:     20 * time.Second,
+		Stdout:             opts.CoreStdout,
+		Stderr:             opts.CoreStderr,
+		Elevated:           false,
+		SecurityDescriptor: opts.PipeSecurityDescriptor,
 	})
 	if err != nil {
 		return nil, err
@@ -118,6 +127,9 @@ func (m *Measurer) startCore(ctx context.Context, homeDir, configPath string) er
 
 	if err := m.process.Init(setupCtx, homeDir, 36); err != nil {
 		return fmt.Errorf("session: initialise measuring engine: %w", err)
+	}
+	if err := m.process.ValidateConfig(setupCtx, configPath); err != nil {
+		return fmt.Errorf("session: %w", err)
 	}
 	if err := m.process.SetupConfig(setupCtx, map[string]string{}, mihomoconf.DelayTestURL); err != nil {
 		return fmt.Errorf("session: apply measuring config: %w", err)
