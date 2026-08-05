@@ -275,7 +275,7 @@ EOF
         --executable "$appimage_bin_dir/$package_name" \
         --desktop-file "$appimage_desktop" \
         --icon-file "$appimage_icon" \
-        --output appimage >/dev/null
+        --output appimage
   )
 
   appimage_path="$(find "$appimage_output_dir" -maxdepth 1 -type f -name '*.AppImage' | head -n 1)"
