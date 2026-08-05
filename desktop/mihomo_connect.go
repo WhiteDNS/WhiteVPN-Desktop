@@ -97,6 +97,14 @@ func (a *App) startWhiteDNSVPNWithMihomo() (model.AppState, error) {
 		return a.GetAppState(), err
 	}
 
+	// IP fronting. Until now this setting was read only by the Xray path, which
+	// is not the engine this app runs, so it was a control that changed nothing.
+	frontingIP := ""
+	if len(settings.FrontingIPs) > 0 {
+		frontingIP = settings.FrontingIPs[0]
+		a.appendRuntimeLog(fmt.Sprintf("fronting through %s", frontingIP))
+	}
+
 	a.handleRuntimeState(model.RuntimeConnecting, "Starting engine")
 
 	connected, err := session.Connect(ctx, session.Options{
@@ -104,6 +112,7 @@ func (a *App) startWhiteDNSVPNWithMihomo() (model.AppState, error) {
 		HomeDir:      homeDir,
 		Subscription: subscription,
 		Prefer:       prefer,
+		FrontingIP:   frontingIP,
 		DNSPrivacy:   dnsPrivacyMode(settings.DNSPrivacy.Mode),
 		DoHURL:       settings.DNSPrivacy.DoHURL,
 		DoTEndpoint:  settings.DNSPrivacy.DoTEndpoint,

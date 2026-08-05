@@ -116,6 +116,16 @@ must reject out-of-range values rather than clamping them silently.
 |---|---|---|---|
 | Fronting IPs | `white_dns_fronting_ip` / `fronting_ip` | unset | `[x]` |
 
+Until 2026-08-04 this was a control that changed nothing: the setting was read
+only by the Xray path, which is not the engine this app runs. `mihomoconf`
+fronts the proxies now, on the phone's rules — a node whose server is a name,
+carrying TLS or an HTTP-shaped transport, and not using Reality, which pins the
+address into its handshake. The address is replaced; the name keeps travelling
+in the SNI or the Host header, or the server has no idea which site is being
+asked for. Nodes that cannot be fronted stay reachable at their own address
+rather than being dropped: a front covering most of a list beats a list cut
+down to what it covers.
+
 Comma-separated, **at most 5** entries of `IP` or `IP:port`. Port preference
 order when connecting: 443, 8443, then 2053, 2083, 2087, 2096.
 

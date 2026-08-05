@@ -52,6 +52,11 @@ type Options struct {
 	// another without being told.
 	Prefer []string
 
+	// FrontingIP reaches every eligible node through this address instead of the
+	// one its name resolves to, while still presenting the name. Empty means the
+	// nodes are reached directly.
+	FrontingIP string
+
 	// CoreStdout and CoreStderr receive the engine's own output. Some startup
 	// failures are only ever printed there.
 	CoreStdout io.Writer
@@ -283,6 +288,12 @@ func PrepareConfig(opts Options) (string, []string, error) {
 		group       string
 	)
 	if proxies, err := mihomoconf.ConvertLinks(body); err == nil {
+		if opts.FrontingIP != "" {
+			// Nodes fronting cannot be applied to are left reachable at their own
+			// address rather than dropped: a front that covers most of the list is
+			// better than a list cut down to what it covers.
+			proxies, _ = mihomoconf.FrontProxies(proxies, opts.FrontingIP)
+		}
 		// Share links, which is what the WhiteDNS catalogue is. They carry nodes
 		// only, so the groups and rule have to be generated around them.
 		document, buildErr := mihomoconf.BuildProxiesYAML(proxies)
