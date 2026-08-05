@@ -952,8 +952,8 @@ function App() {
     return (
       <>
         <LoadingView t={t} />
-        <ErrorToast toast={errorToast} onDismiss={clearErrorToast} />
-        <SuccessToast toast={successToast} onDismiss={clearSuccessToast} />
+        <ErrorToast toast={errorToast} onDismiss={clearErrorToast} t={t} />
+        <SuccessToast toast={successToast} onDismiss={clearSuccessToast} t={t} />
       </>
     );
   }
@@ -973,11 +973,11 @@ function App() {
                   <AppIcon className="size-7" />
                   <span className="min-w-0 truncate text-sm font-medium">WhiteVPN</span>
                 </div>
-                <ThemeSettingsMenu />
+                <ThemeSettingsMenu t={t} />
               </div>
 
-              <ErrorToast toast={errorToast} onDismiss={clearErrorToast} />
-              <SuccessToast toast={successToast} onDismiss={clearSuccessToast} />
+              <ErrorToast toast={errorToast} onDismiss={clearErrorToast} t={t} />
+              <SuccessToast toast={successToast} onDismiss={clearSuccessToast} t={t} />
 
               {activePage === "vpn" && (
                 <WhiteDNSVPNPage
@@ -1031,18 +1031,26 @@ function App() {
                 />
               )}
 
-              {activePage === "logs" && <LogsPage runtime={state.runtime} runtimeType="v2ray" onState={applyState} onError={showError} />}
+              {activePage === "logs" && (
+                <LogsPage runtime={state.runtime} runtimeType="v2ray" onState={applyState} onError={showError} t={t} />
+              )}
 
               {activePage === "white-ips" && (
-                <V2RayWhiteIPsPage onState={applyState} onError={showError} onSuccess={showSuccess} />
+                <V2RayWhiteIPsPage onState={applyState} onError={showError} onSuccess={showSuccess} t={t} />
               )}
 
               {activePage === "validator" && (
-                <ValidatorPage state={validatorState} onState={applyValidatorState} onAppState={applyState} onError={showError} />
+                <ValidatorPage
+                  state={validatorState}
+                  onState={applyValidatorState}
+                  onAppState={applyState}
+                  onError={showError}
+                  t={t}
+                />
               )}
 
               {activePage === "backup" && (
-                <FullBackupPage state={state} onState={applyState} onError={showError} onSuccess={showSuccess} />
+                <FullBackupPage state={state} onState={applyState} onError={showError} onSuccess={showSuccess} t={t} />
               )}
 
             </div>
@@ -1063,7 +1071,7 @@ function App() {
   );
 }
 
-function ErrorToast({ toast, onDismiss }: { toast: AppErrorToast | null; onDismiss: () => void }) {
+function ErrorToast({ toast, onDismiss, t }: { toast: AppErrorToast | null; onDismiss: () => void; t: TranslateFn }) {
   if (!toast) {
     return null;
   }
@@ -1072,10 +1080,10 @@ function ErrorToast({ toast, onDismiss }: { toast: AppErrorToast | null; onDismi
     <div className="fixed top-4 end-4 start-4 z-[100] sm:top-6 sm:end-6 sm:start-auto sm:w-full sm:max-w-md">
       <Alert variant="destructive" className="border-destructive/25 shadow-lg">
         <AlertCircle />
-        <AlertTitle>Operation failed</AlertTitle>
+        <AlertTitle>{t("toast.failed")}</AlertTitle>
         <AlertDescription>{toast.message}</AlertDescription>
         <AlertAction>
-          <Button variant="ghost" size="icon-sm" onClick={onDismiss} aria-label="Dismiss">
+          <Button variant="ghost" size="icon-sm" onClick={onDismiss} aria-label={t("common.dismiss")}>
             <X />
           </Button>
         </AlertAction>
@@ -1084,7 +1092,7 @@ function ErrorToast({ toast, onDismiss }: { toast: AppErrorToast | null; onDismi
   );
 }
 
-function SuccessToast({ toast, onDismiss }: { toast: AppErrorToast | null; onDismiss: () => void }) {
+function SuccessToast({ toast, onDismiss, t }: { toast: AppErrorToast | null; onDismiss: () => void; t: TranslateFn }) {
   if (!toast) {
     return null;
   }
@@ -1095,7 +1103,7 @@ function SuccessToast({ toast, onDismiss }: { toast: AppErrorToast | null; onDis
         <CheckCircle2 />
         <AlertTitle>{toast.message}</AlertTitle>
         <AlertAction>
-          <Button variant="ghost" size="icon-sm" onClick={onDismiss} aria-label="Dismiss">
+          <Button variant="ghost" size="icon-sm" onClick={onDismiss} aria-label={t("common.dismiss")}>
             <X />
           </Button>
         </AlertAction>
@@ -1104,7 +1112,7 @@ function SuccessToast({ toast, onDismiss }: { toast: AppErrorToast | null; onDis
   );
 }
 
-function ThemeSettingsMenu({ className, sidebar = false }: { className?: string; sidebar?: boolean }) {
+function ThemeSettingsMenu({ className, sidebar = false, t }: { className?: string; sidebar?: boolean; t: TranslateFn }) {
   const { theme, resolvedTheme, setTheme } = useTheme();
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -1145,7 +1153,7 @@ function ThemeSettingsMenu({ className, sidebar = false }: { className?: string;
         type="button"
         variant="ghost"
         size="icon-sm"
-        aria-label="Open appearance settings"
+        aria-label={t("theme.open")}
         aria-expanded={open}
         onClick={() => setOpen((current) => !current)}
         className={cn(
@@ -1158,30 +1166,30 @@ function ThemeSettingsMenu({ className, sidebar = false }: { className?: string;
       {open && (
         <div
           role="menu"
-          aria-label="Theme"
+          aria-label={t("theme.title")}
           className="absolute end-0 top-[calc(100%+0.375rem)] z-50 w-52 overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
         >
           <div className="flex items-center justify-between gap-2 px-2 py-1.5 text-sm font-medium">
-            <span>Theme</span>
+            <span>{t("theme.title")}</span>
             <span className="rounded-sm bg-muted px-1.5 py-0.5 text-[0.65rem] font-normal uppercase leading-none text-muted-foreground">
               {resolvedTheme}
             </span>
           </div>
           <ThemeMenuItem
             icon={<Sun />}
-            label="Light"
+            label={t("theme.light")}
             active={theme === "light"}
             onSelect={() => chooseTheme("light")}
           />
           <ThemeMenuItem
             icon={<Moon />}
-            label="Dark"
+            label={t("theme.dark")}
             active={theme === "dark"}
             onSelect={() => chooseTheme("dark")}
           />
           <ThemeMenuItem
             icon={<Monitor />}
-            label="System"
+            label={t("theme.system")}
             active={theme === "system"}
             onSelect={() => chooseTheme("system")}
           />
@@ -1269,6 +1277,7 @@ function AppSidebar({
           </div>
           <ThemeSettingsMenu
             sidebar
+            t={t}
             className="ms-auto group-data-[collapsible=icon]:hidden"
           />
         </div>
@@ -1276,7 +1285,7 @@ function AppSidebar({
           href={whiteDnsTelegramUrl}
           target="_blank"
           rel="noopener noreferrer"
-          aria-label="Open WhiteDNS Telegram channel"
+          aria-label={t("nav.source.open")}
           onClick={(event) => {
             event.preventDefault();
             openExternalUrl(whiteDnsTelegramUrl);
@@ -2991,9 +3000,9 @@ function V2RaySubscriptionsPage({
         setDraft(normalizeV2RaySubscription(result.subscription));
       }
       if (result.ok) {
-        onSuccess(result.message || `Imported ${result.imported} V2Ray profile${result.imported === 1 ? "" : "s"}.`);
+        onSuccess(result.message || t("subs.imported", { count: result.imported }));
       } else {
-        onError(result.message || "Subscription refresh failed.");
+        onError(result.message || t("subs.refreshFailed"));
       }
     } catch (err) {
       onError(messageFromError(err));
@@ -3040,25 +3049,23 @@ function V2RaySubscriptionsPage({
     <>
       <PageShell
         eyebrow="WhiteVPN"
-        title="Subscriptions"
+        title={t("nav.subscriptions")}
         actions={
           <Button type="button" variant="outline" onClick={openNewSubscription}>
             <Plus />
-            New subscription
+            {t("subs.new")}
           </Button>
         }
       >
         <div className="overflow-hidden rounded-lg border bg-card">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-muted/30 px-3 py-2.5">
             <div className="min-w-0">
-              <p className="text-sm font-semibold">Subscription groups</p>
-              <p className="text-xs text-muted-foreground">
-                {state.v2raySubscriptions.length} source{state.v2raySubscriptions.length === 1 ? "" : "s"}
-              </p>
+              <p className="text-sm font-semibold">{t("subs.groups")}</p>
+              <p className="text-xs text-muted-foreground">{t("subs.sources", { count: state.v2raySubscriptions.length })}</p>
             </div>
           </div>
           {state.v2raySubscriptions.length === 0 ? (
-            <div className="px-3 py-4 text-sm text-muted-foreground">No saved subscription URLs.</div>
+            <div className="px-3 py-4 text-sm text-muted-foreground">{t("subs.empty")}</div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full min-w-[800px] table-fixed text-start">
@@ -3071,11 +3078,11 @@ function V2RaySubscriptionsPage({
                 </colgroup>
                 <thead className="border-b bg-muted/20 text-xs uppercase text-muted-foreground">
                   <tr>
-                    <th className="px-3 py-2 font-medium">Name</th>
-                    <th className="px-3 py-2 font-medium">URL</th>
-                    <th className="px-3 py-2 font-medium">Profiles</th>
-                    <th className="px-3 py-2 font-medium">Status</th>
-                    <th className="px-3 py-2 text-end font-medium">Actions</th>
+                    <th className="px-3 py-2 font-medium">{t("subs.column.name")}</th>
+                    <th className="px-3 py-2 font-medium">{t("subs.column.url")}</th>
+                    <th className="px-3 py-2 font-medium">{t("subs.column.profiles")}</th>
+                    <th className="px-3 py-2 font-medium">{t("subs.column.status")}</th>
+                    <th className="px-3 py-2 text-end font-medium">{t("servers.column.actions")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -3128,7 +3135,7 @@ function V2RaySubscriptionsPage({
                               <AlertCircle className="size-3.5 shrink-0 text-amber-600 dark:text-amber-400" aria-label={t("subs.inTheClear")} />
                             )}
                             <span className={cn("truncate text-xs", builtIn ? "text-muted-foreground" : "font-mono", inTheClear && "text-amber-600 dark:text-amber-400")} title={inTheClear ? t("subs.inTheClear") : undefined}>
-                              {builtIn ? "Built-in" : subscription.url}
+                              {builtIn ? t("subs.builtIn") : subscription.url}
                             </span>
                           </span>
                         </td>
@@ -3188,7 +3195,7 @@ function V2RaySubscriptionsPage({
                                   <RotateCcw className={cn(refreshing && "animate-spin")} />
                                 </Button>
                               </TooltipTrigger>
-                              <TooltipContent>{refreshing ? "Refreshing" : "Refresh"}</TooltipContent>
+                              <TooltipContent>{refreshing ? t("subs.refreshing") : t("subs.refresh")}</TooltipContent>
                             </Tooltip>
                             <Tooltip>
                               <TooltipTrigger asChild>
@@ -3208,7 +3215,11 @@ function V2RaySubscriptionsPage({
                                 </Button>
                               </TooltipTrigger>
                               <TooltipContent>
-                                {builtIn ? "The built-in catalogue stays" : deleteDisabled ? "Disconnect first" : "Delete subscription and related configs"}
+                                {builtIn
+                                  ? t("subs.builtInStays")
+                                  : deleteDisabled
+                                    ? t("subs.disconnectFirst")
+                                    : t("subs.deleteHint")}
                               </TooltipContent>
                             </Tooltip>
                           </div>
@@ -3226,13 +3237,13 @@ function V2RaySubscriptionsPage({
       <Dialog open={editorOpen} onOpenChange={setEditorOpen}>
         <DialogContent className="max-h-[calc(100svh-2rem)] overflow-hidden sm:max-w-xl">
           <DialogHeader>
-            <DialogTitle>{draft.id ? draft.name : "New subscription"}</DialogTitle>
-            <DialogDescription>Saved V2Ray subscription URL</DialogDescription>
+            <DialogTitle>{draft.id ? draft.name : t("subs.new")}</DialogTitle>
+            <DialogDescription>{t("subs.editor.description")}</DialogDescription>
           </DialogHeader>
           <FieldGroup className="grid gap-4">
-            <TextField label="Name" value={draft.name} onChange={(name) => setDraft({ ...draft, name })} />
+            <TextField label={t("subs.column.name")} value={draft.name} onChange={(name) => setDraft({ ...draft, name })} />
             <TextField
-              label="Subscription URL"
+              label={t("subs.editor.url")}
               value={draft.url}
               onChange={(url) => setDraft({ ...draft, url })}
               placeholder="https://example.com/sub"
@@ -3240,7 +3251,7 @@ function V2RaySubscriptionsPage({
             {draft.lastError && (
               <Alert variant="destructive">
                 <AlertCircle />
-                <AlertTitle>Last refresh failed</AlertTitle>
+                <AlertTitle>{t("subs.lastRefreshFailed")}</AlertTitle>
                 <AlertDescription>{draft.lastError}</AlertDescription>
               </Alert>
             )}
@@ -3249,24 +3260,24 @@ function V2RaySubscriptionsPage({
             {draft.id ? (
               <Button type="button" variant="destructive" onClick={() => requestDeleteSubscription(draft)} className="sm:me-auto">
                 <Trash2 />
-                Delete
+                {t("subs.delete")}
               </Button>
             ) : (
               <span />
             )}
             <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
               <Button type="button" variant="outline" onClick={() => setEditorOpen(false)}>
-                Cancel
+                {t("common.cancel")}
               </Button>
               {draft.id && (
                 <Button type="button" variant="outline" disabled={Boolean(refreshingSubscriptionIds[draft.id])} onClick={() => refreshSubscription(draft)}>
                   <RotateCcw className={cn(refreshingSubscriptionIds[draft.id] && "animate-spin")} />
-                  Refresh
+                  {t("subs.refresh")}
                 </Button>
               )}
               <Button type="button" disabled={saveDisabled} onClick={saveSubscription}>
                 <Save />
-                Save
+                {t("common.save")}
               </Button>
             </div>
           </DialogFooter>
@@ -3275,14 +3286,17 @@ function V2RaySubscriptionsPage({
       <Dialog open={Boolean(deleteTarget)} onOpenChange={(open) => !open && setDeleteTarget(null)}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Delete V2Ray subscription?</DialogTitle>
+            <DialogTitle>{t("subs.deleteDialog.title")}</DialogTitle>
             <DialogDescription>
-              This will delete {deleteTarget?.name || "this subscription"} and {deleteTargetConfigCount} related V2Ray config{deleteTargetConfigCount === 1 ? "" : "s"}. This action cannot be undone.
+              {t("subs.deleteDialog.description", {
+                name: deleteTarget?.name || t("subs.thisSubscription"),
+                count: deleteTargetConfigCount,
+              })}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setDeleteTarget(null)}>
-              Cancel
+              {t("common.cancel")}
             </Button>
             <Button
               type="button"
@@ -3295,7 +3309,7 @@ function V2RaySubscriptionsPage({
               }}
             >
               <Trash2 />
-              Delete subscription and configs
+              {t("subs.deleteConfirm")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -3417,11 +3431,13 @@ function FullBackupPage({
   onState,
   onError,
   onSuccess,
+  t,
 }: {
   state: AppState;
   onState: (state: AppState) => void;
   onError: (message: string) => void;
   onSuccess: (message: string) => void;
+  t: TranslateFn;
 }) {
   const [backupText, setBackupText] = useState("");
   const [restoreOpen, setRestoreOpen] = useState(false);
@@ -3451,7 +3467,7 @@ function FullBackupPage({
       onState(next);
       setRestoreText("");
       setRestoreOpen(false);
-      onSuccess("Restored backup.");
+      onSuccess(t("backup.restored"));
     } catch (err) {
       onError(messageFromError(err));
     }
@@ -3459,14 +3475,15 @@ function FullBackupPage({
 
   return (
     <>
-      <PageShell eyebrow="Tools" title="Full Backup">
+      <PageShell eyebrow={t("nav.tools")} title={t("nav.backup")}>
         <Card>
           <CardHeader>
-            <CardTitle>Profile Backup</CardTitle>
-            <CardDescription>Export or restore all saved WhiteVPN profiles.</CardDescription>
+            <CardTitle>{t("backup.card.title")}</CardTitle>
+            <CardDescription>{t("backup.card.description")}</CardDescription>
           </CardHeader>
           <CardContent>
             <BackupRestoreSection
+              t={t}
               restoreLocked={profileSelectionLocked(state.runtime)}
               onExportBackup={exportBackup}
               onOpenRestore={() => setRestoreOpen(true)}
@@ -3479,7 +3496,7 @@ function FullBackupPage({
         <DialogContent className="max-h-[calc(100svh-2rem)] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden sm:max-w-3xl">
           <DialogHeader>
             <DialogTitle>WhiteVPN backup.json</DialogTitle>
-            <DialogDescription>Full profile backup exported as JSON.</DialogDescription>
+            <DialogDescription>{t("backup.export.description")}</DialogDescription>
           </DialogHeader>
           <Textarea
             readOnly
@@ -3490,14 +3507,14 @@ function FullBackupPage({
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => navigator.clipboard?.writeText(backupText)}>
               <Copy />
-              Copy JSON
+              {t("backup.copyJson")}
             </Button>
             <Button
               type="button"
               onClick={() => downloadTextFile(`whitedns-backup-${new Date().toISOString().slice(0, 10)}.json`, backupText, "application/json;charset=utf-8")}
             >
               <FileText />
-              Download JSON
+              {t("backup.downloadJson")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -3506,16 +3523,16 @@ function FullBackupPage({
       <Dialog open={restoreOpen} onOpenChange={setRestoreOpen}>
         <DialogContent className="max-h-[calc(100svh-2rem)] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Restore Backup</DialogTitle>
-            <DialogDescription>Restore replaces saved MasterDNS, V2Ray, resolver, and settings profiles.</DialogDescription>
+            <DialogTitle>{t("backup.restore.title")}</DialogTitle>
+            <DialogDescription>{t("backup.restore.description")}</DialogDescription>
           </DialogHeader>
           <div className="min-h-0 space-y-4 overflow-auto pr-1">
             <Field>
-              <FieldLabel>Backup file</FieldLabel>
+              <FieldLabel>{t("backup.file")}</FieldLabel>
               <Input type="file" accept=".json,application/json,text/plain" onChange={(event) => importBackupFile(event.target.files?.[0] || null)} />
             </Field>
             <TextAreaField
-              label="Backup JSON"
+              label={t("backup.json")}
               value={restoreText}
               onChange={setRestoreText}
               placeholder={'{\n  "schema": "whitedns.desktop.backup",\n  "version": 1\n}'}
@@ -3524,11 +3541,11 @@ function FullBackupPage({
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setRestoreOpen(false)}>
-              Cancel
+              {t("common.cancel")}
             </Button>
             <Button disabled={restoreDisabled} onClick={restoreBackup}>
               <Upload />
-              Restore
+              {t("backup.restore")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -3541,32 +3558,34 @@ function BackupRestoreSection({
   restoreLocked,
   onExportBackup,
   onOpenRestore,
+  t,
 }: {
   restoreLocked: boolean;
   onExportBackup: () => void;
   onOpenRestore: () => void;
+  t: TranslateFn;
 }) {
   return (
-    <SettingsFieldSet legend="Backup and restore">
+    <SettingsFieldSet legend={t("backup.section")}>
       <FieldGroup>
         <Field orientation="horizontal" className="items-center justify-between gap-4 rounded-lg border p-4">
           <FieldContent>
-            <FieldTitle>Export full backup</FieldTitle>
-            <FieldDescription>MasterDNS, V2Ray, resolvers, settings, selected profiles, and saved secrets.</FieldDescription>
+            <FieldTitle>{t("backup.export.title")}</FieldTitle>
+            <FieldDescription>{t("backup.export.hint")}</FieldDescription>
           </FieldContent>
           <Button type="button" variant="outline" onClick={onExportBackup}>
             <FileText />
-            Export
+            {t("backup.export")}
           </Button>
         </Field>
         <Field orientation="horizontal" className="items-center justify-between gap-4 rounded-lg border p-4">
           <FieldContent>
-            <FieldTitle>Restore full backup</FieldTitle>
-            <FieldDescription>Restores are available when WhiteDNS is disconnected.</FieldDescription>
+            <FieldTitle>{t("backup.restore.fieldTitle")}</FieldTitle>
+            <FieldDescription>{t("backup.restore.hint")}</FieldDescription>
           </FieldContent>
           <Button type="button" variant="outline" disabled={restoreLocked} onClick={onOpenRestore}>
             <Upload />
-            Restore
+            {t("backup.restore")}
           </Button>
         </Field>
       </FieldGroup>
@@ -3578,10 +3597,12 @@ function V2RayWhiteIPsPage({
   onState,
   onError,
   onSuccess,
+  t,
 }: {
   onState: (state: AppState) => void;
   onError: (message: string) => void;
   onSuccess: (message: string) => void;
+  t: TranslateFn;
 }) {
   const [configText, setConfigText] = useState("");
   const [whiteIPText, setWhiteIPText] = useState("");
@@ -3636,7 +3657,7 @@ function V2RayWhiteIPsPage({
     try {
       const result = await backend.generateV2RayWhiteIpProfiles(configText, whiteIPText);
       setGeneratedDialog({ ...result, copyStatus: "" });
-      setStatusText(`Generated ${result.generated} config${result.generated === 1 ? "" : "s"}.`);
+      setStatusText(t("whiteip.status.generated", { count: result.generated }));
     } catch (err) {
       const message = messageFromError(err);
       setStatusText(message);
@@ -3653,10 +3674,8 @@ function V2RayWhiteIPsPage({
     try {
       const result = await backend.importV2RayWhiteIpProfiles(configText, whiteIPText);
       onState(result.state);
-      const profileLabel = result.imported === 1 ? "profile" : "profiles";
-      const endpointLabel = result.whiteIpCount === 1 ? "endpoint" : "endpoints";
-      onSuccess(`Imported ${result.imported} V2Ray ${profileLabel} from ${result.whiteIpCount} White IP ${endpointLabel}.`);
-      setStatusText(`${result.sourceProfileCount} source profile${result.sourceProfileCount === 1 ? "" : "s"} converted.`);
+      onSuccess(t("whiteip.status.imported", { profiles: result.imported, endpoints: result.whiteIpCount }));
+      setStatusText(t("whiteip.status.converted", { count: result.sourceProfileCount }));
       setGeneratedDialog(null);
     } catch (err) {
       const message = messageFromError(err);
@@ -3673,9 +3692,9 @@ function V2RayWhiteIPsPage({
     }
     try {
       await navigator.clipboard?.writeText(generatedDialog.configText);
-      setGeneratedDialog({ ...generatedDialog, copyStatus: "Copied" });
+      setGeneratedDialog({ ...generatedDialog, copyStatus: t("whiteip.copied") });
     } catch {
-      setGeneratedDialog({ ...generatedDialog, copyStatus: "Copy failed" });
+      setGeneratedDialog({ ...generatedDialog, copyStatus: t("whiteip.copyFailed") });
     }
   }
 
@@ -3685,7 +3704,7 @@ function V2RayWhiteIPsPage({
     }
     try {
       setWhiteIPText(await file.text());
-      setStatusText(`Loaded ${file.name}.`);
+      setStatusText(t("whiteip.status.loaded", { name: file.name }));
     } catch (err) {
       const message = messageFromError(err);
       setStatusText(message);
@@ -3695,23 +3714,23 @@ function V2RayWhiteIPsPage({
 
   function resetDefaultWhiteIPs() {
     setWhiteIPText(defaultWhiteIPText);
-    setStatusText("Default WhiteDNS IP list restored.");
+    setStatusText(t("whiteip.status.reset"));
   }
 
   return (
     <>
     <PageShell
-      eyebrow="Tools"
-      title="V2Ray White IP Generator"
+      eyebrow={t("nav.tools")}
+      title={t("nav.whiteIps")}
       actions={
         <>
           <Button type="button" variant="outline" disabled={loadingDefault || !defaultWhiteIPText} onClick={resetDefaultWhiteIPs}>
             <RotateCcw />
-            Reset default
+            {t("whiteip.resetDefault")}
           </Button>
           <Button type="button" disabled={generateDisabled} onClick={generateWhiteIPProfiles}>
             <Share2 />
-            {generating ? "Generating" : "Generate"}
+            {generating ? t("whiteip.generating") : t("whiteip.generate")}
           </Button>
         </>
       }
@@ -3719,12 +3738,12 @@ function V2RayWhiteIPsPage({
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
         <Card>
           <CardHeader>
-            <CardTitle>Source config</CardTitle>
-            <CardDescription>Paste one or more V2Ray share links or a WireGuard config.</CardDescription>
+            <CardTitle>{t("whiteip.source.title")}</CardTitle>
+            <CardDescription>{t("whiteip.source.description")}</CardDescription>
           </CardHeader>
           <CardContent>
             <TextAreaField
-              label="V2Ray config"
+              label={t("whiteip.source.label")}
               value={configText}
               onChange={setConfigText}
               placeholder={"vless://...\nvmess://...\ntrojan://...\nss://...\nhy2://..."}
@@ -3737,17 +3756,17 @@ function V2RayWhiteIPsPage({
           <CardHeader>
             <div className="flex min-w-0 items-start justify-between gap-3">
               <div className="min-w-0">
-                <CardTitle>White IP list</CardTitle>
+                <CardTitle>{t("whiteip.list.title")}</CardTitle>
                 <CardDescription>
-                  {endpointLineCount ? `${endpointLineCount} endpoint line${endpointLineCount === 1 ? "" : "s"}` : "No endpoint lines"}
+                  {endpointLineCount ? t("whiteip.list.count", { count: endpointLineCount }) : t("whiteip.list.none")}
                 </CardDescription>
               </div>
-              {loadingDefault && <Badge variant="outline">Loading</Badge>}
+              {loadingDefault && <Badge variant="outline">{t("whiteip.loading")}</Badge>}
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
             <Field>
-              <FieldLabel>Import list file</FieldLabel>
+              <FieldLabel>{t("whiteip.importFile")}</FieldLabel>
               <Input
                 type="file"
                 accept=".txt,.lst,.conf,.config,.csv,.resolvers,text/plain"
@@ -3758,7 +3777,7 @@ function V2RayWhiteIPsPage({
               />
             </Field>
             <TextAreaField
-              label="Endpoints"
+              label={t("whiteip.endpoints")}
               value={whiteIPText}
               onChange={setWhiteIPText}
               placeholder={"# Format: host:port\n[cloudflare]\n69.84.182.49:443"}
@@ -3773,11 +3792,11 @@ function V2RayWhiteIPsPage({
     <Dialog open={Boolean(generatedDialog)} onOpenChange={(open) => !open && setGeneratedDialog(null)}>
       <DialogContent className="max-h-[calc(100svh-2rem)] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden sm:max-w-3xl">
         <DialogHeader>
-          <DialogTitle>Generated V2Ray White IP Profiles</DialogTitle>
+          <DialogTitle>{t("whiteip.dialog.title")}</DialogTitle>
           <DialogDescription>
             {generatedDialog
-              ? `${generatedDialog.generated} config${generatedDialog.generated === 1 ? "" : "s"} from ${generatedDialog.whiteIpCount} White IP endpoint${generatedDialog.whiteIpCount === 1 ? "" : "s"}.`
-              : "Converted V2Ray configs"}
+              ? t("whiteip.dialog.description", { configs: generatedDialog.generated, endpoints: generatedDialog.whiteIpCount })
+              : t("whiteip.dialog.fallback")}
           </DialogDescription>
         </DialogHeader>
         <Textarea
@@ -3787,19 +3806,20 @@ function V2RayWhiteIPsPage({
         />
         <DialogFooter className="gap-2 sm:justify-between">
           <div className="min-h-5 text-xs font-medium text-muted-foreground">
-            {generatedDialog?.copyStatus || (generatedDialog ? `${generatedDialog.sourceProfileCount} source profile${generatedDialog.sourceProfileCount === 1 ? "" : "s"}` : "")}
+            {generatedDialog?.copyStatus ||
+              (generatedDialog ? t("whiteip.dialog.sources", { count: generatedDialog.sourceProfileCount }) : "")}
           </div>
           <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <Button type="button" variant="outline" onClick={() => setGeneratedDialog(null)}>
-              Close
+              {t("common.close")}
             </Button>
             <Button type="button" variant="outline" disabled={!generatedDialog?.configText} onClick={copyGeneratedProfiles}>
               <Copy />
-              Copy
+              {t("common.copy")}
             </Button>
             <Button type="button" disabled={!generatedDialog || importing} onClick={importWhiteIPProfiles}>
               <Download />
-              {importing ? "Importing" : "Import as V2Ray profiles"}
+              {importing ? t("whiteip.importing") : t("whiteip.importAsProfiles")}
             </Button>
           </div>
         </DialogFooter>
@@ -3814,11 +3834,13 @@ function ValidatorPage({
   onState,
   onAppState,
   onError,
+  t,
 }: {
   state: ValidatorState;
   onState: (state: ValidatorState) => void;
   onAppState: (state: AppState) => void;
   onError: (message: string) => void;
+  t: TranslateFn;
 }) {
   const [mode, setMode] = useState<"quick" | "bulk">("bulk");
   const [host, setHost] = useState("");
@@ -4019,7 +4041,7 @@ function ValidatorPage({
     setMode("bulk");
     setRangeSource("imported");
     setInputError("");
-    setImportStatusText("Importing file");
+    setImportStatusText(t("validator.importing"));
     try {
       const text = await file.text();
       const result = await backend.parseValidatorRangeInput(text);
@@ -4029,15 +4051,20 @@ function ValidatorPage({
       setSelectedRanges((current) => current.filter((range) => defaultRangeSet.has(range) || nextImportedSet.has(range)));
 
       const summary = [
-        `${formatCount(result.ranges.length)} imported`,
-        result.totalCount ? `${formatCount(result.totalCount)} input${result.totalCount === 1 ? "" : "s"}` : "",
-        result.duplicateCount ? `${formatCount(result.duplicateCount)} duplicate${result.duplicateCount === 1 ? "" : "s"}` : "",
-        result.invalidCount ? `${formatCount(result.invalidCount)} invalid` : "",
+        t("validator.import.imported", { count: formatCount(result.ranges.length) }),
+        result.totalCount ? t("validator.import.inputs", { count: formatCount(result.totalCount) }) : "",
+        result.duplicateCount ? t("validator.import.duplicates", { count: formatCount(result.duplicateCount) }) : "",
+        result.invalidCount ? t("validator.import.invalid", { count: formatCount(result.invalidCount) }) : "",
       ].filter(Boolean).join(" · ");
-      const invalidSample = result.invalid.length ? ` Invalid: ${result.invalid.join(", ")}${result.invalidCount > result.invalid.length ? ", ..." : ""}` : "";
-      setImportStatusText(`${summary || "No input found."}${invalidSample}`);
+      const invalidSample = result.invalid.length
+        ? " " +
+          t("validator.import.invalidSample", {
+            list: result.invalid.join(", ") + (result.invalidCount > result.invalid.length ? ", ..." : ""),
+          })
+        : "";
+      setImportStatusText(`${summary || t("validator.import.none")}${invalidSample}`);
       if (!result.ranges.length) {
-        setInputError(result.totalCount ? "Imported file contains no valid IPv4 or CIDR ranges." : "Imported file is empty.");
+        setInputError(result.totalCount ? t("validator.import.noRanges") : t("validator.import.empty"));
       }
     } catch (err) {
       const message = messageFromError(err);
@@ -4119,25 +4146,25 @@ function ValidatorPage({
 
   return (
     <PageShell
-      eyebrow="Validator"
-      title="Tunnel Validator"
+      eyebrow={t("nav.validator")}
+      title={t("validator.title")}
     >
       <div className="grid gap-4 xl:grid-cols-[420px_minmax(0,1fr)]">
         <Card>
           <CardHeader>
-            <CardTitle>Endpoint input</CardTitle>
-            <CardDescription>Test endpoints from {defaultValidatorRangeCSVName}.</CardDescription>
+            <CardTitle>{t("validator.input.title")}</CardTitle>
+            <CardDescription>{t("validator.testEndpointsFrom", { file: defaultValidatorRangeCSVName })}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <Tabs value={mode} onValueChange={(value) => setMode(value as "quick" | "bulk")}>
               <TabsList>
-                <TabsTrigger value="quick">Quick</TabsTrigger>
-                <TabsTrigger value="bulk">Bulk</TabsTrigger>
+                <TabsTrigger value="quick">{t("validator.tab.quick")}</TabsTrigger>
+                <TabsTrigger value="bulk">{t("validator.tab.bulk")}</TabsTrigger>
               </TabsList>
               <TabsContent value="quick" className="space-y-4 pt-4">
-                <TextField label="Host" value={host} onChange={setHost} placeholder="example.com" />
-                <TextField label="Ports" value={ports} onChange={setPorts} placeholder="53, 443" />
-                <TextField label="SNI" value={sni} onChange={setSni} placeholder="optional.example.com" />
+                <TextField label={t("validator.host")} value={host} onChange={setHost} placeholder="example.com" />
+                <TextField label={t("validator.ports")} value={ports} onChange={setPorts} placeholder="53, 443" />
+                <TextField label={t("validator.sni")} value={sni} onChange={setSni} placeholder="optional.example.com" />
               </TabsContent>
               <TabsContent value="bulk" className="space-y-4 pt-4">
                 <FieldSet className="gap-3">
@@ -4158,14 +4185,18 @@ function ValidatorPage({
                         Clear ranges
                       </Button>
                       <span className="text-xs font-medium text-muted-foreground">
-                        {selectedRanges.length ? `${formatCount(selectedRangeEndpointCount)} endpoints` : rangesLoading ? "Loading" : "No ranges selected"}
+                        {selectedRanges.length
+                          ? t("validator.endpointCount", { count: formatCount(selectedRangeEndpointCount) })
+                          : rangesLoading
+                            ? t("whiteip.loading")
+                            : t("validator.noRanges")}
                       </span>
                     </div>
                     <div className="space-y-2">
                       <div className="flex items-center justify-between gap-2">
-                        <FieldLabel>Ports</FieldLabel>
+                        <FieldLabel>{t("validator.ports")}</FieldLabel>
                         <span className="text-xs text-muted-foreground">
-                          {rangePorts.length ? `${rangePorts.length} port${rangePorts.length === 1 ? "" : "s"}` : "No ports"}
+                          {rangePorts.length ? t("validator.portCount", { count: rangePorts.length }) : t("validator.noPorts")}
                         </span>
                       </div>
                       <Input
@@ -4174,27 +4205,27 @@ function ValidatorPage({
                         placeholder="443, 2053, 2083, 2087, 2096, 8443"
                         onChange={(event) => setRangePortText(event.target.value)}
                       />
-                      <FieldDescription>Comma or space separated. Each selected range is scanned once per port.</FieldDescription>
+                      <FieldDescription>{t("validator.ports.hint")}</FieldDescription>
                     </div>
                   </div>
                   {rangeSelectionTooLarge && (
                     <Alert variant="destructive">
                       <AlertCircle />
-                      <AlertTitle>Range selection too large</AlertTitle>
+                      <AlertTitle>{t("validator.tooLarge")}</AlertTitle>
                       <AlertDescription>Select at most {formatCount(maxValidatorSelectedRangeHosts)} endpoints.</AlertDescription>
                     </Alert>
                   )}
                   {!rangePorts.length && (
                     <Alert variant="destructive">
                       <AlertCircle />
-                      <AlertTitle>No ports selected</AlertTitle>
-                      <AlertDescription>Select at least one port to scan each range.</AlertDescription>
+                      <AlertTitle>{t("validator.noPortsSelected")}</AlertTitle>
+                      <AlertDescription>{t("validator.noPortsSelected.hint")}</AlertDescription>
                     </Alert>
                   )}
                   {rangePortParse.error && (
                     <Alert variant="destructive">
                       <AlertCircle />
-                      <AlertTitle>Invalid port list</AlertTitle>
+                      <AlertTitle>{t("validator.invalidPorts")}</AlertTitle>
                       <AlertDescription>{rangePortParse.error}</AlertDescription>
                     </Alert>
                   )}
@@ -4206,24 +4237,24 @@ function ValidatorPage({
                     }}
                   >
                     <TabsList className="grid w-full grid-cols-2">
-                      <TabsTrigger value="default">Default list</TabsTrigger>
-                      <TabsTrigger value="imported">Imported file</TabsTrigger>
+                      <TabsTrigger value="default">{t("validator.tab.default")}</TabsTrigger>
+                      <TabsTrigger value="imported">{t("validator.tab.imported")}</TabsTrigger>
                     </TabsList>
                     <TabsContent value="default" className="space-y-3 pt-3">
                       <Input
                         value={rangeQuery}
                         disabled={running}
-                        placeholder="Filter default ranges"
+                        placeholder={t("validator.filterDefault")}
                         onChange={(event) => setRangeQuery(event.target.value)}
                       />
                       {rangeStatusText && (
                         <Alert variant="destructive">
                           <AlertCircle />
-                          <AlertTitle>Default ranges unavailable</AlertTitle>
+                          <AlertTitle>{t("validator.defaultUnavailable")}</AlertTitle>
                           <AlertDescription>{rangeStatusText}</AlertDescription>
                         </Alert>
                       )}
-                      {renderRangeList(filteredRanges, rangesLoading, rangeQuery.trim() ? "No default ranges match" : "No default ranges")}
+                      {renderRangeList(filteredRanges, rangesLoading, rangeQuery.trim() ? t("validator.noDefaultMatch") : t("validator.noDefault"))}
                     </TabsContent>
                     <TabsContent value="imported" className="space-y-3 pt-3">
                       <div className="space-y-2">
@@ -4236,7 +4267,7 @@ function ValidatorPage({
                             event.currentTarget.value = "";
                           }}
                         />
-                        <FieldDescription>IP or CIDR range, separated by comma or line.</FieldDescription>
+                        <FieldDescription>{t("validator.range.hint")}</FieldDescription>
                         {importedFileName && (
                           <div className="flex min-w-0 items-center gap-2 text-xs font-medium text-muted-foreground">
                             <FileText className="size-3.5 shrink-0" />
@@ -4252,10 +4283,10 @@ function ValidatorPage({
                       <Input
                         value={rangeQuery}
                         disabled={running}
-                        placeholder="Filter imported ranges"
+                        placeholder={t("validator.filterImported")}
                         onChange={(event) => setRangeQuery(event.target.value)}
                       />
-                      {renderRangeList(filteredRanges, false, rangeQuery.trim() ? "No imported ranges match" : "Import a file to show ranges")}
+                      {renderRangeList(filteredRanges, false, rangeQuery.trim() ? t("validator.noImportedMatch") : t("validator.importToShow"))}
                     </TabsContent>
                   </Tabs>
                 </FieldSet>
@@ -4265,7 +4296,7 @@ function ValidatorPage({
             {inputError && (
               <Alert variant="destructive">
                 <AlertCircle />
-                <AlertTitle>Validator input error</AlertTitle>
+                <AlertTitle>{t("validator.inputError")}</AlertTitle>
                 <AlertDescription>{inputError}</AlertDescription>
               </Alert>
             )}
@@ -4274,10 +4305,10 @@ function ValidatorPage({
             <FieldSet>
               <FieldTitle className="text-base">Options</FieldTitle>
               <FieldGroup className="grid gap-3 sm:grid-cols-2">
-                <NumberField label="Retries" value={options.retries} min={1} max={8} onChange={(retries) => setOptions({ ...options, retries })} />
-                <NumberField label="Timeout ms" value={options.timeoutMillis} min={250} max={60000} onChange={(timeoutMillis) => setOptions({ ...options, timeoutMillis })} />
+                <NumberField label={t("validator.retries")} value={options.retries} min={1} max={8} onChange={(retries) => setOptions({ ...options, retries })} />
+                <NumberField label={t("validator.timeout")} value={options.timeoutMillis} min={250} max={60000} onChange={(timeoutMillis) => setOptions({ ...options, timeoutMillis })} />
                 <NumberField
-                  label="Scan workers"
+                  label={t("validator.workers")}
                   value={validatorWorkerCountOption(options)}
                   min={1}
                   max={maxValidatorWorkers}
@@ -4286,14 +4317,14 @@ function ValidatorPage({
                     setOptions({ ...options, workerCount: nextWorkerCount, adaptiveLimit: nextWorkerCount });
                   }}
                 />
-                <TextField label="HTTP paths" value={httpPaths} onChange={setHttpPaths} placeholder="/, /health" />
+                <TextField label={t("validator.httpPaths")} value={httpPaths} onChange={setHttpPaths} placeholder="/, /health" />
               </FieldGroup>
               <FieldGroup className="grid gap-1 pt-2 sm:grid-cols-2">
                 <ToggleField label="UDP" checked={options.enableUdp} onChange={(enableUdp) => setOptions({ ...options, enableUdp })} />
                 <ToggleField label="QUIC/H3" checked={options.enableQuic} onChange={(enableQuic) => setOptions({ ...options, enableQuic })} />
                 <ToggleField label="DNS" checked={options.enableDns} onChange={(enableDns) => setOptions({ ...options, enableDns })} />
                 <ToggleField label="WebSocket" checked={options.enableWebSocket} onChange={(enableWebSocket) => setOptions({ ...options, enableWebSocket })} />
-                <ToggleField label="Insecure TLS" checked={options.allowInsecureCert} onChange={(allowInsecureCert) => setOptions({ ...options, allowInsecureCert })} />
+                <ToggleField label={t("validator.insecureTls")} checked={options.allowInsecureCert} onChange={(allowInsecureCert) => setOptions({ ...options, allowInsecureCert })} />
               </FieldGroup>
             </FieldSet>
           </CardContent>
@@ -4309,7 +4340,9 @@ function ValidatorPage({
                     {validatorStatusLabel(state.status, state.paused)}
                   </CardTitle>
                   <CardDescription>
-                    {state.total > 0 ? `${state.completed} of ${state.total} endpoints complete` : "No validation running"}
+                    {state.total > 0
+                      ? t("validator.progress", { completed: state.completed, total: state.total })
+                      : t("validator.idle")}
                   </CardDescription>
                   {state.resultsFileName && (
                     <div className="mt-2 flex min-w-0 flex-wrap items-center gap-2 text-xs font-medium text-muted-foreground">
@@ -4344,23 +4377,23 @@ function ValidatorPage({
                 <div className="flex flex-wrap gap-2 lg:justify-end">
                   <Button variant="outline" disabled={running || (state.status === "idle" && state.completed === 0 && !state.resultsFileName)} onClick={clearResults}>
                     <Trash2 />
-                    Clear
+                    {t("validator.clear")}
                   </Button>
                   <Button variant="outline" disabled={!running || state.paused} onClick={() => setPaused(true)}>
                     <Pause />
-                    Pause
+                    {t("validator.pause")}
                   </Button>
                   <Button variant="outline" disabled={!running || !state.paused} onClick={() => setPaused(false)}>
                     <Play />
-                    Resume
+                    {t("validator.resume")}
                   </Button>
                   <Button variant="outline" disabled={!running} onClick={cancelScan}>
                     <Square />
-                    Cancel
+                    {t("common.cancel")}
                   </Button>
                   <Button disabled={running || rangeSelectionTooLarge || (mode === "bulk" && (!rangePorts.length || Boolean(rangePortParse.error)))} onClick={startScan}>
                     <Search />
-                    Scan
+                    {t("validator.scan")}
                   </Button>
                 </div>
               </div>
@@ -4377,7 +4410,7 @@ function ValidatorPage({
               {state.error && (
                 <Alert variant="destructive">
                   <AlertCircle />
-                  <AlertTitle>Validator failed</AlertTitle>
+                  <AlertTitle>{t("validator.failed")}</AlertTitle>
                   <AlertDescription>{state.error}</AlertDescription>
                 </Alert>
               )}
@@ -4391,6 +4424,7 @@ function ValidatorPage({
             onRefresh={loadResultFiles}
             onOpen={openResultFile}
             onDelete={deleteResultFile}
+            t={t}
           />
         </div>
       </div>
@@ -4405,10 +4439,12 @@ function ValidatorFiles({
   onRefresh,
   onOpen,
   onDelete,
+  t,
 }: {
   files: ValidatorResultFile[];
   loading: boolean;
   statusText: string;
+  t: TranslateFn;
   onRefresh: () => Promise<void>;
   onOpen: (name: string) => Promise<void>;
   onDelete: (name: string) => Promise<void>;
@@ -4418,12 +4454,12 @@ function ValidatorFiles({
       <CardHeader>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <CardTitle>Files</CardTitle>
-            <CardDescription>Previous validator CSV scans. Files stay on disk until deleted.</CardDescription>
+            <CardTitle>{t("validator.files.title")}</CardTitle>
+            <CardDescription>{t("validator.files.description")}</CardDescription>
           </div>
           <Button type="button" variant="outline" onClick={onRefresh} disabled={loading}>
             <RotateCcw />
-            Refresh
+            {t("subs.refresh")}
           </Button>
         </div>
         {statusText && <p className="text-xs font-medium text-muted-foreground">{statusText}</p>}
@@ -4435,19 +4471,19 @@ function ValidatorFiles({
               <EmptyMedia variant="icon">
                 <FileText />
               </EmptyMedia>
-              <EmptyTitle>No CSV files</EmptyTitle>
-              <EmptyDescription>Validator runs will appear here after they start.</EmptyDescription>
+              <EmptyTitle>{t("validator.files.empty")}</EmptyTitle>
+              <EmptyDescription>{t("validator.files.empty.hint")}</EmptyDescription>
             </EmptyHeader>
           </Empty>
         ) : (
           <div className="overflow-x-auto rounded-lg border">
             <div className="min-w-[720px]">
               <div className="grid grid-cols-[minmax(220px,1fr)_92px_92px_110px_128px] items-center gap-2 border-b bg-muted/80 px-3 py-2 text-[10px] font-semibold uppercase text-muted-foreground">
-                <div>File</div>
-                <div>Rows</div>
-                <div>Status</div>
-                <div>Size</div>
-                <div className="text-end">Actions</div>
+                <div>{t("validator.files.column.file")}</div>
+                <div>{t("validator.files.column.rows")}</div>
+                <div>{t("subs.column.status")}</div>
+                <div>{t("validator.files.column.size")}</div>
+                <div className="text-end">{t("servers.column.actions")}</div>
               </div>
               <div className="divide-y">
                 {files.map((file) => (
@@ -4467,11 +4503,11 @@ function ValidatorFiles({
                     <div className="flex justify-end gap-1">
                       <Button type="button" variant="ghost" size="xs" onClick={() => onOpen(file.name)}>
                         <ExternalLink />
-                        Open
+                        {t("validator.files.open")}
                       </Button>
                       <Button type="button" variant="ghost" size="xs" onClick={() => onDelete(file.name)}>
                         <Trash2 />
-                        Delete
+                        {t("subs.delete")}
                       </Button>
                     </div>
                   </div>
@@ -4492,6 +4528,7 @@ function LogsPage({
   description: descriptionOverride,
   onState,
   onError,
+  t,
 }: {
   runtime: RuntimeStatus;
   runtimeType: RuntimeType;
@@ -4499,6 +4536,7 @@ function LogsPage({
   description?: string;
   onState: (state: AppState) => void;
   onError: (message: string) => void;
+  t: TranslateFn;
 }) {
   const [query, setQuery] = useState("");
   const normalizedQuery = query.trim().toLowerCase();
@@ -4511,8 +4549,8 @@ function LogsPage({
   // Named after what is running rather than what used to. The app runs mihomo;
   // Xray survives only behind WHITEVPN_ENGINE=xray, so naming the page after it
   // describes almost nobody's session.
-  const title = titleOverride || "Diagnostics";
-  const description = descriptionOverride || "Engine output and health checks.";
+  const title = titleOverride || t("logs.title");
+  const description = descriptionOverride || t("logs.description");
   const pageRuntimeActive = normalizeRuntimeType(runtime.runtimeType) === runtimeType;
   const pageStatus = pageRuntimeActive ? runtime.status : "disconnected";
 
@@ -4544,25 +4582,25 @@ function LogsPage({
 
   return (
     <PageShell
-      eyebrow="Logs"
+      eyebrow={t("nav.logs")}
       title={title}
       actions={
         <div className="flex w-full min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
           <div className="relative w-full min-w-0 sm:w-80">
             <Search className="absolute start-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input className="ps-8" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search logs" />
+            <Input className="ps-8" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("logs.search")} />
           </div>
           <Button type="button" variant="outline" onClick={copyLogs} disabled={!logs.length}>
             <Copy />
-            Copy logs
+            {t("logs.copy")}
           </Button>
           <Button type="button" variant="outline" onClick={saveLogsFile} disabled={!logs.length}>
             <Download />
-            Save log
+            {t("logs.save")}
           </Button>
           <Button type="button" variant="outline" onClick={clearLogs} disabled={!runtimeLogs.length}>
             <Trash2 />
-            Clear logs
+            {t("logs.clear")}
           </Button>
         </div>
       }
@@ -4586,7 +4624,7 @@ function LogsPage({
                   <EmptyMedia variant="icon">
                     <ScrollText />
                   </EmptyMedia>
-                  <EmptyTitle>No logs found</EmptyTitle>
+                  <EmptyTitle>{t("logs.empty")}</EmptyTitle>
                   <EmptyDescription>{description}</EmptyDescription>
                 </EmptyHeader>
               </Empty>
