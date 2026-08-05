@@ -1,16 +1,13 @@
 package main
 
 import (
-	"context"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"strings"
 	"testing"
-	"time"
 
 	"whitevpn-desktop/internal/model"
 )
@@ -60,116 +57,6 @@ func TestParseWhiteDNSVPNCustomFrontingIPs(t *testing.T) {
 	}
 	if _, err := parseWhiteDNSVPNCustomFrontingIPs("104.16.0.1,104.16.0.2,104.16.0.3,104.16.0.4,104.16.0.5,104.16.0.6,104.16.0.7,104.16.0.8,104.16.0.9,104.16.0.10,104.16.0.11"); err == nil {
 		t.Fatal("expected more than ten IPs to be rejected")
-	}
-}
-
-func TestPrepareWhiteDNSVPNConnectionImportsEncryptedSubscription(t *testing.T) {
-	app := testV2RaySubscriptionApp(t)
-	encrypted := encryptWhiteDNSVPNTestPayload(t, base64.StdEncoding.EncodeToString([]byte(strings.Join([]string{
-		testV2RaySubscriptionLink("one"),
-		testV2RaySubscriptionLink("two"),
-	}, "\n"))))
-
-	state, err := app.prepareWhiteDNSVPNConnection(context.Background(), func(context.Context) (string, error) {
-		return encrypted, nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(state.V2RaySubscriptions) != 1 || state.V2RaySubscriptions[0].ID != whiteDNSVPNSubscriptionID {
-		t.Fatalf("expected fixed WhiteDNS VPN subscription, got %#v", state.V2RaySubscriptions)
-	}
-	whiteDNSProfiles := whiteDNSVPNTestProfiles(state.V2RayProfiles)
-	if len(whiteDNSProfiles) != 2 {
-		t.Fatalf("expected two WhiteDNS VPN profiles, got %#v", state.V2RayProfiles)
-	}
-	if whiteDNSProfiles[0].Server != "one.example.com" || state.SelectedV2RayProfileID != whiteDNSProfiles[0].ID {
-		t.Fatalf("expected first imported profile to be selected, got selected=%q profiles=%#v", state.SelectedV2RayProfileID, whiteDNSProfiles)
-	}
-	if state.V2RaySubscriptions[0].ImportedCount != 2 || state.V2RaySubscriptions[0].LastUpdatedAt == "" || state.V2RaySubscriptions[0].LastError != "" {
-		t.Fatalf("unexpected subscription metadata: %#v", state.V2RaySubscriptions[0])
-	}
-}
-
-func TestPrepareWhiteDNSVPNConnectionUsesCacheAfterRefreshFailure(t *testing.T) {
-	app := testV2RaySubscriptionApp(t)
-	encrypted := encryptWhiteDNSVPNTestPayload(t, base64.StdEncoding.EncodeToString([]byte(testV2RaySubscriptionLink("cached"))))
-	if _, err := app.prepareWhiteDNSVPNConnection(context.Background(), func(context.Context) (string, error) {
-		return encrypted, nil
-	}); err != nil {
-		t.Fatal(err)
-	}
-
-	app.mu.Lock()
-	app.state.V2RaySubscriptions[0].LastUpdatedAt = time.Now().Add(-whiteDNSVPNSubscriptionRefreshInterval - time.Minute).UTC().Format(time.RFC3339)
-	app.state.SelectedV2RayProfileID = ""
-	app.mu.Unlock()
-
-	state, err := app.prepareWhiteDNSVPNConnection(context.Background(), func(context.Context) (string, error) {
-		return "", errors.New("network down")
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	whiteDNSProfiles := whiteDNSVPNTestProfiles(state.V2RayProfiles)
-	if len(whiteDNSProfiles) != 1 || whiteDNSProfiles[0].Server != "cached.example.com" {
-		t.Fatalf("expected cached profile to be preserved, got %#v", state.V2RayProfiles)
-	}
-	if state.SelectedV2RayProfileID != whiteDNSProfiles[0].ID {
-		t.Fatalf("expected cached profile to be selected, got %q", state.SelectedV2RayProfileID)
-	}
-	if !strings.Contains(state.V2RaySubscriptions[0].LastError, "network down") {
-		t.Fatalf("expected refresh error to be recorded, got %#v", state.V2RaySubscriptions[0])
-	}
-}
-
-func TestPrepareWhiteDNSVPNConnectionSkipsFreshCache(t *testing.T) {
-	app := testV2RaySubscriptionApp(t)
-	encrypted := encryptWhiteDNSVPNTestPayload(t, base64.StdEncoding.EncodeToString([]byte(testV2RaySubscriptionLink("fresh"))))
-	if _, err := app.prepareWhiteDNSVPNConnection(context.Background(), func(context.Context) (string, error) {
-		return encrypted, nil
-	}); err != nil {
-		t.Fatal(err)
-	}
-
-	fetches := 0
-	state, err := app.prepareWhiteDNSVPNConnection(context.Background(), func(context.Context) (string, error) {
-		fetches++
-		return "", errors.New("should not fetch")
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if fetches != 0 {
-		t.Fatalf("expected fresh cache to skip fetch, got %d fetches", fetches)
-	}
-	whiteDNSProfiles := whiteDNSVPNTestProfiles(state.V2RayProfiles)
-	if len(whiteDNSProfiles) != 1 || whiteDNSProfiles[0].Server != "fresh.example.com" {
-		t.Fatalf("expected fresh cached profile, got %#v", state.V2RayProfiles)
-	}
-}
-
-func TestPrepareWhiteDNSVPNConnectionSelectsBrowserReadyProfile(t *testing.T) {
-	app := testV2RaySubscriptionApp(t)
-	encrypted := encryptWhiteDNSVPNTestPayload(t, base64.StdEncoding.EncodeToString([]byte(strings.Join([]string{
-		"vless://11111111-1111-1111-1111-111111111111@172.65.111.43:22?security=none&type=tcp#tcp",
-		testV2RaySubscriptionLink("browser"),
-	}, "\n"))))
-
-	state, err := app.prepareWhiteDNSVPNConnection(context.Background(), func(context.Context) (string, error) {
-		return encrypted, nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	selected := ""
-	for _, profile := range state.V2RayProfiles {
-		if profile.ID == state.SelectedV2RayProfileID {
-			selected = profile.Server
-		}
-	}
-	if selected != "browser.example.com" {
-		t.Fatalf("expected browser-ready WhiteDNS profile to be selected, got %q", selected)
 	}
 }
 
@@ -407,6 +294,32 @@ func TestSubscriptionURLMustBeHTTPSUnlessItIsLoopback(t *testing.T) {
 	for _, rawURL := range []string{"https://example.com/sub", "http://127.0.0.1:8080/sub", "http://localhost:8080/sub"} {
 		if _, err := validateV2RaySubscriptionURL(rawURL); err != nil {
 			t.Fatalf("expected %q to be accepted: %v", rawURL, err)
+		}
+	}
+}
+
+// The catalogue used to be stored as profiles so the Xray path could connect
+// through one. Nothing fills that list now, so an older state file carries a
+// frozen copy — and it was being counted and shown as though it were the
+// catalogue, which is how the subscriptions page came to say 862 while the
+// catalogue said 995.
+func TestForgetBuiltInCatalogueProfilesKeepsWhatIsTheUsers(t *testing.T) {
+	state := model.DefaultAppState()
+	state.V2RayProfiles = []model.V2RayProfile{
+		{ID: "stale-1", SubscriptionID: whiteDNSVPNSubscriptionID},
+		{ID: "stale-2", SubscriptionID: whiteDNSVPNSubscriptionID},
+		{ID: "mine", SubscriptionID: "user-1"},
+		{ID: "hand-added"},
+	}
+
+	next := forgetBuiltInCatalogueProfiles(state)
+
+	if len(next.V2RayProfiles) != 2 {
+		t.Fatalf("expected the catalogue's copy to go and nothing else, got %#v", next.V2RayProfiles)
+	}
+	for _, profile := range next.V2RayProfiles {
+		if profile.SubscriptionID == whiteDNSVPNSubscriptionID {
+			t.Fatalf("a stale catalogue profile survived: %#v", profile)
 		}
 	}
 }

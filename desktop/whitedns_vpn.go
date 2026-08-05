@@ -103,60 +103,6 @@ func (a *App) SaveWhiteDNSVPNFrontingIPs(rawText string) (model.AppState, error)
 	return a.saveLocked()
 }
 
-func (a *App) prepareWhiteDNSVPNConnection(ctx context.Context, fetch whiteDNSVPNSubscriptionFetcher) (model.AppState, error) {
-	if fetch == nil {
-		fetch = fetchWhiteDNSVPNSubscriptionDocument
-	}
-	now := time.Now().UTC()
-
-	a.mu.Lock()
-	a.ensureWhiteDNSVPNSubscriptionLocked()
-	if a.whiteDNSVPNCacheFreshLocked(now) {
-		a.selectWhiteDNSVPNProfileLocked()
-		next, err := a.saveLocked()
-		a.mu.Unlock()
-		return next, err
-	}
-	a.mu.Unlock()
-
-	rawText, fetchErr := fetch(ctx)
-	var imported []model.V2RayProfile
-	var parseErr error
-	if fetchErr == nil {
-		var decrypted string
-		decrypted, parseErr = decryptWhiteDNSVPNSubscription(rawText, whiteDNSVPNSubscriptionKey)
-		if parseErr == nil {
-			imported, parseErr = profiles.ParseV2RaySubscriptionDocument(decrypted)
-		}
-		if parseErr == nil && len(imported) == 0 {
-			parseErr = fmt.Errorf("WhiteDNS VPN subscription did not contain profiles")
-		}
-	}
-	refreshErr := fetchErr
-	if refreshErr == nil {
-		refreshErr = parseErr
-	}
-
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	a.ensureWhiteDNSVPNSubscriptionLocked()
-	if refreshErr != nil {
-		a.recordWhiteDNSVPNSubscriptionErrorLocked(refreshErr)
-		if a.countWhiteDNSVPNProfilesLocked() > 0 {
-			a.selectWhiteDNSVPNProfileLocked()
-			return a.saveLocked()
-		}
-		next, saveErr := a.saveLocked()
-		if saveErr != nil {
-			return next, saveErr
-		}
-		return next, refreshErr
-	}
-
-	a.replaceWhiteDNSVPNProfilesLocked(imported, now)
-	return a.saveLocked()
-}
-
 // The subscription the app connects through.
 //
 // The built-in catalogue arrives encrypted from an address held in code; one the
@@ -353,65 +299,10 @@ func collectWhiteDNSVPNIPStrings(value any, out *[]string) {
 	}
 }
 
-func (a *App) selectedWhiteDNSVPNProfileSnapshot() (model.V2RayProfile, bool) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	state := profiles.NormalizeState(a.state)
-	if profile, ok := selectedV2RayProfile(state); ok && profile.SubscriptionID == whiteDNSVPNSubscriptionID && whiteDNSVPNBrowserReadyProfile(profile) {
-		return profiles.NormalizeV2RayProfile(profile), true
-	}
-	for _, profile := range state.V2RayProfiles {
-		if profile.SubscriptionID == whiteDNSVPNSubscriptionID && whiteDNSVPNBrowserReadyProfile(profile) {
-			return profiles.NormalizeV2RayProfile(profile), true
-		}
-	}
-	for _, profile := range state.V2RayProfiles {
-		if profile.SubscriptionID == whiteDNSVPNSubscriptionID {
-			return profiles.NormalizeV2RayProfile(profile), true
-		}
-	}
-	return model.V2RayProfile{}, false
-}
-
-func (a *App) whiteDNSVPNProfileSnapshots() []model.V2RayProfile {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	state := profiles.NormalizeState(a.state)
-	out := make([]model.V2RayProfile, 0, len(state.V2RayProfiles))
-	for _, profile := range state.V2RayProfiles {
-		if profile.SubscriptionID == whiteDNSVPNSubscriptionID {
-			out = append(out, profiles.NormalizeV2RayProfile(profile))
-		}
-	}
-	return out
-}
-
-func (a *App) selectWhiteDNSVPNStoredProfile(id string) (model.AppState, error) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	for _, profile := range a.state.V2RayProfiles {
-		if profile.ID == id && profile.SubscriptionID == whiteDNSVPNSubscriptionID {
-			a.state.SelectedV2RayProfileID = id
-			return a.saveLocked()
-		}
-	}
-	return a.state, fmt.Errorf("WhiteDNS VPN selected profile is missing")
-}
-
 func (a *App) whiteDNSVPNFrontingIPsSnapshot() []string {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return profiles.NormalizeWhiteDNSVPNFrontingIPs(a.state.WhiteDNSVPNFrontingIPs)
-}
-
-func whiteDNSVPNBrowserReadyProfile(profile model.V2RayProfile) bool {
-	profile = profiles.NormalizeV2RayProfile(profile)
-	switch profile.Protocol {
-	case model.V2RayProtocolVLESS, model.V2RayProtocolVMess, model.V2RayProtocolTrojan:
-	default:
-		return false
-	}
-	return profile.TLS || whiteDNSVPNHTTPFrontingTransport(profile.Network)
 }
 
 func whiteDNSVPNProfileHost(profile model.V2RayProfile) string {
@@ -512,6 +403,25 @@ func (a *App) refreshWhiteDNSVPNCatalogue() (model.V2RaySubscriptionRefreshResul
 	}, saveErr
 }
 
+// forgetBuiltInCatalogueProfiles drops the stored copy of the catalogue.
+//
+// It used to be kept as V2RayProfiles so the Xray path could connect through
+// one of them. Nothing fills it now and nothing reads it, so what is left in an
+// older state file is a frozen list from whenever it was last written — and it
+// was being counted and shown as though it were the catalogue. A subscription
+// the user added keeps its profiles: those are theirs.
+func forgetBuiltInCatalogueProfiles(state model.AppState) model.AppState {
+	kept := make([]model.V2RayProfile, 0, len(state.V2RayProfiles))
+	for _, profile := range state.V2RayProfiles {
+		if profile.SubscriptionID == whiteDNSVPNSubscriptionID {
+			continue
+		}
+		kept = append(kept, profile)
+	}
+	state.V2RayProfiles = kept
+	return state
+}
+
 // forgetBuiltInSubscriptionURL strips the catalogue's address from a state that
 // came from somewhere else — a file written by an older build, or a restored
 // backup. Without it, hiding the address would only apply to states this build
@@ -525,92 +435,7 @@ func forgetBuiltInSubscriptionURL(state model.AppState) model.AppState {
 	return state
 }
 
-func (a *App) whiteDNSVPNCacheFreshLocked(now time.Time) bool {
-	if a.countWhiteDNSVPNProfilesLocked() == 0 {
-		return false
-	}
-	idx := findV2RaySubscriptionIndex(a.state.V2RaySubscriptions, whiteDNSVPNSubscriptionID)
-	if idx == -1 {
-		return false
-	}
-	updatedAt, err := time.Parse(time.RFC3339, a.state.V2RaySubscriptions[idx].LastUpdatedAt)
-	if err != nil {
-		return false
-	}
-	age := now.Sub(updatedAt)
-	return age >= 0 && age < whiteDNSVPNSubscriptionRefreshInterval
-}
-
-func (a *App) countWhiteDNSVPNProfilesLocked() int {
-	count := 0
-	for _, profile := range a.state.V2RayProfiles {
-		if profile.SubscriptionID == whiteDNSVPNSubscriptionID {
-			count++
-		}
-	}
-	return count
-}
-
-func (a *App) selectWhiteDNSVPNProfileLocked() {
-	for _, profile := range a.state.V2RayProfiles {
-		if profile.ID == a.state.SelectedV2RayProfileID && profile.SubscriptionID == whiteDNSVPNSubscriptionID && whiteDNSVPNBrowserReadyProfile(profile) {
-			return
-		}
-	}
-	for _, profile := range a.state.V2RayProfiles {
-		if profile.SubscriptionID == whiteDNSVPNSubscriptionID && whiteDNSVPNBrowserReadyProfile(profile) {
-			a.state.SelectedV2RayProfileID = profile.ID
-			return
-		}
-	}
-	for _, profile := range a.state.V2RayProfiles {
-		if profile.SubscriptionID == whiteDNSVPNSubscriptionID {
-			a.state.SelectedV2RayProfileID = profile.ID
-			return
-		}
-	}
-}
-
 func (a *App) recordWhiteDNSVPNSubscriptionErrorLocked(err error) {
 	idx := a.ensureWhiteDNSVPNSubscriptionLocked()
 	a.state.V2RaySubscriptions[idx].LastError = err.Error()
-}
-
-func (a *App) replaceWhiteDNSVPNProfilesLocked(imported []model.V2RayProfile, now time.Time) {
-	nextProfiles := make([]model.V2RayProfile, 0, len(a.state.V2RayProfiles)+len(imported))
-	existingIDs := make(map[string]struct{}, len(a.state.V2RayProfiles)+len(imported))
-	for _, profile := range a.state.V2RayProfiles {
-		if profile.SubscriptionID == whiteDNSVPNSubscriptionID {
-			continue
-		}
-		nextProfiles = append(nextProfiles, profile)
-		existingIDs[profile.ID] = struct{}{}
-	}
-
-	firstImportedID := ""
-	firstPreferredID := ""
-	baseID := now.UnixNano()
-	for idx := range imported {
-		profile := profiles.NormalizeV2RayProfile(imported[idx])
-		profile.SubscriptionID = whiteDNSVPNSubscriptionID
-		profile.ID = uniqueImportedV2RayID(existingIDs, baseID, idx)
-		if firstImportedID == "" {
-			firstImportedID = profile.ID
-		}
-		if firstPreferredID == "" && whiteDNSVPNBrowserReadyProfile(profile) {
-			firstPreferredID = profile.ID
-		}
-		nextProfiles = append(nextProfiles, profile)
-	}
-	a.state.V2RayProfiles = nextProfiles
-	if firstPreferredID != "" {
-		a.state.SelectedV2RayProfileID = firstPreferredID
-	} else if firstImportedID != "" {
-		a.state.SelectedV2RayProfileID = firstImportedID
-	}
-
-	idx := a.ensureWhiteDNSVPNSubscriptionLocked()
-	a.state.V2RaySubscriptions[idx].ImportedCount = len(imported)
-	a.state.V2RaySubscriptions[idx].LastUpdatedAt = now.Format(time.RFC3339)
-	a.state.V2RaySubscriptions[idx].LastError = ""
 }

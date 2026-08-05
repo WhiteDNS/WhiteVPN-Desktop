@@ -3054,7 +3054,11 @@ function V2RaySubscriptionsPage({
                           </span>
                         </td>
                         <td className="px-3 py-3">
-                          <Badge variant="secondary">{managedProfileIds.length || subscription.importedCount || 0}</Badge>
+                          {/* The subscription's own count, which its refresh
+                              updates. It used to show how many profiles were
+                              stored for it, which stopped being the same number
+                              the moment nothing stored them. */}
+                          <Badge variant="secondary">{subscription.importedCount || managedProfileIds.length || 0}</Badge>
                         </td>
                         <td className="min-w-0 px-3 py-3">
                           <span className={cn("block truncate text-xs", subscription.lastError ? "text-destructive" : "text-muted-foreground")}>

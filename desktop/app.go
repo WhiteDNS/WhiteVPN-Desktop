@@ -110,7 +110,7 @@ func NewApp() (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	app.state = forgetBuiltInSubscriptionURL(state)
+	app.state = forgetBuiltInCatalogueProfiles(forgetBuiltInSubscriptionURL(state))
 	if firstRun {
 		app.legacyImport = profiles.ReadLegacyImport(legacyWhiteDNSStatePath())
 	}
@@ -146,7 +146,7 @@ func (a *App) ImportLegacyProfiles() (model.AppState, error) {
 	if !offer.Available {
 		return a.state, nil
 	}
-	a.state = forgetBuiltInSubscriptionURL(offer.Apply(a.state))
+	a.state = forgetBuiltInCatalogueProfiles(forgetBuiltInSubscriptionURL(offer.Apply(a.state)))
 	return a.saveLocked()
 }
 
@@ -271,7 +271,7 @@ func (a *App) ImportBackup(rawText string) (model.AppState, error) {
 	if err != nil {
 		return a.state, err
 	}
-	a.state = forgetBuiltInSubscriptionURL(next)
+	a.state = forgetBuiltInCatalogueProfiles(forgetBuiltInSubscriptionURL(next))
 	return a.state, nil
 }
 
