@@ -457,6 +457,15 @@ Measured 2026-08-04, from Windows:
   it; `countryCodeFromNodeName` reads the flag. A catalogue that stops shipping
   flags takes the location filter with it, and the dialog would show one country:
   none.
+- **A connection proves itself once and was never asked again.** Connecting
+  health-checks a node and then pins the group to it for the session. That proof
+  has a shelf life: a user's log showed the node behind a CDN answering `502 Bad
+  Gateway` to every request while the app reported Connected, green badge, zero
+  bytes, for twelve seconds — and nothing was ever going to notice, because
+  nothing was looking after the first successful request. `watchHealth` asks
+  every 20s and `Session.Recover` moves to another node after two failures. Only
+  on Automatic: a node the user chose by hand is theirs, and moving off it would
+  answer a question they already answered.
 - **`ProxyEnable` and `ProxyServer` are not where Windows keeps the proxy.**
   They are a compatibility shim. The real configuration is a binary blob at
   `Internet Settings\Connections\DefaultConnectionSettings`, and when the two

@@ -149,6 +149,7 @@ func (a *App) startWhiteDNSVPNWithMihomo() (model.AppState, error) {
 	a.handleRuntimeState(model.RuntimeConnected, fmt.Sprintf("Proxy listening on 127.0.0.1:%d", connected.MixedPort()))
 	a.resolveExitCountry()
 	a.sampleTraffic(connected)
+	a.watchHealth(connected)
 	return a.GetAppState(), nil
 }
 
@@ -237,6 +238,13 @@ func (a *App) resolveExitCountry() {
 		}
 		runtimeState := a.state.Runtime
 		a.mu.Unlock()
+		if err != nil {
+			// Worth a line: this is a request through the proxy, so its failure
+			// says something about the connection and not only about the badge.
+			a.appendRuntimeLog(fmt.Sprintf("could not measure where traffic leaves from: %v", err))
+		} else if !result.OK {
+			a.appendRuntimeLog("the exit check returned nothing recognisable")
+		}
 		a.emit("runtime:state", runtimeState)
 	}()
 }

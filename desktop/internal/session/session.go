@@ -215,6 +215,80 @@ func (s *Session) start(ctx context.Context, opts Options) error {
 	return fmt.Errorf("session: no node carried traffic after %d attempts: %w", attempts, lastErr)
 }
 
+// Healthy reports whether a real request still completes through this session.
+func (s *Session) Healthy(ctx context.Context) bool {
+	return healthy(probeStatus(ctx, s.mixedPort))
+}
+
+// Recover moves a stranded session onto a node that works.
+//
+// Connecting proves one node carries traffic and then pins the group to it for
+// the rest of the session. A node that stops carrying traffic afterwards — the
+// front it sits behind starts answering 502, the server is restarted, the
+// address is blocked — leaves the app connected, the proxy listening, the
+// dashboard green, and every request failing. The catalogue holds hundreds of
+// alternatives and nothing was reaching for them.
+//
+// The node that just failed is skipped, and the previous selection is left in
+// place if nothing better is found: a session on a bad node is worth more than
+// a session on no node, because the bad one may come back.
+func (s *Session) Recover(ctx context.Context, attempts int) (string, error) {
+	if s.process == nil {
+		return "", fmt.Errorf("session: nothing is running")
+	}
+	if len(s.candidates) == 0 {
+		return "", fmt.Errorf("session: this subscription selects its own node")
+	}
+
+	previous := s.selected
+	var lastErr error
+	for _, candidate := range recoveryOrder(s.candidates, previous, attempts) {
+		if ctx.Err() != nil {
+			break
+		}
+		selectCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		err := s.process.ChangeProxy(selectCtx, mihomoconf.SelectGroup, candidate)
+		cancel()
+		if err != nil {
+			lastErr = fmt.Errorf("select %q: %w", candidate, err)
+			continue
+		}
+		code, err := waitForHealthy(ctx, func(probeCtx context.Context) int {
+			return probeStatus(probeCtx, s.mixedPort)
+		})
+		if err == nil {
+			s.healthCode = code
+			s.selected = candidate
+			return candidate, nil
+		}
+		lastErr = fmt.Errorf("%q: %w", candidate, err)
+	}
+
+	if previous != "" {
+		restoreCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		_ = s.process.ChangeProxy(restoreCtx, mihomoconf.SelectGroup, previous)
+		cancel()
+	}
+	if lastErr == nil {
+		lastErr = fmt.Errorf("no other node to try")
+	}
+	return "", fmt.Errorf("session: nothing else carried traffic either: %w", lastErr)
+}
+
+// recoveryOrder is which nodes a recovery reaches for: the candidates in their
+// own order, without the one that just failed, capped at what one recovery is
+// willing to spend.
+func recoveryOrder(candidates []string, skip string, limit int) []string {
+	out := make([]string, 0, limit)
+	for _, candidate := range candidates {
+		if candidate == skip || len(out) >= limit {
+			continue
+		}
+		out = append(out, candidate)
+	}
+	return out
+}
+
 // Select moves a running session onto another node.
 //
 // It holds the new node to the same standard connecting is held to — a real
