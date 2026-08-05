@@ -87,10 +87,18 @@ Categories=Network;Utility;
 StartupNotify=true
 EOF
 
-if [ -f build/appicon.png ]; then
-  icon_source="build/appicon.png"
-elif [ -f frontend/public/icon-512.png ]; then
+# The 512 icon first, and build/appicon.png only as a fallback. Two reasons,
+# both about it being 1024x1024: it lands in a directory named 512x512, and
+# linuxdeploy refuses it outright —
+#
+#   ERROR: Icon whitevpn-desktop.png has invalid x resolution: 1024
+#
+# which is what killed every AppImage build, silently, until the linuxdeploy
+# output stopped being redirected to /dev/null.
+if [ -f frontend/public/icon-512.png ]; then
   icon_source="frontend/public/icon-512.png"
+elif [ -f build/appicon.png ]; then
+  icon_source="build/appicon.png"
 else
   icon_source=""
 fi
