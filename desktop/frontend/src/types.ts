@@ -301,6 +301,8 @@ export interface RuntimeStatus {
   localProxyIp: string;
   publicProxyIp: string;
   frontingIp: string;
+  // Whether the machine has been pointed at the local proxy.
+  systemProxy: boolean;
   // The node carrying traffic, and where its own name says it is.
   nodeName: string;
   nodeCountryCode: string;

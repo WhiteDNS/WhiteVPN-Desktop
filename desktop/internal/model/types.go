@@ -292,6 +292,11 @@ type RuntimeStatus struct {
 	PublicProxyIP      string `json:"publicProxyIp"`
 	FrontingIP         string `json:"frontingIp"`
 
+	// SystemProxy says the machine has been pointed at the local proxy. Worth
+	// showing: the difference between a VPN that is carrying this machine's
+	// traffic and one that is merely running is not otherwise visible.
+	SystemProxy bool `json:"systemProxy"`
+
 	// The node carrying traffic, and where it says it is: the name the catalogue
 	// gave it, and the country from the flag in that name.
 	NodeName        string `json:"nodeName"`

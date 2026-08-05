@@ -218,6 +218,7 @@ function normalizeRuntime(runtime: RuntimeStatus): RuntimeStatus {
     localProxyIp: runtime.localProxyIp || "",
     publicProxyIp: runtime.publicProxyIp || "",
     frontingIp: runtime.frontingIp || "",
+    systemProxy: Boolean(runtime.systemProxy),
     exitIp: runtime.exitIp || "",
     nodeName: runtime.nodeName || "",
     nodeCountryCode: runtime.nodeCountryCode || "",
@@ -684,6 +685,9 @@ function App() {
   // Null until the backend has been asked, so the gate is never shown or hidden
   // on a guess.
   const [policyVersion, setPolicyVersion] = useState<number | null>(null);
+  // Where the engine's proxy listens, asked once. The page has to be able to
+  // name it while disconnected — that is when someone is setting a browser up.
+  const [engineProxyEndpoint, setEngineProxyEndpoint] = useState("");
   const [page, setPage] = useState<Page>("vpn");
   const [errorToast, setErrorToast] = useState<AppErrorToast | null>(null);
   const [successToast, setSuccessToast] = useState<AppErrorToast | null>(null);
@@ -821,6 +825,10 @@ function App() {
       .getAppState()
       .then(applyState)
       .catch((err) => showError(messageFromError(err)));
+    backend
+      .getLocalProxyEndpoint()
+      .then(setEngineProxyEndpoint)
+      .catch(() => setEngineProxyEndpoint(""));
     backend
       .getPrivacyPolicyVersion()
       .then(setPolicyVersion)
@@ -994,7 +1002,15 @@ function App() {
               <SuccessToast toast={successToast} onDismiss={clearSuccessToast} />
 
               {activePage === "vpn" && (
-                <WhiteDNSVPNPage state={state} onState={applyState} onError={showError} onNavigate={setPage} language={language} t={t} />
+                <WhiteDNSVPNPage
+                  state={state}
+                  proxyEndpoint={engineProxyEndpoint}
+                  onState={applyState}
+                  onError={showError}
+                  onNavigate={setPage}
+                  language={language}
+                  t={t}
+                />
               )}
 
               {activePage === "servers" && (
@@ -1833,6 +1849,7 @@ function ConnectButtonIcon({ state }: { state: ConnectButtonState }) {
 
 function WhiteDNSVPNPage({
   state,
+  proxyEndpoint,
   onState,
   onError,
   onNavigate,
@@ -1840,6 +1857,7 @@ function WhiteDNSVPNPage({
   t,
 }: {
   state: AppState;
+  proxyEndpoint: string;
   onState: (state: AppState) => void;
   onError: (message: string) => void;
   onNavigate: (page: Page) => void;
@@ -1878,7 +1896,11 @@ function WhiteDNSVPNPage({
   const startsConnection = connectState === "connect" || connectState === "retry";
   const setupStatus = otherRuntimeActive ? "connecting" : connectCardStatus(connectState);
   const setupStatusLabel = otherRuntimeActive ? t("connect.busy") : translatedStatusLabel(t, setupStatus);
-  const localProxyEndpoint = runtimeProxyDisplayEndpoint(runtime) || (selectedSettings ? proxyEndpoint(selectedSettings.listenIp, selectedSettings.listenPort) : "-");
+  // While connected, where it is actually listening; otherwise where it will
+  // listen, which is a constant of the engine. Never the V2Ray settings
+  // profile's port: nothing has read that since the Xray path was removed, and
+  // it was showing a number no traffic would ever arrive on.
+  const localProxyEndpoint = runtimeProxyDisplayEndpoint(runtime) || proxyEndpoint || "-";
   const selectedSettingsMissing = !selectedSettings || !selectedSettings.listenIp.trim() || selectedSettings.listenPort <= 0;
   // Disabled only while stopping, as on the phone: every other state has
   // something for a click to do, including connecting, which it stops.
@@ -2112,6 +2134,12 @@ function WhiteDNSVPNPage({
                       <Shield className="size-3" />
                       <span className="font-mono">{connectedFrontingIP || t("vpn.frontingAuto")}</span>
                     </Badge>
+                    {runtime.systemProxy && (
+                      <Badge variant="outline" className="h-6 gap-1 px-3" title={t("vpn.systemProxy.hint")}>
+                        <Globe className="size-3" />
+                        {t("vpn.systemProxy")}
+                      </Badge>
+                    )}
                   </div>
                   <h2 className="text-2xl font-bold tracking-tight">{dashboardTitle}</h2>
                   <p className="mt-2 text-sm text-muted-foreground">{dashboardDescription}</p>

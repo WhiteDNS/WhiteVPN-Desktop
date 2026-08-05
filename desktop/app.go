@@ -161,6 +161,10 @@ func (a *App) DismissLegacyImportOffer() {
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+	// A backup still on disk means the last run ended without putting the
+	// machine's proxy back — a crash, a kill, a power cut. Nothing else will
+	// ever do it, so it is done here before anything else can connect.
+	a.restoreSystemProxy()
 	a.startTray()
 	a.emit("runtime:state", a.currentRuntime())
 	a.emit("validator:state", a.GetValidatorState())

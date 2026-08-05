@@ -190,6 +190,11 @@ const strings = {
     fa: "با HTTP ساده دریافت می‌شود. هرکسی در مسیر شبکه می‌تواند این فهرست سرورها را بخواند و با فهرست خودش جایگزین کند — و در شبکه‌ای که وی‌پی‌ان را مسدود می‌کند، این همان طرفی است که وی‌پی‌ان برای عبور از آن وجود دارد. اگر ارائه‌دهنده آدرس https:// دارد، آن را بگیرید.",
   },
   "subs.use": { en: "Connect through this", fa: "اتصال از طریق این" },
+  "vpn.systemProxy": { en: "System proxy", fa: "پراکسی سیستم" },
+  "vpn.systemProxy.hint": {
+    en: "Windows is pointed at this app's local proxy, so applications that follow the system setting go through the VPN. It is put back when you disconnect.",
+    fa: "ویندوز به پراکسی محلی این برنامه اشاره می‌کند، پس برنامه‌هایی که تنظیم سیستم را دنبال می‌کنند از وی‌پی‌ان عبور می‌کنند. با قطع اتصال به حالت قبل برمی‌گردد.",
+  },
   "subs.inUse": { en: "In use", fa: "در حال استفاده" },
   "subs.disconnectFirst": { en: "Disconnect first", fa: "اول قطع کنید" },
 

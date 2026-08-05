@@ -261,12 +261,27 @@ Things the phone has no equivalent for, added because a desktop needs them.
 |---|---|---|
 | Tray icon | Status, connect/disconnect, open, quit — in the app's own language | `[x]` |
 | Runs in the background | Closing the window hides it; the app keeps carrying traffic | `[x]` |
+| Sets the system proxy | In proxy mode, points Windows at the local proxy and puts back what it found | `[x]` |
 
 Closing a VPN's window means "get out of my way", not "stop protecting my
 traffic". But hiding is only offered once there is an icon to come back from:
 `hideInsteadOfClosing` checks that the tray actually started, and lets the close
 through if it did not, because an app with no window and no icon is one only
 Task Manager can end.
+
+The system proxy is not a nicety, it is what made proxy mode work at all. The
+phone has no equivalent — `VpnService` routes everything — and the desktop was
+shipping the half that starts a proxy without the half that sends anything to
+it. Connected, healthy, 0 D/s, and a user quite reasonably reporting that none
+of the ports work. `TunEnabled` defaults to false, so that was the default
+experience.
+
+What was there before the change is written to `system-proxy.json` **before**
+the change, and removed only after it has been put back. A crash therefore
+leaves the file behind, and `startup` restores from it before anything else can
+connect — otherwise the machine is left pointing at a port nothing is listening
+on, which is a broken internet connection rather than a broken VPN. A restore
+that fails keeps the file, so the next start tries again.
 
 The tray's ten words are kept in Go. It is drawn by the system rather than by
 the page, so it cannot read `frontend/src/i18n.ts`; the two are kept in step by
@@ -442,6 +457,17 @@ Measured 2026-08-04, from Windows:
   it; `countryCodeFromNodeName` reads the flag. A catalogue that stops shipping
   flags takes the location filter with it, and the dialog would show one country:
   none.
+- **`wails build -s` skips the frontend.** The Go side rebuilds, the binary
+  looks new, and the UI inside it is whatever was in `frontend/dist` from
+  whenever it was last built properly. Two rounds of "I fixed that, why is it
+  still broken" came from this: the fix was in the source and had never been in
+  the build. Check the timestamp on `frontend/dist/assets/*.js`, or look for
+  `Compiling frontend: Done` in the output.
+- **The dashboard's idle port came from the V2Ray settings profile.** It showed
+  `10888` while the engine listened on `2080` — another reader of the removed
+  Xray path. `GetLocalProxyEndpoint` is the one source now. `selectedSettings`
+  still gates the Connect button through `selectedSettingsMissing`, which is the
+  same dead field; it happens to be populated, so it has not bitten yet.
 - **A node can be dead in the subscription itself, and it looks exactly like a
   bug here.** Measured 2026-08-05 on a user's own subscription: a REALITY node
   failed every connection while the other four worked. The engine's own debug

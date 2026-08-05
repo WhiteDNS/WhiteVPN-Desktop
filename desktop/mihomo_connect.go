@@ -133,6 +133,12 @@ func (a *App) startWhiteDNSVPNWithMihomo() (model.AppState, error) {
 	a.state.Runtime.LocalProxyIP = "127.0.0.1"
 	a.mu.Unlock()
 	a.recordConnectedNode(connected.Selected())
+	if !settings.TunEnabled {
+		// Proxy mode: without this the engine listens and nothing on the
+		// machine is talking to it. With the tunnel up the routing is the
+		// tunnel's job and a proxy as well would be one hop too many.
+		a.captureSystemProxy(connected.MixedPort())
+	}
 
 	a.appendRuntimeLog(fmt.Sprintf(
 		"mihomo connected: %d nodes available, using %q, health %d",
@@ -313,11 +319,26 @@ func (a *App) stopMihomo() bool {
 		return false
 	}
 	_ = current.Close()
+	// Before the status changes, so the machine is never pointed at a proxy
+	// that has already stopped listening.
+	a.restoreSystemProxy()
 	a.mu.Lock()
 	a.state.Runtime.Engine = ""
 	a.mu.Unlock()
 	a.handleRuntimeState(model.RuntimeDisconnected, "Disconnected")
 	return true
+}
+
+// GetLocalProxyEndpoint is where the engine's local proxy listens, whether or
+// not it is running.
+//
+// The dashboard used to fall back to the listen port on the V2Ray settings
+// profile when nothing was connected, which is a field of the removed Xray path
+// that nothing reads: it showed 10888 while the engine listened on 2080. A port
+// the user is invited to configure their browser with has to be the port
+// traffic will actually arrive on.
+func (a *App) GetLocalProxyEndpoint() string {
+	return fmt.Sprintf("127.0.0.1:%d", mihomoconf.DefaultMixedPort)
 }
 
 // EngineMihomo marks a runtime as belonging to the mihomo session.
