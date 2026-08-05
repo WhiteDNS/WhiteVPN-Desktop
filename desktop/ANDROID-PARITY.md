@@ -186,6 +186,7 @@ keys here, not copied literals.
 
 | Item | Behaviour | Status |
 |---|---|---|
+| Download and upload counters | Polled from the engine's own `getTraffic` and `getTotalTraffic` once a second | `[x]` |
 | HTTP health gate | A real request through the local proxy must succeed **before** the tunnel is reported up. URLs: letsencrypt `valid-isrgrootx1`, gstatic `generate_204`, cloudflare `cdn-cgi/trace`. 12 s budget, 2 s quiet probe | `[x]` |
 | Delay probes | Metrics only — a failed probe must **not** block connecting | `[x]` satisfied by construction: `internal/session` never probes delay, so nothing on the connect path can be blocked by one. Keep it that way when the connection dialog adds per-row delay |
 | Startup IP selection | Cached endpoint first; on failure fall through to a fresh scan | `[ ]` |

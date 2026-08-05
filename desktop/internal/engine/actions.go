@@ -161,6 +161,42 @@ func (c *Client) TotalTraffic(ctx context.Context, onlyProxy bool) (json.RawMess
 	return c.invoke(ctx, "getTotalTraffic", onlyProxy)
 }
 
+// TrafficRate is Traffic with the reply read: bytes per second, up and down.
+func (c *Client) TrafficRate(ctx context.Context, onlyProxy bool) (up int64, down int64, err error) {
+	raw, err := c.Traffic(ctx, onlyProxy)
+	if err != nil {
+		return 0, 0, err
+	}
+	return decodeTraffic(raw)
+}
+
+// TrafficTotal is TotalTraffic with the reply read: bytes since the engine
+// started, up and down.
+func (c *Client) TrafficTotal(ctx context.Context, onlyProxy bool) (up int64, down int64, err error) {
+	raw, err := c.TotalTraffic(ctx, onlyProxy)
+	if err != nil {
+		return 0, 0, err
+	}
+	return decodeTraffic(raw)
+}
+
+// decodeTraffic unwraps {"up":N,"down":N}, which arrives as a JSON string like
+// most of this protocol's replies.
+func decodeTraffic(raw json.RawMessage) (int64, int64, error) {
+	body := decodeString(raw)
+	if strings.TrimSpace(body) == "" {
+		return 0, 0, fmt.Errorf("engine: empty traffic reply")
+	}
+	var counters struct {
+		Up   int64 `json:"up"`
+		Down int64 `json:"down"`
+	}
+	if err := json.Unmarshal([]byte(body), &counters); err != nil {
+		return 0, 0, fmt.Errorf("engine: unreadable traffic reply: %w", err)
+	}
+	return counters.Up, counters.Down, nil
+}
+
 // CountryCode resolves an address to a country, using the core's bundled
 // geodata, so the answer costs no network round trip.
 func (c *Client) CountryCode(ctx context.Context, ip string) (string, error) {

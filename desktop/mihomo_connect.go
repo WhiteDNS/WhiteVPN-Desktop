@@ -19,17 +19,10 @@ import (
 //
 // mihomo is what WhiteVPN for Android runs, and so it is what this runs: an app
 // that shares a name, a subscription and a backend with the phone should not
-// behave differently from it.
-//
-// The Xray path it replaced is still reachable with WHITEVPN_ENGINE=xray. It is
-// kept for a while because when someone reports that a server works on one and
-// not the other, being able to switch is how that gets diagnosed rather than
-// argued about.
-const engineEnvVar = "WHITEVPN_ENGINE"
-
-func mihomoEngineSelected() bool {
-	return !strings.EqualFold(strings.TrimSpace(os.Getenv(engineEnvVar)), "xray")
-}
+// behave differently from it. It is the only engine now; the Xray path it
+// replaced, and the environment variable that chose between them, were removed
+// once it became clear that a second path meant features written against it
+// were invisible in the app that ships.
 
 // mihomoState is the running mihomo session, if there is one.
 type mihomoState struct {
@@ -147,7 +140,48 @@ func (a *App) startWhiteDNSVPNWithMihomo() (model.AppState, error) {
 	))
 	a.handleRuntimeState(model.RuntimeConnected, fmt.Sprintf("Proxy listening on 127.0.0.1:%d", connected.MixedPort()))
 	a.resolveExitCountry()
+	a.sampleTraffic(connected)
 	return a.GetAppState(), nil
+}
+
+// sampleTraffic keeps the dashboard's download and upload counters moving.
+//
+// The engine counts its own traffic; nothing else on this machine can, now that
+// the runtime manager and its sampler have gone with the Xray path. Until this
+// was wired the two tiles sat at zero through a working connection, which reads
+// as a connection carrying nothing.
+func (a *App) sampleTraffic(current *session.Session) {
+	go func() {
+		ticker := time.NewTicker(time.Second)
+		defer ticker.Stop()
+		for range ticker.C {
+			// The session this sampler belongs to may have been replaced or
+			// stopped; its successor starts its own.
+			if a.mihomo.current() != current {
+				return
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			upRate, downRate, rateErr := current.Engine().TrafficRate(ctx, false)
+			upTotal, downTotal, totalErr := current.Engine().TrafficTotal(ctx, false)
+			cancel()
+			if rateErr != nil || totalErr != nil {
+				// A dead engine ends the sampler; a hiccup does not.
+				select {
+				case <-current.Engine().Done():
+					return
+				default:
+					continue
+				}
+			}
+			a.handleStats(model.TrafficStats{
+				DownloadBytes:               downTotal,
+				UploadBytes:                 upTotal,
+				DownloadSpeedBytesPerSecond: downRate,
+				UploadSpeedBytesPerSecond:   upRate,
+				TotalDataUsageBytes:         upTotal + downTotal,
+			})
+		}
+	}()
 }
 
 // recordConnectedNode notes which node is carrying traffic and where its own
