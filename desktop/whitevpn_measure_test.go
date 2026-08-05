@@ -12,14 +12,14 @@ import (
 // looked identical because only the OK flag distinguished them.
 func TestReachabilityRecordsFailureAsTested(t *testing.T) {
 	app := &App{state: model.DefaultAppState(), proxyCountryCache: map[string]proxyCountryCacheEntry{}}
-	app.storeWhiteVPNNodes([]model.WhiteVPNNode{
+	app.storeWhiteVPNNodes(whiteDNSVPNSubscriptionID, []model.WhiteVPNNode{
 		{Name: "no-address", Server: "", Port: 0},
 	}, testTime())
 
 	request := model.NormalizeNodeTestRequest(model.NodeTestRequest{Nodes: []string{"no-address"}, Reachability: true})
-	app.measureReachability(context.Background(), app.whiteVPNNodesSnapshot(), request)
+	app.measureReachability(context.Background(), whiteDNSVPNSubscriptionID, app.whiteVPNNodesSnapshot(whiteDNSVPNSubscriptionID), request)
 
-	node := app.whiteVPNNodesSnapshot()[0]
+	node := app.whiteVPNNodesSnapshot(whiteDNSVPNSubscriptionID)[0]
 	if !node.ReachTested {
 		t.Fatal("a node with nothing to dial was left looking untested, so its row would never resolve")
 	}
@@ -32,13 +32,13 @@ func TestReachabilityRecordsFailureAsTested(t *testing.T) {
 // taken at all.
 func TestRefreshKeepsWhetherATestWasRun(t *testing.T) {
 	app := &App{state: model.DefaultAppState()}
-	app.storeWhiteVPNNodes([]model.WhiteVPNNode{{Name: "a"}}, testTime())
-	app.recordNodeMeasurement("a", func(node *model.WhiteVPNNode) {
+	app.storeWhiteVPNNodes(whiteDNSVPNSubscriptionID, []model.WhiteVPNNode{{Name: "a"}}, testTime())
+	app.recordNodeMeasurement(whiteDNSVPNSubscriptionID, "a", func(node *model.WhiteVPNNode) {
 		node.ReachTested, node.ReachOK = true, false
 		node.DelayTested, node.DelayOK, node.DelayMs = true, true, 120
 	})
 
-	list := app.storeWhiteVPNNodes([]model.WhiteVPNNode{{Name: "a"}}, testTime())
+	list := app.storeWhiteVPNNodes(whiteDNSVPNSubscriptionID, []model.WhiteVPNNode{{Name: "a"}}, testTime())
 	node := list.Nodes[0]
 	if !node.ReachTested || node.ReachOK {
 		t.Fatalf("a failed reachability test should survive as failed, got %#v", node)

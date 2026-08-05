@@ -548,7 +548,11 @@ type WhiteVPNNode struct {
 // NodeTestRequest is one run of the tests: which nodes, which tests, and the
 // numbers the user is allowed to change.
 type NodeTestRequest struct {
-	Nodes []string `json:"nodes"`
+	// Which subscription the names belong to. Empty means the selected one,
+	// which is what the dashboard tests; the Servers page names the one it is
+	// looking at, so a test measures the nodes on screen.
+	SubscriptionID string   `json:"subscriptionId"`
+	Nodes          []string `json:"nodes"`
 
 	Reachability bool `json:"reachability"`
 	Delay        bool `json:"delay"`
@@ -574,6 +578,7 @@ const (
 )
 
 func NormalizeNodeTestRequest(request NodeTestRequest) NodeTestRequest {
+	request.SubscriptionID = strings.TrimSpace(request.SubscriptionID)
 	request.Nodes = nonEmptyStrings(request.Nodes)
 	if !request.Reachability && !request.Delay && !request.Speed {
 		// A run with no test selected would look like a run that found nothing.

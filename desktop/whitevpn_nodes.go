@@ -53,8 +53,19 @@ const (
 // costs nothing after the first time; refresh forces a fetch for the case where
 // a user believes the catalogue has moved on.
 func (a *App) ListWhiteVPNNodes(refresh bool) (model.WhiteVPNNodeList, error) {
+	return a.ListSubscriptionNodes(a.selectedSubscriptionID(), refresh)
+}
+
+// ListSubscriptionNodes returns any subscription's nodes, which is what lets
+// the Servers page look at one the VPN is not connecting through. Each keeps
+// its own cache, so looking at one does not disturb the other.
+func (a *App) ListSubscriptionNodes(subscriptionID string, refresh bool) (model.WhiteVPNNodeList, error) {
+	subscriptionID = strings.TrimSpace(subscriptionID)
+	if subscriptionID == "" {
+		subscriptionID = a.selectedSubscriptionID()
+	}
 	if !refresh {
-		if cached, ok := a.cachedWhiteVPNNodes(time.Now().UTC()); ok {
+		if cached, ok := a.cachedWhiteVPNNodes(subscriptionID, time.Now().UTC()); ok {
 			return cached, nil
 		}
 	}
@@ -62,15 +73,15 @@ func (a *App) ListWhiteVPNNodes(refresh bool) (model.WhiteVPNNodeList, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	subscription, err := a.subscriptionBody(ctx)
+	subscription, err := a.subscriptionBodyFor(ctx, subscriptionID)
 	if err != nil {
-		return a.staleWhiteVPNNodes(err)
+		return a.staleWhiteVPNNodes(subscriptionID, err)
 	}
 	nodes, err := whiteVPNNodesFromSubscription(subscription)
 	if err != nil {
-		return a.staleWhiteVPNNodes(err)
+		return a.staleWhiteVPNNodes(subscriptionID, err)
 	}
-	return a.storeWhiteVPNNodes(nodes, time.Now().UTC()), nil
+	return a.storeWhiteVPNNodes(subscriptionID, nodes, time.Now().UTC()), nil
 }
 
 // SaveWhiteVPNSelection stores the dashboard's location and connection choices,
@@ -149,7 +160,7 @@ func (a *App) applySelectionToLiveSession(allowed []string) error {
 // nodesForSelection is the catalogue a choice is checked against, fetched if it
 // is not already known.
 func (a *App) nodesForSelection() ([]model.WhiteVPNNode, error) {
-	if nodes := a.whiteVPNNodesSnapshot(); len(nodes) > 0 {
+	if nodes := a.whiteVPNNodesSnapshot(a.selectedSubscriptionID()); len(nodes) > 0 {
 		return nodes, nil
 	}
 	list, err := a.ListWhiteVPNNodes(false)
@@ -166,9 +177,12 @@ func (a *App) nodesForSelection() ([]model.WhiteVPNNode, error) {
 // no core when nothing is connected. That is worth saying plainly rather than
 // returning a list of zeroes that looks like every node being instant.
 func (a *App) MeasureWhiteVPNNodeDelays(names []string) (model.WhiteVPNNodeList, error) {
+	// Through the live engine, so this is the connected subscription's nodes and
+	// no other's.
+	subscriptionID := a.selectedSubscriptionID()
 	current := a.mihomo.current()
 	if current == nil {
-		return a.snapshotWhiteVPNNodes(), fmt.Errorf("delays are measured through the engine, so they need a connection")
+		return a.snapshotWhiteVPNNodes(subscriptionID), fmt.Errorf("delays are measured through the engine, so they need a connection")
 	}
 	if len(names) > whiteVPNDelayLimit {
 		names = names[:whiteVPNDelayLimit]
@@ -178,7 +192,7 @@ func (a *App) MeasureWhiteVPNNodeDelays(names []string) (model.WhiteVPNNodeList,
 	defer cancel()
 
 	measured := measureNodeDelays(ctx, current.Engine(), names)
-	return a.applyWhiteVPNNodeDelays(measured), nil
+	return a.applyWhiteVPNNodeDelays(subscriptionID, measured), nil
 }
 
 type nodeDelay struct {
@@ -385,49 +399,54 @@ func selectionIsNarrowed(settings model.WhiteVPNSettings) bool {
 
 // forgetWhiteVPNNodes drops the cached catalogue, for when it belongs to a
 // subscription that is no longer the selected one.
-func (a *App) forgetWhiteVPNNodes() {
+func (a *App) forgetWhiteVPNNodes(subscriptionID string) {
 	a.nodesMu.Lock()
-	a.nodes = nil
-	a.nodesAt = time.Time{}
+	delete(a.nodes, subscriptionID)
+	delete(a.nodesAt, subscriptionID)
 	a.nodesMu.Unlock()
 }
 
-func (a *App) cachedWhiteVPNNodes(now time.Time) (model.WhiteVPNNodeList, bool) {
+func (a *App) cachedWhiteVPNNodes(subscriptionID string, now time.Time) (model.WhiteVPNNodeList, bool) {
 	a.nodesMu.Lock()
 	defer a.nodesMu.Unlock()
-	if len(a.nodes) == 0 || a.nodesAt.IsZero() {
+	fetchedAt, ok := a.nodesAt[subscriptionID]
+	if !ok || len(a.nodes[subscriptionID]) == 0 {
 		return model.WhiteVPNNodeList{}, false
 	}
-	if age := now.Sub(a.nodesAt); age < 0 || age >= whiteDNSVPNSubscriptionRefreshInterval {
+	if age := now.Sub(fetchedAt); age < 0 || age >= whiteDNSVPNSubscriptionRefreshInterval {
 		return model.WhiteVPNNodeList{}, false
 	}
-	return a.nodeListLocked(), true
+	return a.nodeListLocked(subscriptionID), true
 }
 
 // staleWhiteVPNNodes answers a failed refresh with whatever is already known.
 // A dialog that empties itself because the network blinked is worse than one
 // showing a list from an hour ago alongside the error.
-func (a *App) staleWhiteVPNNodes(err error) (model.WhiteVPNNodeList, error) {
+func (a *App) staleWhiteVPNNodes(subscriptionID string, err error) (model.WhiteVPNNodeList, error) {
 	a.nodesMu.Lock()
-	list := a.nodeListLocked()
+	list := a.nodeListLocked(subscriptionID)
 	a.nodesMu.Unlock()
 	return list, err
 }
 
-func (a *App) snapshotWhiteVPNNodes() model.WhiteVPNNodeList {
+func (a *App) snapshotWhiteVPNNodes(subscriptionID string) model.WhiteVPNNodeList {
 	a.nodesMu.Lock()
 	defer a.nodesMu.Unlock()
-	return a.nodeListLocked()
+	return a.nodeListLocked(subscriptionID)
 }
 
 // storeWhiteVPNNodes keeps the catalogue, preserving delays already measured
 // for nodes that are still in it.
-func (a *App) storeWhiteVPNNodes(nodes []model.WhiteVPNNode, now time.Time) model.WhiteVPNNodeList {
+func (a *App) storeWhiteVPNNodes(subscriptionID string, nodes []model.WhiteVPNNode, now time.Time) model.WhiteVPNNodeList {
 	a.nodesMu.Lock()
 	defer a.nodesMu.Unlock()
+	if a.nodes == nil {
+		a.nodes = map[string][]model.WhiteVPNNode{}
+		a.nodesAt = map[string]time.Time{}
+	}
 
-	previous := make(map[string]model.WhiteVPNNode, len(a.nodes))
-	for _, node := range a.nodes {
+	previous := make(map[string]model.WhiteVPNNode, len(a.nodes[subscriptionID]))
+	for _, node := range a.nodes[subscriptionID] {
 		previous[node.Name] = node
 	}
 	next := make([]model.WhiteVPNNode, 0, len(nodes))
@@ -440,39 +459,41 @@ func (a *App) storeWhiteVPNNodes(nodes []model.WhiteVPNNode, now time.Time) mode
 		next = append(next, node)
 	}
 
-	a.nodes = next
-	a.nodesAt = now
-	return a.nodeListLocked()
+	a.nodes[subscriptionID] = next
+	a.nodesAt[subscriptionID] = now
+	return a.nodeListLocked(subscriptionID)
 }
 
-func (a *App) applyWhiteVPNNodeDelays(measured map[string]nodeDelay) model.WhiteVPNNodeList {
+func (a *App) applyWhiteVPNNodeDelays(subscriptionID string, measured map[string]nodeDelay) model.WhiteVPNNodeList {
 	a.nodesMu.Lock()
 	defer a.nodesMu.Unlock()
-	for i, node := range a.nodes {
+	for i, node := range a.nodes[subscriptionID] {
 		delay, ok := measured[node.Name]
 		if !ok {
 			continue
 		}
-		a.nodes[i].DelayMs, a.nodes[i].DelayOK = delay.delayMs, delay.ok
+		a.nodes[subscriptionID][i].DelayMs = delay.delayMs
+		a.nodes[subscriptionID][i].DelayOK = delay.ok
+		a.nodes[subscriptionID][i].DelayTested = true
 	}
-	return a.nodeListLocked()
+	return a.nodeListLocked(subscriptionID)
 }
 
 // whiteVPNNodesSnapshot is the parsed catalogue for the connect path, refreshed
 // from the subscription it is about to use.
-func (a *App) whiteVPNNodesSnapshot() []model.WhiteVPNNode {
+func (a *App) whiteVPNNodesSnapshot(subscriptionID string) []model.WhiteVPNNode {
 	a.nodesMu.Lock()
 	defer a.nodesMu.Unlock()
-	return append([]model.WhiteVPNNode(nil), a.nodes...)
+	return append([]model.WhiteVPNNode(nil), a.nodes[subscriptionID]...)
 }
 
-func (a *App) nodeListLocked() model.WhiteVPNNodeList {
-	list := model.WhiteVPNNodeList{Nodes: append([]model.WhiteVPNNode(nil), a.nodes...)}
+func (a *App) nodeListLocked(subscriptionID string) model.WhiteVPNNodeList {
+	list := model.WhiteVPNNodeList{Nodes: append([]model.WhiteVPNNode(nil), a.nodes[subscriptionID]...)}
 	if list.Nodes == nil {
 		list.Nodes = []model.WhiteVPNNode{}
 	}
-	if !a.nodesAt.IsZero() {
-		list.UpdatedAt = a.nodesAt.Format(time.RFC3339)
+	if fetchedAt, ok := a.nodesAt[subscriptionID]; ok {
+		list.UpdatedAt = fetchedAt.Format(time.RFC3339)
 	}
 	return list
 }

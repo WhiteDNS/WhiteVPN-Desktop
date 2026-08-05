@@ -125,14 +125,21 @@ func (a *App) SelectSubscription(id string) (model.AppState, error) {
 		a.mu.Unlock()
 		return state, nil
 	}
+	if a.mihomo.current() != nil {
+		// The running tunnel was built from the current subscription's servers
+		// and cannot be moved onto another's. Changing the setting under it
+		// would leave the app naming one subscription while carrying traffic
+		// through a different one.
+		state := a.state
+		a.mu.Unlock()
+		return state, fmt.Errorf("disconnect before changing the subscription: the connection is running on the current one")
+	}
 	a.state.SelectedSubscriptionID = id
 	// The dashboard's node choice belongs to the subscription it was made in.
 	a.state.WhiteVPN.Connection.Node = ""
 	state, err := a.saveLocked()
 	a.mu.Unlock()
 
-	// The cached catalogue is the old subscription's.
-	a.forgetWhiteVPNNodes()
 	return state, err
 }
 
@@ -148,7 +155,12 @@ func (a *App) selectedSubscriptionID() string {
 
 // subscriptionBody fetches the selected subscription, ready for the engine.
 func (a *App) subscriptionBody(ctx context.Context) (string, error) {
-	id := a.selectedSubscriptionID()
+	return a.subscriptionBodyFor(ctx, a.selectedSubscriptionID())
+}
+
+// subscriptionBodyFor fetches one by name, which is what lets the Servers page
+// look at a subscription the VPN is not connecting through.
+func (a *App) subscriptionBodyFor(ctx context.Context, id string) (string, error) {
 	if id == whiteDNSVPNSubscriptionID {
 		raw, err := fetchWhiteDNSVPNSubscriptionDocument(ctx)
 		if err != nil {

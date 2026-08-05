@@ -66,11 +66,13 @@ type App struct {
 	connectMu     sync.Mutex
 	connectCancel context.CancelFunc
 
-	// The catalogue the dashboard chooses from, parsed once and kept for as long
-	// as the subscription behind it is fresh.
+	// The catalogues, one per subscription: the Servers page browses any of
+	// them while the connect path uses the selected one, and a shared slot
+	// would let the first quietly answer for the second. Measurements live here
+	// too, which is why switching between subscriptions does not lose them.
 	nodesMu sync.Mutex
-	nodes   []model.WhiteVPNNode
-	nodesAt time.Time
+	nodes   map[string][]model.WhiteVPNNode
+	nodesAt map[string]time.Time
 
 	firewallChecker       firewallChecker
 	lastFirewallStatusKey string

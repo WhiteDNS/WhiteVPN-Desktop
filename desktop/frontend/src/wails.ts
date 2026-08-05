@@ -88,6 +88,7 @@ type AppApi = {
   GetPrivacyPolicyVersion(): Promise<number>;
   AcceptPrivacyPolicy(): Promise<AppState>;
   ListWhiteVPNNodes(refresh: boolean): Promise<WhiteVPNNodeList>;
+  ListSubscriptionNodes(subscriptionId: string, refresh: boolean): Promise<WhiteVPNNodeList>;
   MeasureWhiteVPNNodeDelays(names: string[]): Promise<WhiteVPNNodeList>;
   StartNodeTest(request: NodeTestRequest): Promise<void>;
   CancelNodeTest(): Promise<void>;
@@ -181,6 +182,7 @@ export const backend = {
   getPrivacyPolicyVersion: () => app().GetPrivacyPolicyVersion(),
   acceptPrivacyPolicy: () => app().AcceptPrivacyPolicy(),
   listWhiteVpnNodes: (refresh: boolean) => app().ListWhiteVPNNodes(refresh),
+  listSubscriptionNodes: (subscriptionId: string, refresh: boolean) => app().ListSubscriptionNodes(subscriptionId, refresh),
   measureWhiteVpnNodeDelays: (names: string[]) => app().MeasureWhiteVPNNodeDelays(names),
   startNodeTest: (request: NodeTestRequest) => app().StartNodeTest(request),
   cancelNodeTest: () => app().CancelNodeTest(),

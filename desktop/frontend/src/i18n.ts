@@ -198,6 +198,13 @@ const strings = {
     en: "The same nodes the VPN connects through. Test them, sort them, share them.",
     fa: "همان سرورهایی که وی‌پی‌ان از آن‌ها وصل می‌شود. آزمایش، مرتب‌سازی و اشتراک‌گذاری.",
   },
+  "servers.subscription": { en: "Subscription", fa: "اشتراک" },
+  "servers.notInUse": { en: "not connected through", fa: "اتصال از این اشتراک نیست" },
+  "servers.notInUse.hint": {
+    en: "You are looking at another subscription's servers. Connecting through one of them switches to it.",
+    fa: "در حال دیدن سرورهای اشتراک دیگری هستید. اتصال از یکی از آن‌ها، اشتراک را هم به همان تغییر می‌دهد.",
+  },
+  "servers.empty": { en: "This subscription has no servers to show.", fa: "این اشتراک سروری برای نمایش ندارد." },
   "servers.tests": { en: "Tests", fa: "آزمون‌ها" },
   "servers.test.reach": { en: "Reachable", fa: "در دسترس" },
   "servers.test.delay": { en: "Delay", fa: "تأخیر" },

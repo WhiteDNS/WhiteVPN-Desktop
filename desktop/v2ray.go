@@ -184,6 +184,9 @@ func (a *App) SaveV2RaySubscription(subscription model.V2RaySubscription) (model
 	if !found {
 		a.state.V2RaySubscriptions = append(a.state.V2RaySubscriptions, subscription)
 	}
+	// The address may have changed under the same id, and the cached nodes were
+	// parsed from the old one.
+	a.forgetWhiteVPNNodes(subscription.ID)
 	return a.saveLocked()
 }
 
@@ -263,6 +266,8 @@ func (a *App) RefreshV2RaySubscription(id string) (model.V2RaySubscriptionRefres
 		a.state.SelectedV2RayProfileID = imported[len(imported)-1].ID
 	}
 
+	// A refresh is a request for the current list, cache included.
+	a.forgetWhiteVPNNodes(id)
 	a.state.V2RaySubscriptions[idx].ImportedCount = len(imported)
 	a.state.V2RaySubscriptions[idx].LastUpdatedAt = time.Now().UTC().Format(time.RFC3339)
 	a.state.V2RaySubscriptions[idx].LastError = ""
@@ -297,6 +302,7 @@ func (a *App) DeleteV2RaySubscription(id string) (model.AppState, error) {
 	a.state.V2RayProfiles = slices.DeleteFunc(a.state.V2RayProfiles, func(profile model.V2RayProfile) bool {
 		return profile.SubscriptionID == id
 	})
+	a.forgetWhiteVPNNodes(id)
 	return a.saveLocked()
 }
 

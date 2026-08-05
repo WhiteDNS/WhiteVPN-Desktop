@@ -96,13 +96,17 @@ func (a *App) CancelNodeTest() {
 }
 
 func (a *App) runNodeTest(ctx context.Context, request model.NodeTestRequest) {
-	nodes := a.nodesByName(request.Nodes)
+	subscriptionID := request.SubscriptionID
+	if subscriptionID == "" {
+		subscriptionID = a.selectedSubscriptionID()
+	}
+	nodes := a.nodesByName(subscriptionID, request.Nodes)
 	if len(nodes) == 0 {
 		return
 	}
 
 	if request.Reachability {
-		a.measureReachability(ctx, nodes, request)
+		a.measureReachability(ctx, subscriptionID, nodes, request)
 	}
 	if ctx.Err() != nil {
 		return
@@ -111,7 +115,7 @@ func (a *App) runNodeTest(ctx context.Context, request model.NodeTestRequest) {
 		return
 	}
 
-	measurer, err := a.startMeasurer(ctx)
+	measurer, err := a.startMeasurer(ctx, subscriptionID)
 	if err != nil {
 		a.emit("nodes:test-error", err.Error())
 		return
@@ -130,7 +134,7 @@ func (a *App) runNodeTest(ctx context.Context, request model.NodeTestRequest) {
 		}
 		measurer.DelayAll(ctx, names, request.DelayURL, request.DelayTimeout(), request.DelayWorkers,
 			func(name string, delayMS int, err error) {
-				a.recordNodeMeasurement(name, func(node *model.WhiteVPNNode) {
+				a.recordNodeMeasurement(subscriptionID, name, func(node *model.WhiteVPNNode) {
 					node.DelayTested = true
 					node.DelayOK = err == nil
 					node.DelayMs = delayMS
@@ -156,7 +160,7 @@ func (a *App) runNodeTest(ctx context.Context, request model.NodeTestRequest) {
 			// Also to the log, where a run's failures can be read together.
 			a.appendRuntimeLog(fmt.Sprintf("speed test %q: %v", node.Label, err))
 		}
-		a.recordNodeMeasurement(node.Name, func(stored *model.WhiteVPNNode) {
+		a.recordNodeMeasurement(subscriptionID, node.Name, func(stored *model.WhiteVPNNode) {
 			stored.SpeedTested = true
 			stored.SpeedOK = err == nil
 			stored.SpeedBytesPerSecond = rate
@@ -170,14 +174,14 @@ func (a *App) runNodeTest(ctx context.Context, request model.NodeTestRequest) {
 // It says nothing about whether the node will carry traffic — only that
 // something is listening — which is exactly why it can be run across hundreds
 // of nodes in the time the other tests take for one.
-func (a *App) measureReachability(ctx context.Context, nodes []model.WhiteVPNNode, request model.NodeTestRequest) {
+func (a *App) measureReachability(ctx context.Context, subscriptionID string, nodes []model.WhiteVPNNode, request model.NodeTestRequest) {
 	gate := make(chan struct{}, request.ReachabilityWorkers)
 	var wg sync.WaitGroup
 	for _, node := range nodes {
 		if strings.TrimSpace(node.Server) == "" || node.Port <= 0 {
 			// Nothing to dial. Recorded as tested and failed rather than left
 			// looking untested, which would be a row that never resolves.
-			a.recordNodeMeasurement(node.Name, func(stored *model.WhiteVPNNode) {
+			a.recordNodeMeasurement(subscriptionID, node.Name, func(stored *model.WhiteVPNNode) {
 				stored.ReachTested, stored.ReachOK, stored.ReachMs = true, false, 0
 			})
 			continue
@@ -200,7 +204,7 @@ func (a *App) measureReachability(ctx context.Context, nodes []model.WhiteVPNNod
 			if conn != nil {
 				_ = conn.Close()
 			}
-			a.recordNodeMeasurement(target.Name, func(stored *model.WhiteVPNNode) {
+			a.recordNodeMeasurement(subscriptionID, target.Name, func(stored *model.WhiteVPNNode) {
 				stored.ReachTested = true
 				stored.ReachOK = err == nil
 				stored.ReachError = testFailureMessage(err)
@@ -230,12 +234,12 @@ func testFailureMessage(err error) string {
 // startMeasurer brings up the engine tests run on, from the same subscription
 // the app would connect with, so a measurement is of the node as it would be
 // reached rather than of some other version of it.
-func (a *App) startMeasurer(ctx context.Context) (*session.Measurer, error) {
+func (a *App) startMeasurer(ctx context.Context, subscriptionID string) (*session.Measurer, error) {
 	corePath, err := findMihomoCore()
 	if err != nil {
 		return nil, err
 	}
-	subscription, err := a.subscriptionBody(ctx)
+	subscription, err := a.subscriptionBodyFor(ctx, subscriptionID)
 	if err != nil {
 		return nil, err
 	}
@@ -264,10 +268,10 @@ func (a *App) startMeasurer(ctx context.Context) (*session.Measurer, error) {
 }
 
 // nodesByName resolves the request against the catalogue, keeping its order.
-func (a *App) nodesByName(names []string) []model.WhiteVPNNode {
-	all := a.whiteVPNNodesSnapshot()
+func (a *App) nodesByName(subscriptionID string, names []string) []model.WhiteVPNNode {
+	all := a.whiteVPNNodesSnapshot(subscriptionID)
 	if len(all) == 0 {
-		list, err := a.ListWhiteVPNNodes(false)
+		list, err := a.ListSubscriptionNodes(subscriptionID, false)
 		if err != nil {
 			return nil
 		}
@@ -288,14 +292,15 @@ func (a *App) nodesByName(names []string) []model.WhiteVPNNode {
 
 // recordNodeMeasurement stores one result and tells the interface, so a long
 // run fills the table as it goes.
-func (a *App) recordNodeMeasurement(name string, apply func(*model.WhiteVPNNode)) {
+func (a *App) recordNodeMeasurement(subscriptionID, name string, apply func(*model.WhiteVPNNode)) {
 	a.nodesMu.Lock()
+	nodes := a.nodes[subscriptionID]
 	var updated model.WhiteVPNNode
 	found := false
-	for i := range a.nodes {
-		if a.nodes[i].Name == name {
-			apply(&a.nodes[i])
-			updated = a.nodes[i]
+	for i := range nodes {
+		if nodes[i].Name == name {
+			apply(&nodes[i])
+			updated = nodes[i]
 			found = true
 			break
 		}

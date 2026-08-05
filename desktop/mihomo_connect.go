@@ -82,7 +82,7 @@ func (a *App) startWhiteDNSVPNWithMihomo() (model.AppState, error) {
 		a.reportConnectFailure(ctx, err.Error())
 		return a.GetAppState(), err
 	}
-	a.storeWhiteVPNNodes(nodes, time.Now().UTC())
+	a.storeWhiteVPNNodes(a.selectedSubscriptionID(), nodes, time.Now().UTC())
 	prefer := preferredNodeNames(nodes, settings)
 	if len(prefer) == 0 && selectionIsNarrowed(settings) {
 		err := fmt.Errorf("no node matches the chosen location or connection; change it on the VPN page")

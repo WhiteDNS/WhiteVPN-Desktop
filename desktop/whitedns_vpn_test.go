@@ -249,7 +249,7 @@ func TestSelectSubscriptionClearsANodePickedInAnotherList(t *testing.T) {
 	app.state.WhiteVPN.CountryCode = "DE"
 	_, _ = app.saveLocked()
 	app.mu.Unlock()
-	app.storeWhiteVPNNodes([]model.WhiteVPNNode{{Name: "cached"}}, testTime())
+	app.storeWhiteVPNNodes(whiteDNSVPNSubscriptionID, []model.WhiteVPNNode{{Name: "cached"}}, testTime())
 
 	state, err := app.SelectSubscription(id)
 	if err != nil {
@@ -264,8 +264,13 @@ func TestSelectSubscriptionClearsANodePickedInAnotherList(t *testing.T) {
 	if state.WhiteVPN.CountryCode != "DE" {
 		t.Fatalf("a country filter is not tied to one list and should stay, got %q", state.WhiteVPN.CountryCode)
 	}
-	if nodes := app.whiteVPNNodesSnapshot(); len(nodes) != 0 {
-		t.Fatalf("the cached catalogue belonged to the old subscription, got %#v", nodes)
+	// Each subscription keeps its own catalogue, so the new selection starts
+	// empty rather than inheriting the old one's nodes.
+	if nodes := app.whiteVPNNodesSnapshot(id); len(nodes) != 0 {
+		t.Fatalf("the newly selected subscription must not inherit another's nodes, got %#v", nodes)
+	}
+	if nodes := app.whiteVPNNodesSnapshot(whiteDNSVPNSubscriptionID); len(nodes) != 1 {
+		t.Fatalf("the catalogue's own nodes should survive looking at another list, got %#v", nodes)
 	}
 }
 

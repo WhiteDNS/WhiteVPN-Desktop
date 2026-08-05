@@ -209,13 +209,51 @@ func TestDisconnectingForgetsWhereTrafficLeftFrom(t *testing.T) {
 	}
 }
 
+// Browsing one subscription's nodes must not answer for another's. The connect
+// path validates the chosen node against the selected subscription's list, so a
+// shared cache would let the Servers page decide what the dashboard connects to.
+func TestEachSubscriptionKeepsItsOwnNodes(t *testing.T) {
+	app := &App{state: model.DefaultAppState()}
+	app.storeWhiteVPNNodes(whiteDNSVPNSubscriptionID, []model.WhiteVPNNode{{Name: "catalogue-node"}}, testTime())
+	app.storeWhiteVPNNodes("sub-2", []model.WhiteVPNNode{{Name: "mine-node"}}, testTime())
+
+	catalogue := app.whiteVPNNodesSnapshot(whiteDNSVPNSubscriptionID)
+	if len(catalogue) != 1 || catalogue[0].Name != "catalogue-node" {
+		t.Fatalf("the catalogue's nodes were disturbed by another subscription, got %#v", catalogue)
+	}
+	mine := app.whiteVPNNodesSnapshot("sub-2")
+	if len(mine) != 1 || mine[0].Name != "mine-node" {
+		t.Fatalf("expected the second subscription's own nodes, got %#v", mine)
+	}
+
+	// A measurement lands on the subscription it was taken for, and nowhere else.
+	app.recordNodeMeasurement("sub-2", "mine-node", func(node *model.WhiteVPNNode) {
+		node.ReachTested, node.ReachOK, node.ReachMs = true, true, 42
+	})
+	if got := app.whiteVPNNodesSnapshot("sub-2")[0]; !got.ReachTested || got.ReachMs != 42 {
+		t.Fatalf("expected the measurement to be stored, got %#v", got)
+	}
+	if got := app.whiteVPNNodesSnapshot(whiteDNSVPNSubscriptionID)[0]; got.ReachTested {
+		t.Fatalf("a measurement leaked into another subscription's list, got %#v", got)
+	}
+
+	// And forgetting one leaves the other alone.
+	app.forgetWhiteVPNNodes("sub-2")
+	if got := app.whiteVPNNodesSnapshot("sub-2"); len(got) != 0 {
+		t.Fatalf("expected the second subscription's cache to be dropped, got %#v", got)
+	}
+	if got := app.whiteVPNNodesSnapshot(whiteDNSVPNSubscriptionID); len(got) != 1 {
+		t.Fatalf("dropping one subscription's cache took another's with it, got %#v", got)
+	}
+}
+
 func TestStoreWhiteVPNNodesKeepsMeasurements(t *testing.T) {
 	app := &App{state: model.DefaultAppState()}
-	app.storeWhiteVPNNodes([]model.WhiteVPNNode{{Name: "a"}, {Name: "b"}}, testTime())
-	app.applyWhiteVPNNodeDelays(map[string]nodeDelay{"a": {delayMs: 120, ok: true}})
+	app.storeWhiteVPNNodes(whiteDNSVPNSubscriptionID, []model.WhiteVPNNode{{Name: "a"}, {Name: "b"}}, testTime())
+	app.applyWhiteVPNNodeDelays(whiteDNSVPNSubscriptionID, map[string]nodeDelay{"a": {delayMs: 120, ok: true}})
 
 	// A refresh that still holds the node must not throw its measurement away.
-	list := app.storeWhiteVPNNodes([]model.WhiteVPNNode{{Name: "a"}, {Name: "c"}}, testTime())
+	list := app.storeWhiteVPNNodes(whiteDNSVPNSubscriptionID, []model.WhiteVPNNode{{Name: "a"}, {Name: "c"}}, testTime())
 	if len(list.Nodes) != 2 {
 		t.Fatalf("expected the refreshed catalogue, got %#v", list.Nodes)
 	}

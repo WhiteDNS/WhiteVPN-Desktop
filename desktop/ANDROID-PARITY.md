@@ -229,10 +229,29 @@ is for finding out which one to pick: test, sort, compare, share.
 | | Dialog | Servers |
 |---|---|---|
 | Search, country and protocol filters | ✓ | ✓ |
+| Which subscription | the selected one | any of them, picked at the top |
 | Delay | measured through the live engine | measured on an engine of its own |
 | Reachability, speed | — | ✓ |
 | Sort by any column | — | ✓ |
 | Share a node's link | — | ✓ |
+
+The subscription picker is why the two now read `ListSubscriptionNodes` and the
+cache is keyed by subscription id rather than being one slot. A user added a
+subscription, went to Servers, and did not find it: the page had been showing
+the *selected* subscription and there was no way to look at another. Adding one
+you cannot inspect until you commit to it is the wrong way round.
+
+A keyed cache is not an optimisation here. `whiteVPNNodesSnapshot` feeds the
+connect path — it is what a chosen node's name is validated against — so a
+single slot would mean looking at one subscription's servers decided what the
+dashboard connected to. Keying it also means measurements taken on one list
+survive a look at another and back.
+
+Connecting through a node in a subscription that is not the selected one moves
+the selection with it. That cannot happen while a tunnel is up, because the
+tunnel was built from the old subscription's servers and there is no way to move
+it: `SelectSubscription` refuses while a session is live, and the Servers page
+disables the button with "Disconnect first" rather than letting the click fail.
 
 ## 5b. Desktop additions
 

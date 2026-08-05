@@ -684,6 +684,8 @@ export type WhiteVPNNode = {
 // is allowed to change. Bounds live in internal/model; anything outside them is
 // replaced with the default rather than clamped.
 export type NodeTestRequest = {
+  // Which subscription the names belong to; empty means the selected one.
+  subscriptionId?: string;
   nodes: string[];
   reachability: boolean;
   delay: boolean;

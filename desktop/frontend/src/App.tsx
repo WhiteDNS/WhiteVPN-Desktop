@@ -688,13 +688,26 @@ function App() {
   const [errorToast, setErrorToast] = useState<AppErrorToast | null>(null);
   const [successToast, setSuccessToast] = useState<AppErrorToast | null>(null);
   const [validatorState, setValidatorState] = useState<ValidatorState>(defaultValidatorState);
-  // One catalogue, shared. The dashboard dialog picks from it and the Servers
-  // page tests it; two fetches would be two lists that drift.
+  // The nodes the Servers page is looking at, and which subscription they came
+  // from. The dashboard always shows the selected subscription; Servers may be
+  // browsing another, which is the whole point of the picker there.
   const [nodes, setNodes] = useState<WhiteVPNNode[]>([]);
+  const [browsing, setBrowsing] = useState("");
   const [nodesLoading, setNodesLoading] = useState(false);
   const [nodeTestRunning, setNodeTestRunning] = useState(false);
   const runtimeLogBufferRef = useRef<RuntimeLogEntry[]>([]);
   const runtimeLogFlushTimerRef = useRef<number | null>(null);
+
+  // Which subscription the Servers page is showing: the one the user picked
+  // there, or the connected one until they pick. A pick that no longer exists
+  // falls back rather than leaving the page pointed at nothing.
+  const browsedSubscriptionId = useMemo(() => {
+    const fallback = state?.selectedSubscriptionId || whiteDNSVPNSubscriptionID;
+    if (!browsing) {
+      return fallback;
+    }
+    return (state?.v2raySubscriptions ?? []).some((subscription) => subscription.id === browsing) ? browsing : fallback;
+  }, [browsing, state?.selectedSubscriptionId, state?.v2raySubscriptions]);
 
   function applyState(next: AppState) {
     setState((current) => normalizeAppState(next, current));
@@ -735,12 +748,18 @@ function App() {
     }
   }
 
-  async function loadNodes(refresh: boolean) {
+  async function loadNodes(refresh: boolean, subscriptionId?: string) {
+    const id = subscriptionId ?? browsedSubscriptionId;
     setNodesLoading(true);
     try {
-      const list = await backend.listWhiteVpnNodes(refresh);
+      const list = await backend.listSubscriptionNodes(id, refresh);
+      setBrowsing(id);
       setNodes(list.nodes || []);
     } catch (err) {
+      // The list that came back is what could be read, which for a stale cache
+      // is still worth showing next to the error.
+      setBrowsing(id);
+      setNodes([]);
       showError(messageFromError(err));
     } finally {
       setNodesLoading(false);
@@ -750,7 +769,7 @@ function App() {
   async function runNodeTest(request: NodeTestRequest) {
     try {
       setNodeTestRunning(true);
-      await backend.startNodeTest(request);
+      await backend.startNodeTest({ ...request, subscriptionId: browsedSubscriptionId });
     } catch (err) {
       setNodeTestRunning(false);
       showError(messageFromError(err));
@@ -773,7 +792,15 @@ function App() {
       return;
     }
     try {
-      applyState(await backend.saveWhiteVpnSelection(state.whiteVpn.countryCode, { ...state.whiteVpn.connection, node: name }));
+      let current = state;
+      if (browsedSubscriptionId !== current.selectedSubscriptionId) {
+        // The node is named in a list the app is not connecting through, so the
+        // subscription moves with it. Otherwise the name would be checked
+        // against the other list and refused.
+        current = await backend.selectSubscription(browsedSubscriptionId);
+        applyState(current);
+      }
+      applyState(await backend.saveWhiteVpnSelection(current.whiteVpn.countryCode, { ...current.whiteVpn.connection, node: name }));
       showSuccess(name);
     } catch (err) {
       showError(messageFromError(err));
@@ -926,14 +953,14 @@ function App() {
     }
   }
 
-  // The Servers page is useless without the catalogue; one load serves it and
-  // the dashboard dialog both. Above the early return below, because it is a
-  // hook and hooks cannot be conditional.
+  // The Servers page is useless without a catalogue, and it must be the
+  // catalogue it says it is showing. Above the early return below, because it
+  // is a hook and hooks cannot be conditional.
   useEffect(() => {
-    if (page === "servers" && !nodes.length && !nodesLoading) {
-      void loadNodes(false);
+    if (page === "servers" && !nodesLoading && (!nodes.length || browsing !== browsedSubscriptionId)) {
+      void loadNodes(false, browsedSubscriptionId);
     }
-  }, [page]);
+  }, [page, browsedSubscriptionId]);
 
   if (!state) {
     return (
@@ -974,6 +1001,8 @@ function App() {
                 <NodesPage
                   state={state}
                   nodes={nodes}
+                  subscriptionId={browsedSubscriptionId}
+                  onSelectSubscription={(id) => void loadNodes(false, id)}
                   loading={nodesLoading}
                   testing={nodeTestRunning}
                   onReload={() => void loadNodes(true)}
@@ -2355,6 +2384,8 @@ function formatRate(bytesPerSecond: number): string {
 function NodesPage({
   state,
   nodes,
+  subscriptionId,
+  onSelectSubscription,
   loading,
   testing,
   onReload,
@@ -2368,6 +2399,8 @@ function NodesPage({
 }: {
   state: AppState;
   nodes: WhiteVPNNode[];
+  subscriptionId: string;
+  onSelectSubscription: (id: string) => void;
   loading: boolean;
   testing: boolean;
   onReload: () => void;
@@ -2504,8 +2537,14 @@ function NodesPage({
     }
   }
 
-  const subscriptionName =
-    state.v2raySubscriptions.find((subscription) => subscription.id === state.selectedSubscriptionId)?.name || "";
+  // The page names the list it is showing, which is not always the one the VPN
+  // connects through — a subscription just added has to be browsable before it
+  // is chosen, or there is no way to look at it before committing to it.
+  const inUse = subscriptionId === state.selectedSubscriptionId;
+  // Connecting through a node in another subscription moves the selection with
+  // it, and the selection cannot move while a tunnel built from the old one is
+  // still up. Say so on the button rather than letting the click fail.
+  const blockedByConnection = !inUse && profileSelectionLocked(state.runtime);
 
   return (
     <PageShell
@@ -2535,7 +2574,25 @@ function NodesPage({
         <CardHeader className="p-3 pb-2">
           <CardTitle className="flex flex-wrap items-center gap-2 text-sm">
             <Shield className="size-4" />
-            {subscriptionName || t("nav.subscriptions")}
+            <Select value={subscriptionId} onValueChange={onSelectSubscription} disabled={loading || testing}>
+              <SelectTrigger className="h-8 w-56" aria-label={t("servers.subscription")}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent position="popper">
+                {state.v2raySubscriptions.map((subscription) => (
+                  <SelectItem key={subscription.id} value={subscription.id}>
+                    {subscription.name || t("nav.subscriptions")}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {inUse ? (
+              <Badge variant="secondary">{t("subs.inUse")}</Badge>
+            ) : (
+              <Badge variant="outline" className="text-amber-600 dark:text-amber-400" title={t("servers.notInUse.hint")}>
+                {t("servers.notInUse")}
+              </Badge>
+            )}
             <Badge variant="outline">
               {visible.length} / {nodes.length} {t("vpn.nodes.count")}
             </Badge>
@@ -2748,11 +2805,17 @@ function NodesPage({
                       <div className="flex justify-end gap-1">
                         <Tooltip>
                           <TooltipTrigger asChild>
-                            <Button variant="ghost" size="icon-sm" onClick={() => onSelectNode(node.name)} aria-label={t("servers.use")}>
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              onClick={() => onSelectNode(node.name)}
+                              disabled={blockedByConnection}
+                              aria-label={t("servers.use")}
+                            >
                               <Play />
                             </Button>
                           </TooltipTrigger>
-                          <TooltipContent>{t("servers.use")}</TooltipContent>
+                          <TooltipContent>{blockedByConnection ? t("subs.disconnectFirst") : t("servers.use")}</TooltipContent>
                         </Tooltip>
                         <Tooltip>
                           <TooltipTrigger asChild>
@@ -2769,7 +2832,10 @@ function NodesPage({
                 {!visible.length && (
                   <tr>
                     <td colSpan={9} className="px-3 py-10 text-center text-sm text-muted-foreground">
-                      {loading ? t("vpn.nodes.loading") : t("vpn.nodes.none")}
+                      {/* An empty subscription and a filter that matches nothing
+                          are different problems, and only one of them is the
+                          user's own doing. */}
+                      {loading ? t("vpn.nodes.loading") : nodes.length ? t("vpn.nodes.none") : t("servers.empty")}
                     </td>
                   </tr>
                 )}
