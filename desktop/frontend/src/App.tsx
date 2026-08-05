@@ -1265,7 +1265,7 @@ function App() {
   return (
     <TooltipProvider>
       <SidebarProvider defaultOpen>
-        <AppSidebar page={activePage} runtime={state.runtime} onPage={setPage} t={t} />
+        <AppSidebar page={activePage} runtime={state.runtime} onPage={setPage} language={language} t={t} />
         <SidebarInset className="min-w-0 overflow-x-hidden">
           <main className="min-h-svh min-w-0 overflow-x-hidden bg-muted/30 p-4 md:p-6">
             <div className="mx-auto flex w-full min-w-0 max-w-7xl flex-col gap-4">
@@ -1359,7 +1359,7 @@ function ErrorToast({ toast, onDismiss }: { toast: AppErrorToast | null; onDismi
   }
 
   return (
-    <div className="fixed top-4 right-4 left-4 z-50 sm:top-6 sm:right-6 sm:left-auto sm:w-full sm:max-w-md">
+    <div className="fixed top-4 end-4 start-4 z-50 sm:top-6 sm:end-6 sm:start-auto sm:w-full sm:max-w-md">
       <Alert variant="destructive" className="border-destructive/25 shadow-lg">
         <AlertCircle />
         <AlertTitle>Operation failed</AlertTitle>
@@ -1380,7 +1380,7 @@ function SuccessToast({ toast, onDismiss }: { toast: AppErrorToast | null; onDis
   }
 
   return (
-    <div className="fixed top-4 right-4 left-4 z-50 sm:top-6 sm:right-6 sm:left-auto sm:w-full sm:max-w-md">
+    <div className="fixed top-4 end-4 start-4 z-50 sm:top-6 sm:end-6 sm:start-auto sm:w-full sm:max-w-md">
       <Alert className="border-emerald-200 bg-emerald-50 text-emerald-950 shadow-lg dark:border-emerald-900/60 dark:bg-emerald-950 dark:text-emerald-100">
         <CheckCircle2 />
         <AlertTitle>{toast.message}</AlertTitle>
@@ -1449,7 +1449,7 @@ function ThemeSettingsMenu({ className, sidebar = false }: { className?: string;
         <div
           role="menu"
           aria-label="Theme"
-          className="absolute right-0 top-[calc(100%+0.375rem)] z-50 w-52 overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
+          className="absolute end-0 top-[calc(100%+0.375rem)] z-50 w-52 overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
         >
           <div className="flex items-center justify-between gap-2 px-2 py-1.5 text-sm font-medium">
             <span>Theme</span>
@@ -1499,11 +1499,11 @@ function ThemeMenuItem({
       aria-checked={active}
       onClick={onSelect}
       className={cn(
-        "relative flex w-full items-center gap-2 rounded-sm py-1.5 pr-2 pl-8 text-left text-sm outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent focus-visible:text-accent-foreground [&_svg]:size-4 [&_svg]:shrink-0",
+        "relative flex w-full items-center gap-2 rounded-sm py-1.5 pe-2 ps-8 text-start text-sm outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent focus-visible:text-accent-foreground [&_svg]:size-4 [&_svg]:shrink-0",
         active && "bg-accent text-accent-foreground",
       )}
     >
-      <span className="absolute left-2 flex size-3.5 items-center justify-center">
+      <span className="absolute start-2 flex size-3.5 items-center justify-center">
         {active && <CheckCircle2 className="size-3.5" />}
       </span>
       {icon}
@@ -1516,11 +1516,13 @@ function AppSidebar({
   page,
   runtime,
   onPage,
+  language,
   t,
 }: {
   page: Page;
   runtime: RuntimeStatus;
   onPage: (page: Page) => void;
+  language: Language;
   t: TranslateFn;
 }) {
   const sidebarEndpoint = runtimeProxyDisplayEndpoint(runtime);
@@ -1537,7 +1539,13 @@ function AppSidebar({
   }
 
   return (
-    <Sidebar collapsible="icon" variant="sidebar">
+    // The sidebar reserves its space with an in-flow element and then pins
+    // itself with `position: fixed; left: 0`. Under a right-to-left document
+    // the reserved space moves to the right while the pin does not, so the
+    // sidebar lands on top of the page. Telling it which side it is on is what
+    // keeps the two together — and in a right-to-left layout the navigation
+    // belongs on the right anyway.
+    <Sidebar collapsible="icon" variant="sidebar" side={isRightToLeft(language) ? "right" : "left"}>
       <SidebarHeader>
         <div className="flex items-center justify-between gap-2 px-2 py-2">
           <div className="flex min-w-0 items-center gap-2.5">
@@ -1551,7 +1559,7 @@ function AppSidebar({
           </div>
           <ThemeSettingsMenu
             sidebar
-            className="ml-auto group-data-[collapsible=icon]:hidden"
+            className="ms-auto group-data-[collapsible=icon]:hidden"
           />
         </div>
         <a
@@ -1587,9 +1595,9 @@ function AppSidebar({
                     <button type="button" aria-expanded={isOpen} onClick={() => toggleGroup(group.id)}>
                       <span className="truncate">{t(group.label)}</span>
                       {isOpen ? (
-                        <ChevronDown className="ml-auto size-3.5 shrink-0" aria-hidden="true" />
+                        <ChevronDown className="ms-auto size-3.5 shrink-0" aria-hidden="true" />
                       ) : (
-                        <ChevronRight className="ml-auto size-3.5 shrink-0" aria-hidden="true" />
+                        <ChevronRight className="ms-auto size-3.5 shrink-0 rtl:rotate-180" aria-hidden="true" />
                       )}
                     </button>
                   </SidebarGroupLabel>
@@ -2614,11 +2622,15 @@ function V2RayProfilesPage({
   const setupStatus = v2rayRuntimeActiveForSetup ? runtime.status : runtimeBusy ? "connecting" : "disconnected";
   const setupStatusLabel = v2rayRuntimeActiveForSetup ? statusLabel(runtime.status) : runtimeBusy ? "Busy" : "Disconnected";
   const localProxyEndpoint = runtimeProxyDisplayEndpoint(runtime) || (selectedSettings ? proxyEndpoint(selectedSettings.listenIp, selectedSettings.listenPort) : "-");
+  // Logical rather than left/right: the sidebar moves to the other side under a
+  // right-to-left language, and a bar that reserved space for it on the left
+  // would be laid across it.
   const controlBarInset = sidebar.isMobile
-    ? { left: "1rem", right: "1rem" }
+    ? { insetInlineStart: "1rem", insetInlineEnd: "1rem" }
     : {
-        left: sidebar.state === "collapsed" ? "calc(var(--sidebar-width-icon) + 1.5rem)" : "calc(var(--sidebar-width) + 1.5rem)",
-        right: "1.5rem",
+        insetInlineStart:
+          sidebar.state === "collapsed" ? "calc(var(--sidebar-width-icon) + 1.5rem)" : "calc(var(--sidebar-width) + 1.5rem)",
+        insetInlineEnd: "1.5rem",
       };
   const settingsControlsDisabled = settingsSaving || (v2rayRuntimeActiveForSetup && runtime.status === "connecting") || (runtimeBusy && !v2rayRuntimeActiveForSetup);
   const settingsItems = useMemo(
@@ -2913,8 +2925,8 @@ function V2RayProfilesPage({
     return cn(
       "relative h-9 overflow-hidden px-1.5 py-2 font-medium",
       column.align === "center" && "text-center",
-      column.align === "right" && "text-right",
-      column.sticky === "right" && "v2ray-actions-header sticky right-0 z-20 border-l shadow-[-8px_0_12px_-12px_rgba(0,0,0,0.55)]",
+      column.align === "right" && "text-end",
+      column.sticky === "right" && "v2ray-actions-header sticky end-0 z-20 border-s shadow-[-8px_0_12px_-12px_rgba(0,0,0,0.55)]",
       extra
     );
   }
@@ -2923,7 +2935,7 @@ function V2RayProfilesPage({
     return (
       <button
         type="button"
-        className="absolute inset-y-0 right-0 z-30 w-2 cursor-col-resize touch-none select-none rounded-sm outline-none hover:bg-primary/25 focus-visible:bg-primary/30"
+        className="absolute inset-y-0 end-0 z-30 w-2 cursor-col-resize touch-none select-none rounded-sm outline-none hover:bg-primary/25 focus-visible:bg-primary/30"
         aria-label={`Resize ${column.label || "selection"} column`}
         onPointerDown={(event) => startProfileTableColumnResize(event, column.id)}
         onClick={(event) => {
@@ -3407,7 +3419,7 @@ function V2RayProfilesPage({
                   <SlidersHorizontal />
                   Bulk actions
                   {selectedProfileCount > 0 && (
-                    <Badge variant="secondary" className="ml-1 px-1.5">
+                    <Badge variant="secondary" className="ms-1 px-1.5">
                       {selectedProfileCount}
                     </Badge>
                   )}
@@ -3554,7 +3566,7 @@ function V2RayProfilesPage({
                     <SelectItem key={filter} value={filter}>
                       <span className="flex min-w-0 items-center gap-3 pr-4">
                         <span className="truncate">{label}</span>
-                        <span className="ml-auto text-xs tabular-nums text-muted-foreground">
+                        <span className="ms-auto text-xs tabular-nums text-muted-foreground">
                           {filterCounts.status[filter] || 0}
                         </span>
                       </span>
@@ -3574,7 +3586,7 @@ function V2RayProfilesPage({
                     <SelectItem key={filter} value={filter}>
                       <span className="flex min-w-0 items-center gap-3 pr-4">
                         <span className="truncate">{label}</span>
-                        <span className="ml-auto text-xs tabular-nums text-muted-foreground">
+                        <span className="ms-auto text-xs tabular-nums text-muted-foreground">
                           {filterCounts.type[filter] || 0}
                         </span>
                       </span>
@@ -3594,7 +3606,7 @@ function V2RayProfilesPage({
                     <SelectItem key={filter} value={filter}>
                       <span className="flex min-w-0 items-center gap-3 pr-4">
                         <span className="truncate">{label}</span>
-                        <span className="ml-auto text-xs tabular-nums text-muted-foreground">
+                        <span className="ms-auto text-xs tabular-nums text-muted-foreground">
                           {filterCounts.subscription[filter] || 0}
                         </span>
                       </span>
@@ -3609,7 +3621,7 @@ function V2RayProfilesPage({
             className="max-h-[min(68svh,46rem)] overflow-auto"
             onScroll={handleProfileTableScroll}
           >
-            <table className="table-fixed text-left" style={{ width: profileTableWidth, minWidth: profileTableWidth }}>
+            <table className="table-fixed text-start" style={{ width: profileTableWidth, minWidth: profileTableWidth }}>
               <colgroup>
                 {v2rayProfileTableColumns.map((column) => (
                   <col key={column.id} style={{ width: profileTableColumnWidths[column.id] }} />
@@ -3644,7 +3656,7 @@ function V2RayProfilesPage({
                       const metricDirection = profileSort.column === column.id ? profileSort.direction : "none";
                       return (
                         <th key={column.id} className={v2rayHeaderCellClass(column)}>
-                          <div className={cn("flex min-w-0 items-center gap-1.5 truncate pr-2", column.align === "right" && "justify-end")}>
+                          <div className={cn("flex min-w-0 items-center gap-1.5 truncate pe-2", column.align === "right" && "justify-end")}>
                             <button
                               type="button"
                               className="inline-flex shrink-0 items-center gap-1 rounded-md text-xs font-medium uppercase text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -3667,7 +3679,7 @@ function V2RayProfilesPage({
                     }
                     return (
                       <th key={column.id} className={v2rayHeaderCellClass(column)}>
-                        <span className="block truncate pr-2">{column.label}</span>
+                        <span className="block truncate pe-2">{column.label}</span>
                         {renderProfileTableColumnResizeHandle(column)}
                       </th>
                     );
@@ -3729,15 +3741,15 @@ function V2RayProfilesPage({
                       <td className="px-1.5 py-1 font-mono text-xs">{profile.serverPort || 443}</td>
                       <td className="px-1.5 py-1 text-xs" title={v2rayNetworkLabel(profile.network)}>{v2rayNetworkLabel(profile.network)}</td>
                       <td className="px-1.5 py-1 text-xs">{profile.tls || profile.reality ? "tls" : "-"}</td>
-                      <td className={cn("px-1.5 py-1 text-right text-xs tabular-nums", v2rayDelayClass(result, scanning))}>
+                      <td className={cn("px-1.5 py-1 text-end text-xs tabular-nums", v2rayDelayClass(result, scanning))}>
                         {formatV2RayDelay(result, scanning)}
                       </td>
-                      <td className={cn("px-1.5 py-1 text-right text-xs tabular-nums", v2raySpeedClass(result, scanning))}>
+                      <td className={cn("px-1.5 py-1 text-end text-xs tabular-nums", v2raySpeedClass(result, scanning))}>
                         {formatV2RaySpeedResult(result, scanning)}
                       </td>
                       <td
                         className={cn(
-                          "v2ray-actions-cell sticky right-0 z-[1] border-l px-1 py-1 text-right shadow-[-8px_0_12px_-12px_rgba(0,0,0,0.55)]",
+                          "v2ray-actions-cell sticky end-0 z-[1] border-s px-1 py-1 text-end shadow-[-8px_0_12px_-12px_rgba(0,0,0,0.55)]",
                           v2rayStickyActionCellClass(selectedProfile || selectedForBulk)
                         )}
                       >
@@ -4069,7 +4081,7 @@ function V2RayProfilesPage({
           </div>
           <DialogFooter className="sm:justify-between">
             {Boolean(draft.id) ? (
-              <Button type="button" variant="destructive" onClick={deleteDraft} className="sm:mr-auto">
+              <Button type="button" variant="destructive" onClick={deleteDraft} className="sm:me-auto">
                 <Trash2 />
                 Delete
               </Button>
@@ -4323,7 +4335,7 @@ function V2RaySubscriptionsPage({
             <div className="px-3 py-4 text-sm text-muted-foreground">No saved subscription URLs.</div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[800px] table-fixed text-left">
+              <table className="w-full min-w-[800px] table-fixed text-start">
                 <colgroup>
                   <col className="w-[24%]" />
                   <col className="w-[34%]" />
@@ -4337,7 +4349,7 @@ function V2RaySubscriptionsPage({
                     <th className="px-3 py-2 font-medium">URL</th>
                     <th className="px-3 py-2 font-medium">Profiles</th>
                     <th className="px-3 py-2 font-medium">Status</th>
-                    <th className="px-3 py-2 text-right font-medium">Actions</th>
+                    <th className="px-3 py-2 text-end font-medium">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -4376,7 +4388,7 @@ function V2RaySubscriptionsPage({
                             {v2raySubscriptionStatusLabel(subscription)}
                           </span>
                         </td>
-                        <td className="px-3 py-3 text-right">
+                        <td className="px-3 py-3 text-end">
                           <div className="flex justify-end gap-1">
                             <Tooltip>
                               <TooltipTrigger asChild>
@@ -4452,7 +4464,7 @@ function V2RaySubscriptionsPage({
           </FieldGroup>
           <DialogFooter className="sm:justify-between">
             {draft.id ? (
-              <Button type="button" variant="destructive" onClick={() => requestDeleteSubscription(draft)} className="sm:mr-auto">
+              <Button type="button" variant="destructive" onClick={() => requestDeleteSubscription(draft)} className="sm:me-auto">
                 <Trash2 />
                 Delete
               </Button>
@@ -4526,7 +4538,7 @@ function BulkActionMenuItem({
       role="menuitem"
       disabled={disabled}
       className={cn(
-        "flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm outline-none transition-colors disabled:pointer-events-none disabled:opacity-50 [&_svg]:size-4 [&_svg]:shrink-0",
+        "flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-start text-sm outline-none transition-colors disabled:pointer-events-none disabled:opacity-50 [&_svg]:size-4 [&_svg]:shrink-0",
         destructive
           ? "text-destructive hover:bg-destructive/10 focus-visible:bg-destructive/10"
           : "hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent focus-visible:text-accent-foreground"
@@ -5086,7 +5098,7 @@ function V2RaySettingsPage({
             </div>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1040px] table-fixed text-left">
+            <table className="w-full min-w-[1040px] table-fixed text-start">
               <colgroup>
                 <col className="w-[20%]" />
                 <col className="w-[16%]" />
@@ -5254,7 +5266,7 @@ function V2RaySettingsPage({
           </div>
           <DialogFooter className="sm:justify-between">
             {draft.id !== "v2ray-settings-default" && Boolean(draft.id) ? (
-              <Button type="button" variant="destructive" onClick={deleteDraft} className="sm:mr-auto">
+              <Button type="button" variant="destructive" onClick={deleteDraft} className="sm:me-auto">
                 <Trash2 />
                 Delete
               </Button>
@@ -6036,7 +6048,7 @@ function ValidatorPage({
                   type="button"
                   disabled={running}
                   className={cn(
-                    "flex w-full min-w-0 items-center gap-3 px-3 py-2 text-left text-sm transition-colors hover:bg-muted/60 disabled:cursor-not-allowed disabled:opacity-60",
+                    "flex w-full min-w-0 items-center gap-3 px-3 py-2 text-start text-sm transition-colors hover:bg-muted/60 disabled:cursor-not-allowed disabled:opacity-60",
                     selected && "bg-primary/5"
                   )}
                   onClick={() => toggleRange(option.range)}
@@ -6391,7 +6403,7 @@ function ValidatorFiles({
                 <div>Rows</div>
                 <div>Status</div>
                 <div>Size</div>
-                <div className="text-right">Actions</div>
+                <div className="text-end">Actions</div>
               </div>
               <div className="divide-y">
                 {files.map((file) => (
@@ -6493,8 +6505,8 @@ function LogsPage({
       actions={
         <div className="flex w-full min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
           <div className="relative w-full min-w-0 sm:w-80">
-            <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input className="pl-8" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search logs" />
+            <Search className="absolute start-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input className="ps-8" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search logs" />
           </div>
           <Button type="button" variant="outline" onClick={copyLogs} disabled={!logs.length}>
             <Copy />
@@ -6673,7 +6685,7 @@ function SecretField(props: {
           type={props.revealable && visible ? "text" : "password"}
           value={props.value}
           aria-invalid={Boolean(props.error)}
-          className={props.revealable ? "pr-9" : undefined}
+          className={props.revealable ? "pe-9" : undefined}
           onChange={(event) => props.onChange(event.target.value)}
         />
         {props.revealable && (
@@ -6683,7 +6695,7 @@ function SecretField(props: {
                 type="button"
                 variant="ghost"
                 size="icon-sm"
-                className="absolute right-1 top-1/2 size-6 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                className="absolute end-1 top-1/2 size-6 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                 aria-label={revealLabel}
                 aria-pressed={visible}
                 onClick={() => setVisible((current) => !current)}
@@ -7524,7 +7536,7 @@ function RemovableBadges({
           {value}
           <button
             type="button"
-            className="ml-1 rounded-sm opacity-70 transition-opacity hover:opacity-100"
+            className="ms-1 rounded-sm opacity-70 transition-opacity hover:opacity-100"
             onClick={() => onRemove(value)}
             aria-label={"Remove " + value}
           >
