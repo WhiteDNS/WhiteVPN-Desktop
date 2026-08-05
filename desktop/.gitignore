@@ -42,11 +42,16 @@ coverage.out
 *.prof
 *.trace
 
-# Go / Wails build output
+# Go / Wails build output. The icons under build/ are not output: tray.go
+# embeds two of them, so a checkout without them does not compile at all.
 build/*
+!build/appicon.png
+!build/appicon-source.png
 !build/windows/
 build/windows/*
 !build/windows/wails.exe.manifest
+!build/windows/icon.ico
+!build/windows/info.json
 .cache/
 bin/
 dist/
