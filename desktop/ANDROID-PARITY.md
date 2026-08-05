@@ -34,6 +34,8 @@ about the visual language changes; only the content is ported.
 | 1.2 | Connection (node pick) | `white_dns_connection_selection` / `profile:<subId>` | unset = Automatic | VPN page row → connection dialog | `[x]` |
 | 1.3 | Connection type filter | `white_dns_connection_selection` / `types:<subId>` | empty = all types | Inside the connection dialog | `[x]` |
 | 1.4 | Sort by delay | `white_dns_connection_selection` / `delay-sort:<subId>` | `false` | Toggle in the connection dialog | `[x]` |
+| 1.5 | Split tunnel mode | `white_dns_split_tunnel` / `mode` | `off` | VPN page row → split-tunnel dialog | `[x]` |
+| 1.6 | Split tunnel selection | `white_dns_split_tunnel` / `packages` | empty | **Adapted**: Windows processes/`.exe` instead of Android packages | `[x]` |
 
 **Where a node's country comes from.** The catalogue puts it in the name, as a
 flag: `🇩🇪 | @WhiteDNS | DE1|36.8MB/s|DNSOK|…`. A flag is a pair of regional
@@ -76,8 +78,6 @@ proxy chains make disagreement a real outcome, not a bug.
 running; without it a failed lookup leaves a spinner turning over work that
 stopped. The measurement is cached per *local* proxy address, which does not
 change when the node behind it does, so switching node clears that cache.
-| 1.5 | Split tunnel mode | `white_dns_split_tunnel` / `mode` | `off` | VPN page row → split-tunnel dialog | `[x]` |
-| 1.6 | Split tunnel selection | `white_dns_split_tunnel` / `packages` | empty | **Adapted**: Windows processes/`.exe` instead of Android packages | `[x]` |
 
 Split tunnel keeps all three Android modes: `off`, `bypass_selected`
 (selected apps skip the VPN), `vpn_only_selected` (only selected apps use it).
