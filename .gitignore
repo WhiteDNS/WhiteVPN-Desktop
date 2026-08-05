@@ -83,6 +83,10 @@ desktop/clients/*
 !desktop/clients/.keep
 desktop/cores/*
 !desktop/cores/.keep
+# The engine is built from source; wintun is a redistributable it loads at
+# runtime and cannot build, so it travels with the repo or Windows TUN has
+# nothing to create an adapter with on a fresh checkout.
+!desktop/cores/wintun.dll
 **/*.dmg
 **/*.pkg
 **/*.msi

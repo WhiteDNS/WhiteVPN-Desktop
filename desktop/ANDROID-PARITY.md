@@ -416,17 +416,40 @@ but only the navigation, the connect button and those dialogs are keyed so far.
 
 ### Building for the other platforms
 
-Measured 2026-08-04, from Windows:
+Measured 2026-08-05, from Windows:
 
-- **Windows** — `wails build` here. Note `make package-windows` runs
-  `prepare-embedded-core`, which now checks for the mihomo core rather than
-  fetching Xray.
-- **Linux** — the code cross-compiles with `CGO_ENABLED=0` (the tray is D-Bus,
-  pure Go). Wails packaging still needs a Linux host or Docker:
-  `make package-linux-all-docker`.
-- **macOS** — **cannot be built from Windows.** Without CGO it does not even
-  compile: the tray needs Cocoa. Wails needs the macOS SDK as well. It has to
-  run on a Mac: `make package-mac`.
+- **Windows** — `wails build` here.
+- **Linux** — cross-compiles with `CGO_ENABLED=0` (the tray is D-Bus, pure Go).
+  Wails packaging still needs a Linux host or Docker.
+- **macOS** — **cannot be built from Windows.** Without CGO it does not compile
+  at all: `fyne.io/systray` needs Cocoa. With CGO it needs the macOS SDK. It has
+  to run on a Mac, or on a macOS CI runner.
+
+`.github/workflows/desktop-release.yml` already builds all three, on a tag
+`vpn-v*` or by hand. What a runner does *not* start with, and how it gets it:
+
+| Not in the repo | How the build gets it |
+|---|---|
+| `third_party/flclash/core` — the engine source | `prepare-embedded-core` sees no core binary, calls `mihomo-core`, which calls `mihomo-core-setup`, which clones FlClash and mihomo at their pinned refs |
+| `cores/mihomo-<os>-<arch>` | built from that source, `CGO_ENABLED=0`, cross-compiles to any target |
+| `cores/wintun.dll` | **committed**, because it is a redistributable the engine loads at runtime and cannot build. Without it a fresh checkout produces a Windows build whose TUN mode fails when the user turns it on |
+
+So a runner needs network and git, which GitHub's have. Nothing needs to be
+uploaded or cached between runs.
+
+**What is not ready on macOS yet.** The build will produce an app; two things
+inside it are Windows-only:
+
+- **The tunnel.** `startElevatedChild` refuses off Windows, so TUN mode cannot
+  start. macOS needs a privileged helper — `SMJobBless` or a launchd daemon —
+  and that is a notarisation-shaped problem, not a code-shaped one.
+- **The kill switch**, which is not written for any platform yet.
+
+The system proxy *is* implemented (`sysproxy_darwin.go`, `networksetup`), which
+matters more than it sounds: without it proxy mode is an engine listening on a
+port nothing talks to, and on macOS proxy mode is the only mode. It sets every
+enabled network service rather than the active one, because a laptop that moves
+from Wi-Fi to Ethernet must not lose its VPN on the way.
 
 ### Things that will bite
 

@@ -60,6 +60,10 @@ clients/*
 !clients/.keep
 cores/*
 !cores/.keep
+# The engine is built from source; wintun is a redistributable it loads at
+# runtime and cannot build, so it travels with the repo or Windows TUN has
+# nothing to create an adapter with on a fresh checkout.
+!cores/wintun.dll
 
 # Engine source fetched by scripts/setup-mihomo-core.sh. Deliberately not
 # committed: it is large, it is regenerable from pinned refs, and vendoring it
