@@ -69,14 +69,9 @@ func (a *App) startWhiteDNSVPNWithMihomo() (model.AppState, error) {
 	a.setMihomoRuntimeType()
 	a.handleRuntimeState(model.RuntimeConnecting, "Fetching subscription")
 
-	raw, err := fetchWhiteDNSVPNSubscriptionDocument(ctx)
+	subscription, err := a.subscriptionBody(ctx)
 	if err != nil {
-		a.reportConnectFailure(ctx, fmt.Sprintf("Subscription unavailable: %v", err))
-		return a.GetAppState(), err
-	}
-	subscription, err := decryptWhiteDNSVPNSubscription(raw, whiteDNSVPNSubscriptionKey)
-	if err != nil {
-		a.reportConnectFailure(ctx, fmt.Sprintf("Subscription unreadable: %v", err))
+		a.reportConnectFailure(ctx, err.Error())
 		return a.GetAppState(), err
 	}
 

@@ -62,13 +62,9 @@ func (a *App) ListWhiteVPNNodes(refresh bool) (model.WhiteVPNNodeList, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	raw, err := fetchWhiteDNSVPNSubscriptionDocument(ctx)
+	subscription, err := a.subscriptionBody(ctx)
 	if err != nil {
-		return a.staleWhiteVPNNodes(fmt.Errorf("subscription unavailable: %w", err))
-	}
-	subscription, err := decryptWhiteDNSVPNSubscription(raw, whiteDNSVPNSubscriptionKey)
-	if err != nil {
-		return a.staleWhiteVPNNodes(fmt.Errorf("subscription unreadable: %w", err))
+		return a.staleWhiteVPNNodes(err)
 	}
 	nodes, err := whiteVPNNodesFromSubscription(subscription)
 	if err != nil {
@@ -363,6 +359,15 @@ func selectionIsNarrowed(settings model.WhiteVPNSettings) bool {
 	return strings.TrimSpace(settings.Connection.Node) != "" ||
 		model.NormalizeCountryCode(settings.CountryCode) != "" ||
 		len(settings.Connection.Types) > 0
+}
+
+// forgetWhiteVPNNodes drops the cached catalogue, for when it belongs to a
+// subscription that is no longer the selected one.
+func (a *App) forgetWhiteVPNNodes() {
+	a.nodesMu.Lock()
+	a.nodes = nil
+	a.nodesAt = time.Time{}
+	a.nodesMu.Unlock()
 }
 
 func (a *App) cachedWhiteVPNNodes(now time.Time) (model.WhiteVPNNodeList, bool) {

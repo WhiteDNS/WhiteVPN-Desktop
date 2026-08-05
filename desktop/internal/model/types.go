@@ -340,6 +340,10 @@ type AppState struct {
 	SelectedSettingsProfileID   string                 `json:"selectedSettingsProfileId"`
 	SelectedV2RayProfileID      string                 `json:"selectedV2RayProfileId"`
 	SelectedV2RaySettingsID     string                 `json:"selectedV2RaySettingsId"`
+	// SelectedSubscriptionID is the subscription the VPN connects through. It
+	// defaults to the built-in catalogue and falls back to it when whatever it
+	// named is gone.
+	SelectedSubscriptionID string `json:"selectedSubscriptionId"`
 	Theme                       string                 `json:"theme"`
 	ConnectionProfiles          []ConnectionProfile    `json:"connectionProfiles"`
 	ResolverProfiles            []ResolverProfile      `json:"resolverProfiles"`
@@ -865,6 +869,7 @@ func DefaultAppState() AppState {
 		SelectedSettingsProfileID:   DefaultSettingsProfileID,
 		SelectedV2RayProfileID:      "",
 		SelectedV2RaySettingsID:     DefaultV2RaySettingsID,
+		SelectedSubscriptionID:      BuiltInSubscriptionID,
 		Theme:                       "system",
 		ConnectionProfiles:          []ConnectionProfile{DefaultConnectionProfile()},
 		ResolverProfiles:            []ResolverProfile{DefaultResolverProfile()},

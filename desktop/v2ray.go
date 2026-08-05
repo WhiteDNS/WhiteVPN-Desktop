@@ -1335,13 +1335,28 @@ func validateV2RaySubscriptionURL(rawURL string) (*url.URL, error) {
 	if err != nil || parsedURL == nil {
 		return nil, fmt.Errorf("valid subscription URL is required")
 	}
-	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
-		return nil, fmt.Errorf("subscription URL must start with http:// or https://")
+	// HTTPS, as the phone app requires: a subscription fetched in the clear is a
+	// server list anyone on the path can read and, worse, replace.
+	//
+	// Plain HTTP is allowed to loopback only, where there is no path to be on.
+	// That is what lets someone serve a subscription from a program on their own
+	// machine, which is a desktop thing to want and no weaker for it.
+	if parsedURL.Scheme != "https" && !(parsedURL.Scheme == "http" && isLoopbackHost(parsedURL.Hostname())) {
+		return nil, fmt.Errorf("subscription URL must start with https://")
 	}
 	if strings.TrimSpace(parsedURL.Host) == "" {
 		return nil, fmt.Errorf("subscription URL host is required")
 	}
 	return parsedURL, nil
+}
+
+func isLoopbackHost(host string) bool {
+	host = strings.TrimSpace(host)
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 func defaultV2RaySubscriptionName(parsedURL *url.URL) string {

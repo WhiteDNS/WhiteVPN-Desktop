@@ -343,6 +343,8 @@ export interface AppState {
   selectedSettingsProfileId: string;
   selectedV2RayProfileId: string;
   selectedV2RaySettingsId: string;
+  // The subscription the VPN connects through; the built-in catalogue by default.
+  selectedSubscriptionId: string;
   theme: string;
   connectionProfiles: ConnectionProfile[];
   resolverProfiles: ResolverProfile[];

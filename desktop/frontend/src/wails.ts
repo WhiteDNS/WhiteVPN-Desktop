@@ -45,6 +45,7 @@ type AppApi = {
   SaveV2RaySubscription(subscription: V2RaySubscription): Promise<AppState>;
   RefreshV2RaySubscription(id: string): Promise<V2RaySubscriptionRefreshResult>;
   DeleteV2RaySubscription(id: string): Promise<AppState>;
+  SelectSubscription(id: string): Promise<AppState>;
   ExportV2RayProfileLink(profile: V2RayProfile): Promise<string>;
   ExportAllV2RayProfileLinks(): Promise<string>;
   DeleteV2RayProfile(id: string): Promise<AppState>;
@@ -86,6 +87,8 @@ type AppApi = {
   DeleteValidatorResultFile(name: string): Promise<ValidatorResultFile[]>;
   GetWhiteVPNSettings(): Promise<WhiteVPNSettings>;
   SaveWhiteVPNSettings(settings: WhiteVPNSettings): Promise<AppState>;
+  GetPrivacyPolicyVersion(): Promise<number>;
+  AcceptPrivacyPolicy(): Promise<AppState>;
   ListWhiteVPNNodes(refresh: boolean): Promise<WhiteVPNNodeList>;
   MeasureWhiteVPNNodeDelays(names: string[]): Promise<WhiteVPNNodeList>;
   SaveWhiteVPNSelection(countryCode: string, selection: ConnectionSelection): Promise<AppState>;
@@ -137,6 +140,7 @@ export const backend = {
   saveV2RaySubscription: (subscription: V2RaySubscription) => app().SaveV2RaySubscription(subscription),
   refreshV2RaySubscription: (id: string) => app().RefreshV2RaySubscription(id),
   deleteV2RaySubscription: (id: string) => app().DeleteV2RaySubscription(id),
+  selectSubscription: (id: string) => app().SelectSubscription(id),
   exportV2RayProfileLink: (profile: V2RayProfile) => app().ExportV2RayProfileLink(profile),
   exportAllV2RayProfileLinks: () => app().ExportAllV2RayProfileLinks(),
   deleteV2RayProfile: (id: string) => app().DeleteV2RayProfile(id),
@@ -177,6 +181,8 @@ export const backend = {
   deleteValidatorResultFile: (name: string) => app().DeleteValidatorResultFile(name),
   getWhiteVpnSettings: () => app().GetWhiteVPNSettings(),
   saveWhiteVpnSettings: (settings: WhiteVPNSettings) => app().SaveWhiteVPNSettings(settings),
+  getPrivacyPolicyVersion: () => app().GetPrivacyPolicyVersion(),
+  acceptPrivacyPolicy: () => app().AcceptPrivacyPolicy(),
   listWhiteVpnNodes: (refresh: boolean) => app().ListWhiteVPNNodes(refresh),
   measureWhiteVpnNodeDelays: (names: string[]) => app().MeasureWhiteVPNNodeDelays(names),
   saveWhiteVpnSelection: (countryCode: string, selection: ConnectionSelection) => app().SaveWhiteVPNSelection(countryCode, selection),

@@ -163,10 +163,10 @@ keys here, not copied literals.
 
 | Item | Behaviour | Status |
 |---|---|---|
-| Selected subscription | `white_dns_user_subscriptions` / `selected_subscription`, default the built-in one | `[ ]` |
+| Selected subscription | `white_dns_user_subscriptions` / `selected_subscription`, default the built-in one | `[x]` |
 | Built-in WhiteDNS catalogue | Encrypted, refreshed every 3 h | `[~]` fetch, decrypt and on-demand refresh exist; its address is never stored or shown |
 | User subscriptions | Add, Edit, Test, Refresh, Delete per card | `[ ]` |
-| Import formats | HTTPS URL (HTTP rejected), Clash/Xray JSON, mihomo YAML, or share links; 2 MB cap | `[ ]` |
+| Import formats | HTTPS URL (HTTP rejected), Clash/Xray JSON, mihomo YAML, or share links; 2 MB cap | `[~]` HTTPS enforced and the 2 MB cap was already there; share links, base64 of them and mihomo YAML all connect. Clash/Xray **JSON** does not — nothing converts it yet |
 
 > The live catalogue is **base64-encoded share links**, not mihomo YAML — 864
 > nodes as of 2026-08-04. A link→mihomo converter is required, ported from
@@ -181,7 +181,7 @@ keys here, not copied literals.
 | Startup IP selection | Cached endpoint first; on failure fall through to a fresh scan | `[ ]` |
 | Clean-IP scan | Encrypted IP list, concurrency 200, 4 probes for loss, budgets 3 s / 12 s / 60 s, cache 10 per port | `[ ]` |
 | Connect button states | Connect · Connecting… · Disconnect · Disconnecting… · Retry. Disabled only while Stopping | `[x]` |
-| Privacy policy gate | Versioned acceptance on first run (`white_dns_privacy_policy` / `accepted_policy_version`) | `[ ]` |
+| Privacy policy gate | Versioned acceptance on first run (`white_dns_privacy_policy` / `accepted_policy_version`) | `[x]` |
 
 One button, five states, as the phone has it: the same control stops what it
 started. Two things had to become true for that to be honest rather than
@@ -250,6 +250,16 @@ Three places where copying Android exactly would be wrong:
    connect time, never assumed**.
 
 3. **Split tunnel matches processes, not packages.** See §1.6.
+
+4. **Plain HTTP is allowed to loopback.** The phone requires HTTPS for a
+   subscription and so does this, for the same reason: a server list fetched in
+   the clear is one anyone on the path can read and replace. There is no path to
+   be on for `http://127.0.0.1`, and allowing it is what lets someone serve a
+   subscription from a program on their own machine — a desktop thing to want.
+
+5. **The privacy notice describes this app, not the phone's.** Every line of it
+   states something the code does and can be checked against it. The wording is
+   the desktop's own; the published policy is linked rather than restated.
 
 ---
 

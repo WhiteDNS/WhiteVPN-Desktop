@@ -916,6 +916,9 @@ function App() {
   const [state, setState] = useState<AppState | null>(null);
   const { language, t } = useLanguage(state);
   const [legacyOffer, setLegacyOffer] = useState<LegacyImportOffer | null>(null);
+  // Null until the backend has been asked, so the gate is never shown or hidden
+  // on a guess.
+  const [policyVersion, setPolicyVersion] = useState<number | null>(null);
   const [page, setPage] = useState<Page>("vpn");
   const [errorToast, setErrorToast] = useState<AppErrorToast | null>(null);
   const [successToast, setSuccessToast] = useState<AppErrorToast | null>(null);
@@ -955,6 +958,19 @@ function App() {
     setSuccessToast((current) => ({ id: current ? current.id + 1 : 1, message }));
   }
 
+  // Only once both halves are known: the version the app asks for, and what the
+  // state says was accepted.
+  const policyNeeded =
+    policyVersion !== null && policyVersion > 0 && (state?.whiteVpn.acceptedPrivacyPolicyVersion ?? 0) < policyVersion;
+
+  async function acceptPrivacyPolicy() {
+    try {
+      applyState(await backend.acceptPrivacyPolicy());
+    } catch (err) {
+      showError(messageFromError(err));
+    }
+  }
+
   function clearErrorToast() {
     setErrorToast(null);
   }
@@ -969,6 +985,10 @@ function App() {
       .getAppState()
       .then(applyState)
       .catch((err) => showError(messageFromError(err)));
+    backend
+      .getPrivacyPolicyVersion()
+      .then(setPolicyVersion)
+      .catch(() => setPolicyVersion(0));
     backend
       .getLegacyImportOffer()
       .then((offer) => setLegacyOffer(offer?.available ? offer : null))
@@ -1307,6 +1327,7 @@ function App() {
                   onState={applyState}
                   onError={showError}
                   onSuccess={showSuccess}
+                  t={t}
                 />
               )}
 
@@ -1343,11 +1364,15 @@ function App() {
           </main>
         </SidebarInset>
 
-        <LegacyImportDialog
-          offer={legacyOffer}
-          onImport={acceptLegacyImport}
-          onDismiss={declineLegacyImport}
-        />
+        {policyNeeded ? (
+          <PrivacyPolicyGate onAccept={acceptPrivacyPolicy} onQuit={() => void backend.quit()} t={t} />
+        ) : (
+          <LegacyImportDialog
+            offer={legacyOffer}
+            onImport={acceptLegacyImport}
+            onDismiss={declineLegacyImport}
+          />
+        )}
       </SidebarProvider>
     </TooltipProvider>
   );
@@ -4194,6 +4219,7 @@ function V2RaySubscriptionsPage({
   onState,
   onError,
   onSuccess,
+  t,
 }: {
   state: AppState;
   ping: V2RayPingState;
@@ -4201,12 +4227,14 @@ function V2RaySubscriptionsPage({
   onState: (state: AppState) => void;
   onError: (message: string) => void;
   onSuccess: (message: string) => void;
+  t: TranslateFn;
 }) {
   const fallbackDraft = useMemo(() => defaultV2RaySubscriptionDraft(), []);
   const [draft, setDraft] = useState(fallbackDraft);
   const [editorOpen, setEditorOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<V2RaySubscription | null>(null);
   const [refreshingSubscriptionIds, setRefreshingSubscriptionIds] = useState<Record<string, boolean>>({});
+  const [selectingSubscription, setSelectingSubscription] = useState(false);
   const profileIndex = useMemo(
     () => buildV2RayProfileIndex(state.v2rayProfiles, ping.results, ping.scanningIds),
     [ping.results, ping.scanningIds, state.v2rayProfiles]
@@ -4245,6 +4273,23 @@ function V2RaySubscriptionsPage({
       setEditorOpen(false);
     } catch (err) {
       onError(messageFromError(err));
+    }
+  }
+
+  // Which subscription the VPN connects through. Changing it clears a node
+  // picked by hand, because that pick named a node in the old list.
+  async function useSubscription(id: string) {
+    if (selectingSubscription) {
+      return;
+    }
+    onError("");
+    setSelectingSubscription(true);
+    try {
+      onState(await backend.selectSubscription(id));
+    } catch (err) {
+      onError(messageFromError(err));
+    } finally {
+      setSelectingSubscription(false);
     }
   }
 
@@ -4357,6 +4402,7 @@ function V2RaySubscriptionsPage({
                     const refreshing = Boolean(refreshingSubscriptionIds[subscription.id]);
                     const managedProfileIds = profileIndex.subscriptionProfileIds[subscription.id] || [];
                     const builtIn = subscription.id === whiteDNSVPNSubscriptionID;
+                    const inUse = subscription.id === state.selectedSubscriptionId;
                     // The built-in catalogue comes back on the next connect,
                     // so removing it is an offer the app cannot keep.
                     const deleteDisabled =
@@ -4379,7 +4425,14 @@ function V2RaySubscriptionsPage({
                         }}
                       >
                         <td className="min-w-0 px-3 py-3">
-                          <span className="block truncate font-medium">{subscription.name || "V2Ray Subscription"}</span>
+                          <span className="flex min-w-0 items-center gap-2">
+                            <span className="truncate font-medium">{subscription.name || "V2Ray Subscription"}</span>
+                            {inUse && (
+                              <Badge variant="default" className="shrink-0">
+                                {t("subs.inUse")}
+                              </Badge>
+                            )}
+                          </span>
                         </td>
                         <td className="min-w-0 px-3 py-3">
                           {/* The built-in catalogue's address is the app's, not
@@ -4399,6 +4452,31 @@ function V2RaySubscriptionsPage({
                         </td>
                         <td className="px-3 py-3 text-end">
                           <div className="flex justify-end gap-1">
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon-sm"
+                                  disabled={inUse || selectingSubscription || profileSelectionLocked(state.runtime)}
+                                  aria-label={`Use ${subscription.name || "V2Ray subscription"}`}
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    void useSubscription(subscription.id);
+                                  }}
+                                  onKeyDown={(event) => event.stopPropagation()}
+                                >
+                                  <Check />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                {inUse
+                                  ? t("subs.inUse")
+                                  : profileSelectionLocked(state.runtime)
+                                    ? t("subs.disconnectFirst")
+                                    : t("subs.use")}
+                              </TooltipContent>
+                            </Tooltip>
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <Button
@@ -7157,6 +7235,53 @@ function LegacyImportDialog({
   );
 }
 
+
+
+// The first-run gate, as WhiteVPN for Android has it.
+//
+// Acceptance is versioned: when the policy changes the version goes up and this
+// comes back, which is the only way an acceptance says anything about what was
+// agreed to. There is no "later" — the app refuses to connect until this is
+// answered, in the backend as well as here — so the other way out is to quit.
+function PrivacyPolicyGate({ onAccept, onQuit, t }: { onAccept: () => void; onQuit: () => void; t: TranslateFn }) {
+  const points: StringKey[] = [
+    "privacy.local",
+    "privacy.catalogue",
+    "privacy.checks",
+    "privacy.traffic",
+    "privacy.noAnalytics",
+  ];
+  return (
+    <Dialog open>
+      <DialogContent className="sm:max-w-lg" showCloseButton={false}>
+        <DialogHeader>
+          <DialogTitle>{t("privacy.title")}</DialogTitle>
+          <DialogDescription>{t("privacy.intro")}</DialogDescription>
+        </DialogHeader>
+        <ul className="grid gap-2 text-sm">
+          {points.map((key) => (
+            <li key={key} className="flex gap-2">
+              <Check className="mt-0.5 size-4 shrink-0 text-emerald-600" />
+              <span>{t(key)}</span>
+            </li>
+          ))}
+        </ul>
+        <p className="text-xs text-muted-foreground">
+          {t("privacy.more")}{" "}
+          <button type="button" className="underline underline-offset-2" onClick={() => openExternalUrl(whiteDnsTelegramUrl)}>
+            {whiteDnsTelegramUrl}
+          </button>
+        </p>
+        <DialogFooter>
+          <Button variant="outline" onClick={onQuit}>
+            {t("privacy.quit")}
+          </Button>
+          <Button onClick={onAccept}>{t("privacy.accept")}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 // The settings WhiteVPN for Android exposes, in the order it shows them, so
 // that someone arriving from the phone recognises the screen.

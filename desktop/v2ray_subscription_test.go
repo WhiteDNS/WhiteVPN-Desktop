@@ -11,6 +11,23 @@ import (
 	"whitevpn-desktop/internal/profiles"
 )
 
+// addTestSubscription puts a subscription into the state as a save would, but
+// without the HTTPS requirement: these tests exercise refreshing, and the local
+// test server speaks plain HTTP.
+func addTestSubscription(t *testing.T, app *App, name string, url string) string {
+	t.Helper()
+	app.mu.Lock()
+	defer app.mu.Unlock()
+	id := uniqueV2RaySubscriptionID(app.state.V2RaySubscriptions)
+	app.state.V2RaySubscriptions = append(app.state.V2RaySubscriptions, model.V2RaySubscription{
+		ID: id, Name: name, URL: url,
+	})
+	if _, err := app.saveLocked(); err != nil {
+		t.Fatal(err)
+	}
+	return id
+}
+
 func TestRefreshV2RaySubscriptionImportsAndReplacesManagedProfiles(t *testing.T) {
 	body := testV2RaySubscriptionLink("one")
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -19,11 +36,7 @@ func TestRefreshV2RaySubscriptionImportsAndReplacesManagedProfiles(t *testing.T)
 	defer server.Close()
 	app := testV2RaySubscriptionApp(t)
 
-	state, err := app.SaveV2RaySubscription(model.V2RaySubscription{Name: "Sub", URL: server.URL})
-	if err != nil {
-		t.Fatal(err)
-	}
-	subscriptionID := state.V2RaySubscriptions[0].ID
+	subscriptionID := addTestSubscription(t, app, "Sub", server.URL)
 	first, err := app.RefreshV2RaySubscription(subscriptionID)
 	if err != nil {
 		t.Fatal(err)
@@ -72,11 +85,7 @@ func TestRefreshV2RaySubscriptionFailurePreservesExistingProfiles(t *testing.T) 
 	defer server.Close()
 	app := testV2RaySubscriptionApp(t)
 
-	state, err := app.SaveV2RaySubscription(model.V2RaySubscription{Name: "Sub", URL: server.URL})
-	if err != nil {
-		t.Fatal(err)
-	}
-	subscriptionID := state.V2RaySubscriptions[0].ID
+	subscriptionID := addTestSubscription(t, app, "Sub", server.URL)
 	if _, err := app.RefreshV2RaySubscription(subscriptionID); err != nil {
 		t.Fatal(err)
 	}
@@ -104,11 +113,7 @@ func TestDeleteV2RaySubscriptionRemovesManagedProfiles(t *testing.T) {
 	}))
 	defer server.Close()
 
-	state, err := app.SaveV2RaySubscription(model.V2RaySubscription{Name: "Sub", URL: server.URL})
-	if err != nil {
-		t.Fatal(err)
-	}
-	subscriptionID := state.V2RaySubscriptions[0].ID
+	subscriptionID := addTestSubscription(t, app, "Sub", server.URL)
 	if _, err := app.RefreshV2RaySubscription(subscriptionID); err != nil {
 		t.Fatal(err)
 	}

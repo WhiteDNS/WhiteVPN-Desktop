@@ -66,6 +66,11 @@ func fetchWhiteDNSVPNFrontingIPListDocument(ctx context.Context) (string, error)
 }
 
 func (a *App) StartWhiteDNSVPNConnection() (model.AppState, error) {
+	// The gate is enforced here and not only in the interface. A gate that only
+	// the interface applies is one that is not really there.
+	if state := a.GetAppState(); !privacyPolicyAccepted(state) {
+		return state, fmt.Errorf("the privacy policy has not been accepted yet")
+	}
 
 	a.mu.Lock()
 	if a.state.Runtime.Status != model.RuntimeDisconnected && a.state.Runtime.Status != model.RuntimeFailed {
@@ -197,6 +202,77 @@ func (a *App) prepareWhiteDNSVPNConnection(ctx context.Context, fetch whiteDNSVP
 
 	a.replaceWhiteDNSVPNProfilesLocked(imported, now)
 	return a.saveLocked()
+}
+
+// The subscription the app connects through.
+//
+// The built-in catalogue arrives encrypted from an address held in code; one the
+// user added arrives as whatever they pointed at — share links, base64 of them,
+// or a mihomo document — and session.PrepareConfig works out which. Both come
+// through here so that the connect path and the connection dialog can never be
+// looking at different lists.
+
+// SelectSubscription chooses which subscription the VPN connects through.
+func (a *App) SelectSubscription(id string) (model.AppState, error) {
+	id = strings.TrimSpace(id)
+	a.mu.Lock()
+	if _, ok := findV2RaySubscription(a.state, id); !ok && id != whiteDNSVPNSubscriptionID {
+		state := a.state
+		a.mu.Unlock()
+		return state, fmt.Errorf("that subscription is not in the list")
+	}
+	if a.state.SelectedSubscriptionID == id {
+		state := a.state
+		a.mu.Unlock()
+		return state, nil
+	}
+	a.state.SelectedSubscriptionID = id
+	// The dashboard's node choice belongs to the subscription it was made in.
+	a.state.WhiteVPN.Connection.Node = ""
+	state, err := a.saveLocked()
+	a.mu.Unlock()
+
+	// The cached catalogue is the old subscription's.
+	a.forgetWhiteVPNNodes()
+	return state, err
+}
+
+func (a *App) selectedSubscriptionID() string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	id := strings.TrimSpace(a.state.SelectedSubscriptionID)
+	if id == "" {
+		return whiteDNSVPNSubscriptionID
+	}
+	return id
+}
+
+// subscriptionBody fetches the selected subscription, ready for the engine.
+func (a *App) subscriptionBody(ctx context.Context) (string, error) {
+	id := a.selectedSubscriptionID()
+	if id == whiteDNSVPNSubscriptionID {
+		raw, err := fetchWhiteDNSVPNSubscriptionDocument(ctx)
+		if err != nil {
+			return "", fmt.Errorf("subscription unavailable: %w", err)
+		}
+		body, err := decryptWhiteDNSVPNSubscription(raw, whiteDNSVPNSubscriptionKey)
+		if err != nil {
+			return "", fmt.Errorf("subscription unreadable: %w", err)
+		}
+		return body, nil
+	}
+
+	a.mu.Lock()
+	subscription, ok := findV2RaySubscription(a.state, id)
+	a.mu.Unlock()
+	if !ok {
+		return "", fmt.Errorf("the selected subscription is no longer in the list")
+	}
+	body, err := fetchV2RaySubscriptionDocument(ctx, subscription.URL)
+	if err != nil {
+		return "", fmt.Errorf("subscription unavailable: %w", err)
+	}
+	return body, nil
 }
 
 func decryptWhiteDNSVPNSubscription(rawText string, passphrase string) (string, error) {

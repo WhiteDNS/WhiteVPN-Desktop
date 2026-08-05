@@ -771,3 +771,109 @@ func TestBuiltInCatalogueRefusesEditAndDeletion(t *testing.T) {
 		t.Fatal("the built-in catalogue should still be listed")
 	}
 }
+
+func TestPrivacyPolicyGateBlocksConnectingUntilAccepted(t *testing.T) {
+	app := testV2RaySubscriptionApp(t)
+	if privacyPolicyAccepted(app.GetAppState()) {
+		t.Fatal("a fresh install has accepted nothing")
+	}
+	if _, err := app.StartWhiteDNSVPNConnection(); err == nil {
+		t.Fatal("expected connecting to be refused before the policy is accepted")
+	}
+
+	if _, err := app.AcceptPrivacyPolicy(); err != nil {
+		t.Fatal(err)
+	}
+	state := app.GetAppState()
+	if state.WhiteVPN.AcceptedPrivacyPolicyVersion != model.CurrentPrivacyPolicyID {
+		t.Fatalf("expected the current version to be recorded, got %d", state.WhiteVPN.AcceptedPrivacyPolicyVersion)
+	}
+	if !privacyPolicyAccepted(state) {
+		t.Fatal("the gate should be satisfied once the current version is accepted")
+	}
+}
+
+// A policy that changes brings the gate back; that is the point of versioning it.
+func TestPrivacyPolicyGateReturnsForANewerVersion(t *testing.T) {
+	state := model.DefaultAppState()
+	state.WhiteVPN.AcceptedPrivacyPolicyVersion = model.CurrentPrivacyPolicyID - 1
+	if privacyPolicyAccepted(state) {
+		t.Fatal("an older acceptance must not satisfy the current policy")
+	}
+	state.WhiteVPN.AcceptedPrivacyPolicyVersion = model.CurrentPrivacyPolicyID + 1
+	if !privacyPolicyAccepted(state) {
+		t.Fatal("a state ahead of this build should not be asked again")
+	}
+}
+
+func TestSelectSubscriptionDefaultsToTheBuiltInCatalogue(t *testing.T) {
+	app := testV2RaySubscriptionApp(t)
+	if got := app.selectedSubscriptionID(); got != whiteDNSVPNSubscriptionID {
+		t.Fatalf("expected the built-in catalogue by default, got %q", got)
+	}
+
+	if _, err := app.SelectSubscription("does-not-exist"); err == nil {
+		t.Fatal("expected selecting a subscription that is not listed to be refused")
+	}
+	if got := app.selectedSubscriptionID(); got != whiteDNSVPNSubscriptionID {
+		t.Fatalf("a refused selection must change nothing, got %q", got)
+	}
+}
+
+func TestSelectSubscriptionClearsANodePickedInAnotherList(t *testing.T) {
+	app := testV2RaySubscriptionApp(t)
+	id := addTestSubscription(t, app, "Mine", "https://example.com/sub")
+
+	app.mu.Lock()
+	app.state.WhiteVPN.Connection.Node = "a node from the old list"
+	app.state.WhiteVPN.CountryCode = "DE"
+	_, _ = app.saveLocked()
+	app.mu.Unlock()
+	app.storeWhiteVPNNodes([]model.WhiteVPNNode{{Name: "cached"}}, testTime())
+
+	state, err := app.SelectSubscription(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.SelectedSubscriptionID != id {
+		t.Fatalf("expected the selection to be stored, got %q", state.SelectedSubscriptionID)
+	}
+	if state.WhiteVPN.Connection.Node != "" {
+		t.Fatalf("a node named in the old list must not survive the change, got %q", state.WhiteVPN.Connection.Node)
+	}
+	if state.WhiteVPN.CountryCode != "DE" {
+		t.Fatalf("a country filter is not tied to one list and should stay, got %q", state.WhiteVPN.CountryCode)
+	}
+	if nodes := app.whiteVPNNodesSnapshot(); len(nodes) != 0 {
+		t.Fatalf("the cached catalogue belonged to the old subscription, got %#v", nodes)
+	}
+}
+
+// A selection pointing at a subscription that has been deleted must not leave
+// the app with no source of servers.
+func TestDeletingTheSelectedSubscriptionFallsBackToTheCatalogue(t *testing.T) {
+	app := testV2RaySubscriptionApp(t)
+	id := addTestSubscription(t, app, "Mine", "https://example.com/sub")
+	if _, err := app.SelectSubscription(id); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := app.DeleteV2RaySubscription(id); err != nil {
+		t.Fatal(err)
+	}
+	if got := app.selectedSubscriptionID(); got != whiteDNSVPNSubscriptionID {
+		t.Fatalf("expected the built-in catalogue to be selected again, got %q", got)
+	}
+}
+
+func TestSubscriptionURLMustBeHTTPSUnlessItIsLoopback(t *testing.T) {
+	for _, rawURL := range []string{"http://example.com/sub", "ftp://example.com/sub", "file:///tmp/sub"} {
+		if _, err := validateV2RaySubscriptionURL(rawURL); err == nil {
+			t.Fatalf("expected %q to be rejected", rawURL)
+		}
+	}
+	for _, rawURL := range []string{"https://example.com/sub", "http://127.0.0.1:8080/sub", "http://localhost:8080/sub"} {
+		if _, err := validateV2RaySubscriptionURL(rawURL); err != nil {
+			t.Fatalf("expected %q to be accepted: %v", rawURL, err)
+		}
+	}
+}

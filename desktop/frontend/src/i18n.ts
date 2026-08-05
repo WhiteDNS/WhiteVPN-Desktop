@@ -151,6 +151,44 @@ const strings = {
     fa: "تونل، حریم خصوصی DNS، تقسیم تونل و بقیه در صفحهٔ تنظیمات هستند.",
   },
 
+  // The first-run gate. Every line here describes something the app actually
+  // does and can be checked against the code; none of it is boilerplate.
+  "privacy.title": { en: "Before you connect", fa: "پیش از اتصال" },
+  "privacy.intro": {
+    en: "What this app does with your data, in full:",
+    fa: "کاری که این برنامه با داده‌های شما می‌کند، به‌طور کامل:",
+  },
+  "privacy.local": {
+    en: "Your settings, servers and logs are kept on this computer and are never uploaded.",
+    fa: "تنظیمات، سرورها و گزارش‌های شما روی همین رایانه می‌مانند و هرگز جایی فرستاده نمی‌شوند.",
+  },
+  "privacy.catalogue": {
+    en: "It downloads the WhiteDNS server list, and a list of alternative addresses, from WhiteDNS.",
+    fa: "فهرست سرورهای وایت‌دی‌ان‌اس و فهرست آدرس‌های جایگزین را از وایت‌دی‌ان‌اس دریافت می‌کند.",
+  },
+  "privacy.checks": {
+    en: "To prove a connection works it requests three well-known addresses through it — Let's Encrypt, Google's connectivity check and Cloudflare — and asks Cloudflare which country your traffic leaves from.",
+    fa: "برای اثبات کارکرد اتصال، سه آدرس شناخته‌شده را از راه آن درخواست می‌کند — Let's Encrypt، بررسی اتصال گوگل و Cloudflare — و از Cloudflare می‌پرسد ترافیک شما از کدام کشور خارج می‌شود.",
+  },
+  "privacy.traffic": {
+    en: "Your traffic travels through the server you choose, which can see it as any VPN provider can.",
+    fa: "ترافیک شما از سروری که انتخاب می‌کنید عبور می‌کند و آن سرور، مانند هر ارائه‌دهندهٔ VPN، آن را می‌بیند.",
+  },
+  "privacy.noAnalytics": {
+    en: "No usage data, analytics or crash reports are sent anywhere.",
+    fa: "هیچ داده‌ای از نحوهٔ استفاده، آمار یا گزارش خطا به جایی فرستاده نمی‌شود.",
+  },
+  "privacy.more": {
+    en: "The full policy is published on the WhiteDNS Telegram channel.",
+    fa: "متن کامل سیاست حریم خصوصی در کانال تلگرام وایت‌دی‌ان‌اس منتشر می‌شود.",
+  },
+  "privacy.accept": { en: "Accept and continue", fa: "می‌پذیرم و ادامه" },
+  "privacy.quit": { en: "Quit", fa: "خروج" },
+
+  "subs.use": { en: "Connect through this", fa: "اتصال از طریق این" },
+  "subs.inUse": { en: "In use", fa: "در حال استفاده" },
+  "subs.disconnectFirst": { en: "Disconnect first", fa: "اول قطع کنید" },
+
   "common.close": { en: "Close", fa: "بستن" },
 
   // Settings page
