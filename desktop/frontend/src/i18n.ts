@@ -86,11 +86,6 @@ const strings = {
   "vpn.metric.upload": { en: "Upload", fa: "ارسال" },
   "vpn.metric.traffic": { en: "Traffic", fa: "ترافیک" },
   "vpn.frontingAuto": { en: "IP fronting auto", fa: "آی‌پی جایگزین خودکار" },
-  "vpn.alert.settingsRequired": { en: "Engine settings required", fa: "تنظیمات موتور لازم است" },
-  "vpn.alert.settingsRequired.description": {
-    en: "Choose a valid local proxy port on the engine settings page before connecting.",
-    fa: "پیش از اتصال، در صفحهٔ تنظیمات موتور یک پورت پراکسی محلی معتبر انتخاب کنید.",
-  },
 
   // The dashboard's two rows, and the dialogs behind them.
   "vpn.rows.title": { en: "Connection", fa: "اتصال" },
@@ -353,12 +348,6 @@ const strings = {
     fa: "فارسی چیدمان را راست‌به‌چپ می‌کند. پوستهٔ برنامه روی دکمهٔ کنار نام برنامه است.",
   },
 
-  "settings.engine.title": { en: "Engine settings", fa: "تنظیمات موتور" },
-  "settings.engine.description": {
-    en: "Listen port, inbound type and the rest of the engine plumbing, which the phone does not expose.",
-    fa: "پورت شنود، نوع ورودی و بقیهٔ جزئیات موتور، که نسخهٔ گوشی آن‌ها را نشان نمی‌دهد.",
-  },
-  "settings.engine.open": { en: "Open engine settings", fa: "باز کردن تنظیمات موتور" },
 
   "common.add": { en: "Add", fa: "افزودن" },
   "common.remove": { en: "Remove", fa: "حذف" },

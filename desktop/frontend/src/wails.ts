@@ -9,7 +9,6 @@ import type {
   V2RayImportResult,
   V2RayPingResult,
   V2RayProfile,
-  V2RaySettingsProfile,
   V2RaySubscription,
   V2RaySubscriptionRefreshResult,
   V2RayWhiteIPImportResult,
@@ -58,11 +57,6 @@ type AppApi = {
   PingV2RayProfile(profile: V2RayProfile): Promise<V2RayPingResult>;
   CancelV2RayProfileTests(): Promise<void>;
   DeleteDuplicateV2RayProfiles(): Promise<V2RayDuplicateRemovalResult>;
-  SaveV2RaySettingsProfile(profile: V2RaySettingsProfile): Promise<AppState>;
-  DeleteV2RaySettingsProfile(id: string): Promise<AppState>;
-  SelectV2RaySettingsProfile(id: string): Promise<AppState>;
-  ReorderV2RaySettingsProfiles(ids: string[]): Promise<AppState>;
-  GetDefaultV2RaySettingsProfile(): Promise<V2RaySettingsProfile>;
   StartWhiteDNSVPNConnection(): Promise<AppState>;
   RefreshWhiteDNSVPNConnection(): Promise<AppState>;
   SaveWhiteDNSVPNFrontingIPs(rawText: string): Promise<AppState>;
@@ -154,11 +148,6 @@ export const backend = {
   pingV2RayProfile: (profile: V2RayProfile) => app().PingV2RayProfile(profile),
   cancelV2RayProfileTests: () => app().CancelV2RayProfileTests(),
   deleteDuplicateV2RayProfiles: () => app().DeleteDuplicateV2RayProfiles(),
-  saveV2RaySettingsProfile: (profile: V2RaySettingsProfile) => app().SaveV2RaySettingsProfile(profile),
-  deleteV2RaySettingsProfile: (id: string) => app().DeleteV2RaySettingsProfile(id),
-  selectV2RaySettingsProfile: (id: string) => app().SelectV2RaySettingsProfile(id),
-  reorderV2RaySettingsProfiles: (ids: string[]) => app().ReorderV2RaySettingsProfiles(ids),
-  getDefaultV2RaySettingsProfile: () => app().GetDefaultV2RaySettingsProfile(),
   startWhiteDNSVPNConnection: () => app().StartWhiteDNSVPNConnection(),
   refreshWhiteDNSVPNConnection: () => app().RefreshWhiteDNSVPNConnection(),
   saveWhiteDNSVPNFrontingIps: (rawText: string) => app().SaveWhiteDNSVPNFrontingIPs(rawText),

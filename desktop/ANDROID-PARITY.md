@@ -449,10 +449,14 @@ Measured 2026-08-04, from Windows:
 - **IPv6 containment rests on route metric, not on removing routes.** The
   physical v6 defaults remain and are merely outranked, so containment has to be
   verified after connecting, never assumed.
-- **A control that writes to `V2RaySettingsProfile` does nothing.** Nothing
-  reads it any more: it belonged to the Xray path. Three rounds of dead switches
-  came from that path before it was removed — the settings profile ones, the
-  Servers page's, and IP fronting.
+- **A control that writes to `V2RaySettingsProfile` does nothing**, which is why
+  the Engine settings page was removed on 2026-08-05. Listen port, inbound type,
+  SOCKS authentication, the Iran routing description — every field on it
+  belonged to the Xray path and nothing had read any of them since that path
+  went. It had teeth, too: `selectedSettingsMissing` could disable the Connect
+  button over a listen port the engine never used. The model type and its store
+  normalisation stay so existing state files and backups keep loading; the page,
+  its five bound methods and seven orphaned helpers do not.
 - **A node's country is in its name, and only there.** No geoip call resolves
   it; `countryCodeFromNodeName` reads the flag. A catalogue that stops shipping
   flags takes the location filter with it, and the dialog would show one country:

@@ -150,7 +150,7 @@ import type {
 } from "./types";
 import { backend, initializeNotifications, onRuntimeEvent, openExternalUrl, sendFirewallNotification } from "./wails";
 
-type Page = "vpn" | "servers" | "subscriptions" | "settings" | "engine-settings" | "logs" | "white-ips" | "validator" | "backup";
+type Page = "vpn" | "servers" | "subscriptions" | "settings" | "logs" | "white-ips" | "validator" | "backup";
 type NavItem = { id: Page; label: StringKey; icon: ReactNode };
 type NavGroup = { id: "whitevpn" | "tools"; label: StringKey; items: NavItem[] };
 type ValidatorStateUpdate = Omit<ValidatorState, "results"> & { results?: unknown; appendResults?: boolean };
@@ -176,14 +176,7 @@ const maxNoiseCount = 20;
 const minNoiseSize = 1;
 const maxNoiseSize = 1280;
 const whiteDNSVPNSubscriptionID = "whitedns-vpn";
-const enhancedConnectionLabel = "Enhanced Connection";
-const iranRoutingDescription = [
-  "Private/local IPs go direct, not through V2Ray.",
-  "Iranian domains/IPs from geosite-ir and geoip-ir go direct.",
-  "Ads, malware, phishing, cryptominers, and related bad IP/domain rule sets are blocked.",
-  "Everything else still goes through the selected V2Ray proxy.",
-  "Rule files are bundled with the app and loaded locally.",
-].join("\n");
+
 const defaultValidatorOptions: ValidatorOptions = {
   retries: 1,
   timeoutMillis: 600,
@@ -541,22 +534,7 @@ function whiteDNSVPNRuntimeActive(state: AppState): boolean {
   ));
 }
 
-function makeV2RaySettingsProfileId(profiles: V2RaySettingsProfile[]): string {
-  const existing = new Set(profiles.map((profile) => profile.id));
-  const base = `v2ray-settings-${Date.now()}`;
-  let id = base;
-  for (let attempt = 1; existing.has(id); attempt += 1) {
-    id = `${base}-${attempt}`;
-  }
-  return id;
-}
 
-function effectiveV2RaySettingsProfile(state: AppState): V2RaySettingsProfile | undefined {
-  return (
-    state.v2raySettingsProfiles.find((profile) => profile.id === state.selectedV2RaySettingsId) ||
-    state.v2raySettingsProfiles[0]
-  );
-}
 
 function proxyEndpoint(ip?: string, port?: number): string {
   return ip && port ? `${ip}:${port}` : "";
@@ -1051,10 +1029,6 @@ function App() {
                   onNavigate={setPage}
                   t={t}
                 />
-              )}
-
-              {activePage === "engine-settings" && (
-                <V2RaySettingsPage state={state} onState={applyState} onError={showError} />
               )}
 
               {activePage === "logs" && <LogsPage runtime={state.runtime} runtimeType="v2ray" onState={applyState} onError={showError} />}
@@ -1865,7 +1839,6 @@ function WhiteDNSVPNPage({
   t: TranslateFn;
 }) {
   const runtime = state.runtime;
-  const selectedSettings = effectiveV2RaySettingsProfile(state);
   const active = whiteDNSVPNRuntimeActive(state);
   const runtimeBusy = runtime.status !== "disconnected" && runtime.status !== "failed";
   const [pending, setPending] = useState<PendingAction>(null);
@@ -1901,13 +1874,12 @@ function WhiteDNSVPNPage({
   // profile's port: nothing has read that since the Xray path was removed, and
   // it was showing a number no traffic would ever arrive on.
   const localProxyEndpoint = runtimeProxyDisplayEndpoint(runtime) || proxyEndpoint || "-";
-  const selectedSettingsMissing = !selectedSettings || !selectedSettings.listenIp.trim() || selectedSettings.listenPort <= 0;
   // Disabled only while stopping, as on the phone: every other state has
   // something for a click to do, including connecting, which it stops.
   const connectDisabled =
     connectState === "disconnecting" ||
     otherRuntimeActive ||
-    (startsConnection && (selectedSettingsMissing || pending !== null));
+    (startsConnection && pending !== null);
   const connectedFrontingIP = active ? runtime.frontingIp : "";
   const dashboardTitle = otherRuntimeActive
     ? t("vpn.card.otherRuntime")
@@ -2299,13 +2271,6 @@ function WhiteDNSVPNPage({
         onReload={() => void loadNodes(true)}
       />
 
-      {selectedSettingsMissing && (
-        <Alert className="border-amber-200 bg-amber-50 text-amber-950">
-          <AlertCircle />
-          <AlertTitle>{t("vpn.alert.settingsRequired")}</AlertTitle>
-          <AlertDescription>{t("vpn.alert.settingsRequired.description")}</AlertDescription>
-        </Alert>
-      )}
       {otherRuntimeActive && (
         <Alert>
           <AlertCircle />
@@ -3437,324 +3402,8 @@ function defaultV2RaySubscriptionDraft(): V2RaySubscription {
   };
 }
 
-function V2RaySettingsPage({
-  state,
-  onState,
-  onError,
-}: {
-  state: AppState;
-  onState: (state: AppState) => void;
-  onError: (message: string) => void;
-}) {
-  const isProfileLocked = profileSelectionLocked(state.runtime);
-  const fallbackDraft = useMemo(() => defaultV2RaySettingsDraft(), []);
-  const activeSettings = effectiveV2RaySettingsProfile(state) || state.v2raySettingsProfiles[0] || fallbackDraft;
-  const selected = state.v2raySettingsProfiles.find((profile) => profile.id === state.selectedV2RaySettingsId) || activeSettings;
-  const [draft, setDraft] = useState(selected);
-  const [editorOpen, setEditorOpen] = useState(false);
-
-  useEffect(() => {
-    if (!editorOpen) {
-      setDraft(normalizeV2RaySettingsProfile(selected || fallbackDraft));
-    }
-  }, [editorOpen, fallbackDraft, selected]);
-
-  async function saveDraft() {
-    onError("");
-    const profile = normalizeV2RaySettingsProfile(draft.id ? draft : { ...draft, id: makeV2RaySettingsProfileId(state.v2raySettingsProfiles) });
-    try {
-      const nextState = await backend.saveV2RaySettingsProfile(profile);
-      onState(nextState);
-      const savedProfile = nextState.v2raySettingsProfiles.find((candidate) => candidate.id === profile.id) || profile;
-      setDraft(normalizeV2RaySettingsProfile(savedProfile));
-      setEditorOpen(false);
-    } catch (err) {
-      onError(messageFromError(err));
-    }
-  }
-
-  async function deleteDraft() {
-    if (!draft.id) {
-      return;
-    }
-    onError("");
-    try {
-      const nextState = await backend.deleteV2RaySettingsProfile(draft.id);
-      onState(nextState);
-      setEditorOpen(false);
-      const nextActive = effectiveV2RaySettingsProfile(nextState);
-      setDraft(normalizeV2RaySettingsProfile(nextActive || nextState.v2raySettingsProfiles[0] || fallbackDraft));
-    } catch (err) {
-      onError(messageFromError(err));
-    }
-  }
-
-  function openSettingsProfile(profile: V2RaySettingsProfile) {
-    onError("");
-    setDraft(normalizeV2RaySettingsProfile(profile));
-    setEditorOpen(true);
-    if (isProfileLocked) {
-      return;
-    }
-    backend.selectV2RaySettingsProfile(profile.id).then(onState).catch((err) => onError(messageFromError(err)));
-  }
-
-  function openNewSettingsProfile() {
-    onError("");
-    setDraft(defaultV2RaySettingsDraft());
-    setEditorOpen(true);
-  }
-
-  return (
-    <>
-      <PageShell
-        eyebrow="WhiteVPN"
-        title="V2Ray Settings"
-        actions={
-          <Button variant="outline" onClick={openNewSettingsProfile}>
-            <Plus />
-            New
-          </Button>
-        }
-      >
-        <div className="overflow-hidden rounded-lg border bg-card">
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-muted/30 px-3 py-2.5">
-            <div className="min-w-0">
-              <p className="text-sm font-semibold">Local proxy settings</p>
-              <p className="text-xs text-muted-foreground">
-                {state.v2raySettingsProfiles.length} profile{state.v2raySettingsProfiles.length === 1 ? "" : "s"}
-              </p>
-            </div>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[1040px] table-fixed text-start">
-              <colgroup>
-                <col className="w-[20%]" />
-                <col className="w-[16%]" />
-                <col className="w-[12%]" />
-                <col className="w-[10%]" />
-                <col className="w-[10%]" />
-                <col className="w-[12%]" />
-                <col className="w-[12%]" />
-                <col className="w-[8%]" />
-              </colgroup>
-              <thead className="border-b bg-muted/20 text-xs uppercase text-muted-foreground">
-                <tr>
-                  <th className="px-3 py-2 font-medium">Name</th>
-                  <th className="px-3 py-2 font-medium">Listen</th>
-                  <th className="px-3 py-2 font-medium">Inbound</th>
-                  <th className="px-3 py-2 font-medium">LAN</th>
-                  <th className="px-3 py-2 font-medium">TUN</th>
-                  <th className="px-3 py-2 font-medium">System proxy</th>
-                  <th className="px-3 py-2 font-medium">Enhanced Connection</th>
-                  <th className="px-3 py-2 font-medium">Log level</th>
-                </tr>
-              </thead>
-              <tbody>
-                {state.v2raySettingsProfiles.map((profile) => {
-                  const selectedProfile = profile.id === selected?.id;
-                  return (
-                    <tr
-                      key={profile.id}
-                      role="button"
-                      tabIndex={0}
-                      className={cn(
-                        "cursor-pointer border-b text-sm transition-colors last:border-b-0 hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
-                        selectedProfile && "bg-muted/40"
-                      )}
-                      onClick={() => openSettingsProfile(profile)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter" || event.key === " ") {
-                          event.preventDefault();
-                          openSettingsProfile(profile);
-                        }
-                      }}
-                    >
-                      <td className="min-w-0 px-3 py-3">
-                        <div className="flex min-w-0 items-center gap-2">
-                          <span className="truncate font-medium">{profile.name || "V2Ray Settings"}</span>
-                          {profile.id === state.selectedV2RaySettingsId && (
-                            <Badge variant="outline" className="shrink-0">
-                              Selected
-                            </Badge>
-                          )}
-                        </div>
-                      </td>
-                      <td className="min-w-0 px-3 py-3">
-                        <span className="block truncate">
-                          {profile.listenIp}:{profile.listenPort}
-                        </span>
-                      </td>
-                      <td className="px-3 py-3">
-                        <Badge variant="secondary">{v2rayInboundLabel(profile.inboundType)}</Badge>
-                      </td>
-                      <td className="px-3 py-3">
-                        <Badge variant={profile.allowLan ? "default" : "outline"} className={cn(!profile.allowLan && "text-muted-foreground")}>
-                          {profile.allowLan ? "Allowed" : "Off"}
-                        </Badge>
-                      </td>
-                      <td className="px-3 py-3">
-                        <Badge variant={profile.tunEnabled ? "default" : "outline"} className={cn(!profile.tunEnabled && "text-muted-foreground")}>
-                          {profile.tunEnabled ? "Enabled" : "Off"}
-                        </Badge>
-                      </td>
-                      <td className="px-3 py-3">
-                        <Badge variant={profile.setSystemProxy ? "default" : "outline"} className={cn(!profile.setSystemProxy && "text-muted-foreground")}>
-                          {profile.setSystemProxy ? "Enabled" : "Off"}
-                        </Badge>
-                      </td>
-                      <td className="px-3 py-3">
-                        <Badge variant={profile.iranRoutingEnabled ? "default" : "outline"} className={cn(!profile.iranRoutingEnabled && "text-muted-foreground")}>
-                          {profile.iranRoutingEnabled ? "Enhanced" : "Off"}
-                        </Badge>
-                      </td>
-                      <td className="px-3 py-3">
-                        <Badge variant="outline">{profile.logLevel || "WARN"}</Badge>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </PageShell>
-
-      <Dialog open={editorOpen} onOpenChange={setEditorOpen}>
-        <DialogContent className="max-h-[calc(100svh-2rem)] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden sm:max-w-4xl">
-          <DialogHeader>
-            <DialogTitle>{draft.id ? draft.name : "New V2Ray settings"}</DialogTitle>
-            <DialogDescription>V2Ray local proxy</DialogDescription>
-          </DialogHeader>
-          <div className="min-h-0 overflow-y-auto pr-1">
-            <FieldGroup className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              <TextField label="Name" value={draft.name} onChange={(name) => setDraft({ ...draft, name })} />
-              <SelectField
-                label="Inbound type"
-                value={draft.inboundType || "mixed"}
-                onChange={(inboundType) => setDraft({ ...draft, inboundType: String(inboundType) })}
-                options={[
-                  ["mixed", "Mixed SOCKS/HTTP"],
-                  ["socks", "SOCKS"],
-                  ["http", "HTTP"],
-                ]}
-              />
-              <SelectField
-                label="Log level"
-                value={draft.logLevel || "WARN"}
-                onChange={(logLevel) => setDraft({ ...draft, logLevel: String(logLevel) })}
-                options={[
-                  ["DEBUG", "DEBUG"],
-                  ["INFO", "INFO"],
-                  ["WARN", "WARN"],
-                  ["ERROR", "ERROR"],
-                ]}
-              />
-              <TextField label="Listen IP" value={draft.listenIp} onChange={(listenIp) => setDraft(withV2RaySettingsListenIp(draft, listenIp))} />
-              <NumberField label="Listen port" value={draft.listenPort} min={1} max={65535} onChange={(listenPort) => setDraft({ ...draft, listenPort })} />
-              <ToggleField
-                label="Set system proxy"
-                checked={draft.setSystemProxy}
-                onChange={(setSystemProxy) => setDraft({ ...draft, setSystemProxy })}
-              />
-              <ToggleField
-                label="TUN mode"
-                checked={draft.tunEnabled}
-                description="Routes full-device traffic through Xray while keeping the local proxy inbound available. DNS server settings are not changed; local router DNS may remain local."
-                onChange={(tunEnabled) => setDraft({ ...draft, tunEnabled })}
-              />
-              <NumberField
-                label="TUN MTU"
-                value={draft.tunMtu}
-                min={576}
-                max={9000}
-                disabled={!draft.tunEnabled}
-                onChange={(tunMtu) => setDraft({ ...draft, tunMtu })}
-              />
-              <ToggleField
-                label="TUN IPv6"
-                checked={draft.tunIpv6}
-                disabled={!draft.tunEnabled}
-                description="When enabled, IPv6 split-default routes are added with the TUN interface."
-                onChange={(tunIpv6) => setDraft({ ...draft, tunIpv6 })}
-              />
-              <TextField
-                label="TUN interface"
-                value={draft.tunInterfaceName}
-                disabled={!draft.tunEnabled}
-                description="Default: WhiteDNS Tunnel on Windows, utun20 on macOS, xray0 on Linux."
-                onChange={(tunInterfaceName) => setDraft({ ...draft, tunInterfaceName })}
-              />
-              <ToggleField
-                label={enhancedConnectionLabel}
-                checked={draft.iranRoutingEnabled}
-                description={iranRoutingDescription}
-                onChange={(iranRoutingEnabled) => setDraft({ ...draft, iranRoutingEnabled })}
-              />
-            </FieldGroup>
-          </div>
-          <DialogFooter className="sm:justify-between">
-            {draft.id !== "v2ray-settings-default" && Boolean(draft.id) ? (
-              <Button type="button" variant="destructive" onClick={deleteDraft} className="sm:me-auto">
-                <Trash2 />
-                Delete
-              </Button>
-            ) : (
-              <span />
-            )}
-            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-              <Button type="button" variant="outline" onClick={() => setEditorOpen(false)}>
-                Cancel
-              </Button>
-              <Button type="button" onClick={saveDraft}>
-                <Save />
-                Save
-              </Button>
-            </div>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </>
-  );
-}
-
-function v2rayInboundLabel(inboundType: string): string {
-  switch (inboundType) {
-    case "socks":
-      return "SOCKS";
-    case "http":
-      return "HTTP";
-    default:
-      return "Mixed";
-  }
-}
 
 
-function withV2RaySettingsListenIp(profile: V2RaySettingsProfile, listenIp: string): V2RaySettingsProfile {
-  return {
-    ...profile,
-    listenIp,
-    allowLan: v2rayListenAllowsLan(listenIp),
-  };
-}
-
-function defaultV2RaySettingsDraft(): V2RaySettingsProfile {
-  return {
-    id: "",
-    name: "V2Ray Settings",
-    listenIp: "127.0.0.1",
-    allowLan: false,
-    listenPort: 10888,
-    inboundType: "mixed",
-    setSystemProxy: true,
-    tunEnabled: false,
-    tunMtu: 1492,
-    tunIpv6: true,
-    tunInterfaceName: defaultV2RayTunInterfaceName(),
-    iranRoutingEnabled: false,
-    logLevel: "WARN",
-  };
-}
 
 function isExportableV2RayProfile(profile: V2RayProfile): boolean {
   if (!profile.server.trim()) {
@@ -5148,40 +4797,6 @@ function ToggleField({
   );
 }
 
-function SelectField<T extends string | number>({
-  label,
-  value,
-  options,
-  disabled,
-  description,
-  onChange,
-}: {
-  label: string;
-  value: T;
-  options: Array<[T, string]>;
-  disabled?: boolean;
-  description?: string;
-  onChange: (value: T) => void;
-}) {
-  return (
-    <Field>
-      <FieldLabel>{label}</FieldLabel>
-      <Select value={String(value)} disabled={disabled} onValueChange={(nextValue) => onChange(nextValue as T)}>
-        <SelectTrigger className="w-full">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {options.map(([optionValue, optionLabel]) => (
-            <SelectItem key={String(optionValue)} value={String(optionValue)}>
-              {optionLabel}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-      {description && <FieldDescription>{description}</FieldDescription>}
-    </Field>
-  );
-}
 
 function StatusDot({ status, className }: { status: string; className?: string }) {
   return (
@@ -5856,19 +5471,6 @@ function WhiteVPNSettingsPage({
           </Field>
         </FieldGroup>
       </SettingsSection>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>{t("settings.engine.title")}</CardTitle>
-          <CardDescription>{t("settings.engine.description")}</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Button variant="outline" onClick={() => onNavigate("engine-settings")}>
-            <Settings />
-            {t("settings.engine.open")}
-          </Button>
-        </CardContent>
-      </Card>
     </PageShell>
   );
 }
