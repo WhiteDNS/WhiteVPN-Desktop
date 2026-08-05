@@ -151,6 +151,13 @@ func (a *App) SaveV2RaySubscription(subscription model.V2RaySubscription) (model
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
+	if strings.TrimSpace(subscription.ID) == whiteDNSVPNSubscriptionID {
+		// The built-in catalogue is the app's, not the user's: its address is a
+		// constant here and is deliberately not stored, so there is nothing for
+		// an edit to change and saving one would only blank what it has.
+		return a.state, fmt.Errorf("the built-in catalogue cannot be edited")
+	}
+
 	nameProvided := strings.TrimSpace(subscription.Name) != ""
 	subscription = profiles.NormalizeV2RaySubscription(subscription)
 	parsedURL, err := validateV2RaySubscriptionURL(subscription.URL)
@@ -185,6 +192,12 @@ func (a *App) SaveV2RaySubscription(subscription model.V2RaySubscription) (model
 
 func (a *App) RefreshV2RaySubscription(id string) (model.V2RaySubscriptionRefreshResult, error) {
 	id = strings.TrimSpace(id)
+	if id == whiteDNSVPNSubscriptionID {
+		// The catalogue is fetched from an address this app holds as a constant
+		// and arrives encrypted, so neither the address nor the parsing below
+		// applies to it.
+		return a.refreshWhiteDNSVPNCatalogue()
+	}
 	a.mu.Lock()
 	subscription, ok := findV2RaySubscription(a.state, id)
 	if !ok {
@@ -274,6 +287,9 @@ func (a *App) DeleteV2RaySubscription(id string) (model.AppState, error) {
 	id = strings.TrimSpace(id)
 	if id == "" {
 		return a.state, nil
+	}
+	if id == whiteDNSVPNSubscriptionID {
+		return a.state, fmt.Errorf("the built-in catalogue cannot be removed")
 	}
 	if activeV2RaySubscriptionLocked(a.state, id) {
 		return a.state, fmt.Errorf("active V2Ray subscription cannot be deleted")

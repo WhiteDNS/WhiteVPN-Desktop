@@ -164,7 +164,7 @@ keys here, not copied literals.
 | Item | Behaviour | Status |
 |---|---|---|
 | Selected subscription | `white_dns_user_subscriptions` / `selected_subscription`, default the built-in one | `[ ]` |
-| Built-in WhiteDNS catalogue | Encrypted, refreshed every 3 h | `[~]` fetch + decrypt already exist |
+| Built-in WhiteDNS catalogue | Encrypted, refreshed every 3 h | `[~]` fetch, decrypt and on-demand refresh exist; its address is never stored or shown |
 | User subscriptions | Add, Edit, Test, Refresh, Delete per card | `[ ]` |
 | Import formats | HTTPS URL (HTTP rejected), Clash/Xray JSON, mihomo YAML, or share links; 2 MB cap | `[ ]` |
 
@@ -198,6 +198,25 @@ connect runs under a context the stop cancels, `session.Connect` unwinds and
 stops any engine it had already spawned, and a session that finishes in the gap
 is closed rather than adopted. A cancelled connect ends `disconnected`, not
 `failed`: the user asked for this one.
+
+## 5b. Desktop additions
+
+Things the phone has no equivalent for, added because a desktop needs them.
+
+| Item | Behaviour | Status |
+|---|---|---|
+| Tray icon | Status, connect/disconnect, open, quit — in the app's own language | `[x]` |
+| Runs in the background | Closing the window hides it; the app keeps carrying traffic | `[x]` |
+
+Closing a VPN's window means "get out of my way", not "stop protecting my
+traffic". But hiding is only offered once there is an icon to come back from:
+`hideInsteadOfClosing` checks that the tray actually started, and lets the close
+through if it did not, because an app with no window and no icon is one only
+Task Manager can end.
+
+The tray's ten words are kept in Go. It is drawn by the system rather than by
+the page, so it cannot read `frontend/src/i18n.ts`; the two are kept in step by
+hand.
 
 ## 6. Deliberately dropped
 

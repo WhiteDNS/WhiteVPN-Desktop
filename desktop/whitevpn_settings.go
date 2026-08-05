@@ -30,5 +30,7 @@ func (a *App) SaveWhiteVPNSettings(settings model.WhiteVPNSettings) (model.AppSt
 	if err != nil {
 		return state, fmt.Errorf("save settings: %w", err)
 	}
+	// The tray speaks the app's language too.
+	a.notifyTray()
 	return state, nil
 }

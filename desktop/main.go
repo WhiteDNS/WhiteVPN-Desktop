@@ -25,11 +25,13 @@ func main() {
 	}
 
 	err = wails.Run(&options.App{
-		Title:             "WhiteVPN Desktop",
-		Width:             1280,
-		Height:            820,
-		MinWidth:          860,
-		MinHeight:         620,
+		Title:     "WhiteVPN Desktop",
+		Width:     1280,
+		Height:    820,
+		MinWidth:  860,
+		MinHeight: 620,
+		// Closing is decided at the time, by whether there is a tray icon to
+		// bring the window back from - see hideInsteadOfClosing.
 		HideWindowOnClose: false,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
@@ -37,6 +39,7 @@ func main() {
 		BackgroundColour: &options.RGBA{R: 252, G: 252, B: 252, A: 1},
 		OnStartup:        app.startup,
 		OnShutdown:       app.shutdown,
+		OnBeforeClose:    app.hideInsteadOfClosing,
 		Bind: []interface{}{
 			app,
 		},

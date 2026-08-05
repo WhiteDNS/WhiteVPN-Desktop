@@ -4356,19 +4356,23 @@ function V2RaySubscriptionsPage({
                   {state.v2raySubscriptions.map((subscription) => {
                     const refreshing = Boolean(refreshingSubscriptionIds[subscription.id]);
                     const managedProfileIds = profileIndex.subscriptionProfileIds[subscription.id] || [];
+                    const builtIn = subscription.id === whiteDNSVPNSubscriptionID;
+                    // The built-in catalogue comes back on the next connect,
+                    // so removing it is an offer the app cannot keep.
                     const deleteDisabled =
-                      profileSelectionLocked(state.runtime) &&
-                      v2RayRuntimeActive(state) &&
-                      managedProfileIds.includes(state.runtime.activeConnectionId);
+                      builtIn ||
+                      (profileSelectionLocked(state.runtime) &&
+                        v2RayRuntimeActive(state) &&
+                        managedProfileIds.includes(state.runtime.activeConnectionId));
                     return (
                       <tr
                         key={subscription.id}
                         role="button"
                         tabIndex={0}
                         className="cursor-pointer border-b text-sm transition-colors last:border-b-0 hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
-                        onClick={() => openExistingSubscription(subscription)}
+                        onClick={() => !builtIn && openExistingSubscription(subscription)}
                         onKeyDown={(event) => {
-                          if (event.key === "Enter" || event.key === " ") {
+                          if (!builtIn && (event.key === "Enter" || event.key === " ")) {
                             event.preventDefault();
                             openExistingSubscription(subscription);
                           }
@@ -4378,7 +4382,12 @@ function V2RaySubscriptionsPage({
                           <span className="block truncate font-medium">{subscription.name || "V2Ray Subscription"}</span>
                         </td>
                         <td className="min-w-0 px-3 py-3">
-                          <span className="block truncate font-mono text-xs">{subscription.url}</span>
+                          {/* The built-in catalogue's address is the app's, not
+                              the user's, and is not carried in the state at all
+                              — there is nothing here to print. */}
+                          <span className={cn("block truncate text-xs", builtIn ? "text-muted-foreground" : "font-mono")}>
+                            {builtIn ? "Built-in" : subscription.url}
+                          </span>
                         </td>
                         <td className="px-3 py-3">
                           <Badge variant="secondary">{managedProfileIds.length || subscription.importedCount || 0}</Badge>
@@ -4426,7 +4435,9 @@ function V2RaySubscriptionsPage({
                                   <Trash2 />
                                 </Button>
                               </TooltipTrigger>
-                              <TooltipContent>{deleteDisabled ? "Disconnect first" : "Delete subscription and related configs"}</TooltipContent>
+                              <TooltipContent>
+                                {builtIn ? "The built-in catalogue stays" : deleteDisabled ? "Disconnect first" : "Delete subscription and related configs"}
+                              </TooltipContent>
                             </Tooltip>
                           </div>
                         </td>

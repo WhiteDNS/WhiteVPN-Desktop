@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"fyne.io/systray"
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"whitevpn-desktop/internal/appdata"
@@ -62,6 +63,7 @@ type App struct {
 	legacyImport profiles.LegacyImport
 
 	mihomo mihomoState
+	tray   trayState
 
 	connectMu     sync.Mutex
 	connectCancel context.CancelFunc
@@ -123,7 +125,7 @@ func NewApp() (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	app.state = state
+	app.state = forgetBuiltInSubscriptionURL(state)
 	if firstRun {
 		app.legacyImport = profiles.ReadLegacyImport(legacyWhiteDNSStatePath())
 	}
@@ -159,7 +161,7 @@ func (a *App) ImportLegacyProfiles() (model.AppState, error) {
 	if !offer.Available {
 		return a.state, nil
 	}
-	a.state = offer.Apply(a.state)
+	a.state = forgetBuiltInSubscriptionURL(offer.Apply(a.state))
 	return a.saveLocked()
 }
 
@@ -180,11 +182,13 @@ func runtimeManagerOptions(runtimeDir string) runtimemgr.Options {
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+	a.startTray()
 	a.emit("runtime:state", a.currentRuntime())
 	a.emit("validator:state", a.GetValidatorState())
 }
 
 func (a *App) shutdown(ctx context.Context) {
+	systray.Quit()
 	a.stopMihomo()
 	_ = a.manager.Stop()
 	_ = a.CancelV2RayProfileTests()
@@ -318,7 +322,7 @@ func (a *App) ImportBackup(rawText string) (model.AppState, error) {
 	if err != nil {
 		return a.state, err
 	}
-	a.state = next
+	a.state = forgetBuiltInSubscriptionURL(next)
 	return a.state, nil
 }
 
@@ -648,6 +652,11 @@ func (a *App) currentRuntime() model.RuntimeStatus {
 func (a *App) emit(name string, payload any) {
 	if a.emitHook != nil {
 		a.emitHook(name, payload)
+	}
+	if name == "runtime:state" {
+		// The tray shows the same status the page does, so it learns about it
+		// the same way rather than polling for it.
+		a.notifyTray()
 	}
 	if a.ctx == nil {
 		return

@@ -469,7 +469,10 @@ func normalizeV2RaySubscriptions(subscriptions []model.V2RaySubscription) []mode
 		if subscription.ID == "" {
 			subscription.ID = fmt.Sprintf("v2ray-subscription-%d", time.Now().UnixMilli()+int64(idx))
 		}
-		if subscription.URL == "" {
+		// A subscription with no address is unusable and dropped - except the
+		// built-in catalogue, whose address the app keeps in code so that it is
+		// not carried in the state where it could be read.
+		if subscription.URL == "" && subscription.ID != model.BuiltInSubscriptionID {
 			continue
 		}
 		if _, ok := seen[subscription.ID]; ok {

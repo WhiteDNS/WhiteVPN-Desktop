@@ -19,7 +19,7 @@ import (
 )
 
 const (
-	whiteDNSVPNSubscriptionID              = "whitedns-vpn"
+	whiteDNSVPNSubscriptionID              = model.BuiltInSubscriptionID
 	whiteDNSVPNSubscriptionName            = "WhiteDNS VPN"
 	whiteDNSVPNSubscriptionURL             = "https://whitedns-sub.whitedns.workers.dev/encrypted"
 	whiteDNSVPNSubscriptionKey             = "#2gzwj1##z%BVq*7M2sfxe6sV23ut1LQr87JagD4D#&"
@@ -773,19 +773,76 @@ func decodeWhiteDNSVPNBase64URL(value string) ([]byte, error) {
 	return base64.URLEncoding.DecodeString(value)
 }
 
+// ensureWhiteDNSVPNSubscriptionLocked keeps the built-in catalogue listed among
+// the subscriptions.
+//
+// Its address is deliberately not stored. The app knows it as a constant and
+// fetches it from there, so leaving it out of the state means there is nowhere
+// for it to be read from: not the subscriptions list, not a backup export, and
+// not the state the interface is handed. A subscription the user adds is
+// theirs and is stored and shown as they typed it.
 func (a *App) ensureWhiteDNSVPNSubscriptionLocked() int {
 	idx := findV2RaySubscriptionIndex(a.state.V2RaySubscriptions, whiteDNSVPNSubscriptionID)
 	if idx == -1 {
 		a.state.V2RaySubscriptions = append(a.state.V2RaySubscriptions, model.V2RaySubscription{
 			ID:   whiteDNSVPNSubscriptionID,
 			Name: whiteDNSVPNSubscriptionName,
-			URL:  whiteDNSVPNSubscriptionURL,
 		})
 		return len(a.state.V2RaySubscriptions) - 1
 	}
 	a.state.V2RaySubscriptions[idx].Name = whiteDNSVPNSubscriptionName
-	a.state.V2RaySubscriptions[idx].URL = whiteDNSVPNSubscriptionURL
+	// Clears it from a state file written before this was true.
+	a.state.V2RaySubscriptions[idx].URL = ""
 	return idx
+}
+
+// refreshWhiteDNSVPNCatalogue re-fetches the built-in catalogue on demand.
+//
+// The generic subscription refresh cannot do this one: it fetches whatever
+// address is stored, and this one has none stored, arrives encrypted, and is
+// counted in nodes rather than in stored profiles.
+func (a *App) refreshWhiteDNSVPNCatalogue() (model.V2RaySubscriptionRefreshResult, error) {
+	list, err := a.ListWhiteVPNNodes(true)
+	if err != nil {
+		a.mu.Lock()
+		a.recordWhiteDNSVPNSubscriptionErrorLocked(err)
+		next, saveErr := a.saveLocked()
+		a.mu.Unlock()
+		return model.V2RaySubscriptionRefreshResult{
+			State:        next,
+			Subscription: findV2RaySubscriptionOrZero(next, whiteDNSVPNSubscriptionID),
+			Message:      err.Error(),
+		}, saveErr
+	}
+
+	a.mu.Lock()
+	idx := a.ensureWhiteDNSVPNSubscriptionLocked()
+	a.state.V2RaySubscriptions[idx].ImportedCount = len(list.Nodes)
+	a.state.V2RaySubscriptions[idx].LastUpdatedAt = time.Now().UTC().Format(time.RFC3339)
+	a.state.V2RaySubscriptions[idx].LastError = ""
+	next, saveErr := a.saveLocked()
+	a.mu.Unlock()
+
+	return model.V2RaySubscriptionRefreshResult{
+		State:        next,
+		Subscription: findV2RaySubscriptionOrZero(next, whiteDNSVPNSubscriptionID),
+		OK:           true,
+		Message:      fmt.Sprintf("%d nodes available.", len(list.Nodes)),
+		Imported:     len(list.Nodes),
+	}, saveErr
+}
+
+// forgetBuiltInSubscriptionURL strips the catalogue's address from a state that
+// came from somewhere else — a file written by an older build, or a restored
+// backup. Without it, hiding the address would only apply to states this build
+// created.
+func forgetBuiltInSubscriptionURL(state model.AppState) model.AppState {
+	for idx := range state.V2RaySubscriptions {
+		if state.V2RaySubscriptions[idx].ID == whiteDNSVPNSubscriptionID {
+			state.V2RaySubscriptions[idx].URL = ""
+		}
+	}
+	return state
 }
 
 func (a *App) whiteDNSVPNCacheFreshLocked(now time.Time) bool {

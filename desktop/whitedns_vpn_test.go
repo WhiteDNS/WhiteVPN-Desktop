@@ -710,3 +710,64 @@ func whiteDNSVPNTestProfiles(profiles []model.V2RayProfile) []model.V2RayProfile
 	}
 	return out
 }
+
+// The built-in catalogue's address is the app's, not the user's. It is a
+// constant here and must never reach the state, because everything the user can
+// see — the subscriptions list, a backup export, the state handed to the
+// interface — is built from that.
+func TestBuiltInCatalogueAddressNeverEntersState(t *testing.T) {
+	app := &App{state: model.DefaultAppState()}
+	app.mu.Lock()
+	idx := app.ensureWhiteDNSVPNSubscriptionLocked()
+	app.mu.Unlock()
+
+	if got := app.state.V2RaySubscriptions[idx].URL; got != "" {
+		t.Fatalf("the catalogue address was stored: %q", got)
+	}
+	if app.state.V2RaySubscriptions[idx].ID != whiteDNSVPNSubscriptionID {
+		t.Fatalf("expected the built-in subscription, got %#v", app.state.V2RaySubscriptions[idx])
+	}
+
+	raw, err := json.Marshal(app.state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), whiteDNSVPNSubscriptionURL) {
+		t.Fatal("the catalogue address is reachable through the serialised state")
+	}
+}
+
+// A state file written before that was true, or a restored backup, still has it.
+func TestForgetBuiltInSubscriptionURLClearsAnOlderState(t *testing.T) {
+	state := model.DefaultAppState()
+	state.V2RaySubscriptions = []model.V2RaySubscription{
+		{ID: whiteDNSVPNSubscriptionID, Name: whiteDNSVPNSubscriptionName, URL: whiteDNSVPNSubscriptionURL},
+		{ID: "user-1", Name: "Mine", URL: "https://example.com/sub"},
+	}
+
+	next := forgetBuiltInSubscriptionURL(state)
+
+	if next.V2RaySubscriptions[0].URL != "" {
+		t.Fatalf("expected the built-in address to be dropped, got %q", next.V2RaySubscriptions[0].URL)
+	}
+	if next.V2RaySubscriptions[1].URL != "https://example.com/sub" {
+		t.Fatalf("a subscription the user added is theirs and must be left alone, got %q", next.V2RaySubscriptions[1].URL)
+	}
+}
+
+func TestBuiltInCatalogueRefusesEditAndDeletion(t *testing.T) {
+	app := &App{state: model.DefaultAppState()}
+	app.mu.Lock()
+	app.ensureWhiteDNSVPNSubscriptionLocked()
+	app.mu.Unlock()
+
+	if _, err := app.SaveV2RaySubscription(model.V2RaySubscription{ID: whiteDNSVPNSubscriptionID, Name: "Mine", URL: "https://evil.example"}); err == nil {
+		t.Fatal("expected editing the built-in catalogue to be refused")
+	}
+	if _, err := app.DeleteV2RaySubscription(whiteDNSVPNSubscriptionID); err == nil {
+		t.Fatal("expected removing the built-in catalogue to be refused")
+	}
+	if _, ok := findV2RaySubscription(app.state, whiteDNSVPNSubscriptionID); !ok {
+		t.Fatal("the built-in catalogue should still be listed")
+	}
+}

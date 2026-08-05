@@ -37,6 +37,11 @@ const (
 	ParallelTestCompleted = "completed"
 	ParallelTestFailed    = "failed"
 
+	// BuiltInSubscriptionID names the catalogue the app ships with. It is the
+	// one subscription whose address is not stored — the app holds it as a
+	// constant — so it is also the one that may sit in the list without one.
+	BuiltInSubscriptionID = "whitedns-vpn"
+
 	DefaultConnectionProfileID = "default"
 	DefaultResolverProfileID   = "resolver-default"
 	DefaultSettingsProfileID   = "settings-default"
