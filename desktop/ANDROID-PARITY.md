@@ -297,7 +297,23 @@ but only the navigation, the connect button and those dialogs are keyed so far.
 
 ### Suggested order
 
-1. **Finish the translation** — mechanical: add a key to `frontend/src/i18n.ts`,
+1. **Clean-IP scan**, and the **startup IP selection** that caches its winner.
+   These are one feature and they now have somewhere to go: IP fronting works,
+   so an address the scan finds is an address the connect path will use. The
+   encrypted list is already fetched and decrypted — `whiteDNSVPNFrontingIPListURL`
+   and `decryptWhiteDNSVPNIPList` — and `pingV2RayProfilesSnapshot` still does
+   plain TCP reachability with no engine behind it. What is missing is the
+   phone's parameters (concurrency 200, 4 probes for loss, budgets 3 s / 12 s /
+   60 s, cache 10 per port) and picking the best one when the user has set none.
+   Today `startWhiteDNSVPNWithMihomo` takes `settings.FrontingIPs[0]` and
+   nothing else.
+
+2. **The kill switch.** Its own session, and the riskiest thing left: a firewall
+   rule that outlives the app leaves someone with no internet and no visible
+   cause. It has to survive an unexpected core exit and be removed on clean
+   shutdown, after a crash, and on uninstall.
+
+3. **Finish the translation** — mechanical: add a key to `frontend/src/i18n.ts`,
    swap the literal for `t(...)`. Android's `values-fa/strings.xml` has 202
    strings already translated; take the wording from there rather than inventing
    it, so both apps say the same thing.
@@ -308,8 +324,26 @@ but only the navigation, the connect button and those dialogs are keyed so far.
    Generator, Full Backup — plus the toasts they raise. Strings take `{name}`
    parameters, because a sentence with a number in it does not put that number
    in the same place in both languages.
-2. **Subscriptions** — selection, user-added entries, import formats.
-3. **Clean-IP scan** and **the kill switch** — each is its own session.
+
+4. **Clash and Xray JSON subscriptions.** Share links, base64 of them and mihomo
+   YAML all connect; JSON does not, because nothing converts it. §4 says so.
+
+5. **Per-card subscription Test.** The phone offers it; refresh is there, test
+   is not.
+
+### Building for the other platforms
+
+Measured 2026-08-04, from Windows:
+
+- **Windows** — `wails build` here. Note `make package-windows` runs
+  `prepare-embedded-core`, which now checks for the mihomo core rather than
+  fetching Xray.
+- **Linux** — the code cross-compiles with `CGO_ENABLED=0` (the tray is D-Bus,
+  pure Go). Wails packaging still needs a Linux host or Docker:
+  `make package-linux-all-docker`.
+- **macOS** — **cannot be built from Windows.** Without CGO it does not even
+  compile: the tray needs Cocoa. Wails needs the macOS SDK as well. It has to
+  run on a Mac: `make package-mac`.
 
 ### Things that will bite
 
