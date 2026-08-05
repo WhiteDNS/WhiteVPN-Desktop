@@ -185,6 +185,10 @@ const strings = {
   "privacy.accept": { en: "Accept and continue", fa: "می‌پذیرم و ادامه" },
   "privacy.quit": { en: "Quit", fa: "خروج" },
 
+  "subs.inTheClear": {
+    en: "Fetched over plain HTTP. Anyone on the network path can read this server list and replace it with one of their own — which, on a network that blocks VPNs, is the same party the VPN exists to get past. Ask the provider for an https:// address if there is one.",
+    fa: "با HTTP ساده دریافت می‌شود. هرکسی در مسیر شبکه می‌تواند این فهرست سرورها را بخواند و با فهرست خودش جایگزین کند — و در شبکه‌ای که وی‌پی‌ان را مسدود می‌کند، این همان طرفی است که وی‌پی‌ان برای عبور از آن وجود دارد. اگر ارائه‌دهنده آدرس https:// دارد، آن را بگیرید.",
+  },
   "subs.use": { en: "Connect through this", fa: "اتصال از طریق این" },
   "subs.inUse": { en: "In use", fa: "در حال استفاده" },
   "subs.disconnectFirst": { en: "Disconnect first", fa: "اول قطع کنید" },

@@ -1003,28 +1003,23 @@ func validateV2RaySubscriptionURL(rawURL string) (*url.URL, error) {
 	if err != nil || parsedURL == nil {
 		return nil, fmt.Errorf("valid subscription URL is required")
 	}
-	// HTTPS, as the phone app requires: a subscription fetched in the clear is a
-	// server list anyone on the path can read and, worse, replace.
+	// http and https, and nothing else — not file://, not ftp://.
 	//
-	// Plain HTTP is allowed to loopback only, where there is no path to be on.
-	// That is what lets someone serve a subscription from a program on their own
-	// machine, which is a desktop thing to want and no weaker for it.
-	if parsedURL.Scheme != "https" && !(parsedURL.Scheme == "http" && isLoopbackHost(parsedURL.Hostname())) {
-		return nil, fmt.Errorf("subscription URL must start with https://")
+	// The phone refuses plain HTTP and the reason is good: a subscription
+	// fetched in the clear is a server list anyone on the path can read and,
+	// worse, replace, which in a censored network is the same adversary the VPN
+	// exists to get past. But providers do serve them over HTTP, and refusing
+	// outright means someone's own subscription cannot be used here while every
+	// other client takes it. So it is allowed and marked: the interface says
+	// which subscriptions arrive in the clear, every time it lists them, rather
+	// than asking once and forgetting.
+	if parsedURL.Scheme != "https" && parsedURL.Scheme != "http" {
+		return nil, fmt.Errorf("subscription URL must start with https:// or http://")
 	}
 	if strings.TrimSpace(parsedURL.Host) == "" {
 		return nil, fmt.Errorf("subscription URL host is required")
 	}
 	return parsedURL, nil
-}
-
-func isLoopbackHost(host string) bool {
-	host = strings.TrimSpace(host)
-	if strings.EqualFold(host, "localhost") {
-		return true
-	}
-	ip := net.ParseIP(host)
-	return ip != nil && ip.IsLoopback()
 }
 
 func defaultV2RaySubscriptionName(parsedURL *url.URL) string {

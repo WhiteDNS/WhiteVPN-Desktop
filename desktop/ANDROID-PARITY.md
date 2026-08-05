@@ -295,11 +295,16 @@ Three places where copying Android exactly would be wrong:
    Fronting leaves hysteria2 alone: it is QUIC with its own certificate and has
    no name to move.
 
-4. **Plain HTTP is allowed to loopback.** The phone requires HTTPS for a
-   subscription and so does this, for the same reason: a server list fetched in
-   the clear is one anyone on the path can read and replace. There is no path to
-   be on for `http://127.0.0.1`, and allowing it is what lets someone serve a
-   subscription from a program on their own machine — a desktop thing to want.
+4. **Plain HTTP subscriptions are allowed, and marked.** The phone refuses them
+   and its reason is good: a server list fetched in the clear can be read and
+   replaced by anyone on the path, who on a network that blocks VPNs is the
+   party the VPN exists to get past. But providers do serve subscriptions over
+   HTTP, and refusing outright means someone's own subscription cannot be used
+   here while every other client takes it — which is a decision about their
+   subscription that the app should not be making for them. So the address is
+   accepted and the risk is shown on the row, every time the list is drawn,
+   rather than asked about once and forgotten. Anything that is not a web
+   address is still refused.
 
 5. **The privacy notice describes this app, not the phone's.** Every line of it
    states something the code does and can be checked against it. The wording is

@@ -1050,7 +1050,7 @@ function ErrorToast({ toast, onDismiss }: { toast: AppErrorToast | null; onDismi
   }
 
   return (
-    <div className="fixed top-4 end-4 start-4 z-50 sm:top-6 sm:end-6 sm:start-auto sm:w-full sm:max-w-md">
+    <div className="fixed top-4 end-4 start-4 z-[100] sm:top-6 sm:end-6 sm:start-auto sm:w-full sm:max-w-md">
       <Alert variant="destructive" className="border-destructive/25 shadow-lg">
         <AlertCircle />
         <AlertTitle>Operation failed</AlertTitle>
@@ -1071,7 +1071,7 @@ function SuccessToast({ toast, onDismiss }: { toast: AppErrorToast | null; onDis
   }
 
   return (
-    <div className="fixed top-4 end-4 start-4 z-50 sm:top-6 sm:end-6 sm:start-auto sm:w-full sm:max-w-md">
+    <div className="fixed top-4 end-4 start-4 z-[100] sm:top-6 sm:end-6 sm:start-auto sm:w-full sm:max-w-md">
       <Alert className="border-emerald-200 bg-emerald-50 text-emerald-950 shadow-lg dark:border-emerald-900/60 dark:bg-emerald-950 dark:text-emerald-100">
         <CheckCircle2 />
         <AlertTitle>{toast.message}</AlertTitle>
@@ -3014,6 +3014,10 @@ function V2RaySubscriptionsPage({
                     const managedProfileIds = profileIndex.subscriptionProfileIds[subscription.id] || [];
                     const builtIn = subscription.id === whiteDNSVPNSubscriptionID;
                     const inUse = subscription.id === state.selectedSubscriptionId;
+                    // Said on the row rather than once when it was added: a
+                    // server list fetched in the clear can be read and replaced
+                    // by anyone on the path, and that stays true every day.
+                    const inTheClear = subscription.url.toLowerCase().startsWith("http://");
                     // The built-in catalogue comes back on the next connect,
                     // so removing it is an offer the app cannot keep.
                     const deleteDisabled =
@@ -3049,8 +3053,13 @@ function V2RaySubscriptionsPage({
                           {/* The built-in catalogue's address is the app's, not
                               the user's, and is not carried in the state at all
                               — there is nothing here to print. */}
-                          <span className={cn("block truncate text-xs", builtIn ? "text-muted-foreground" : "font-mono")}>
-                            {builtIn ? "Built-in" : subscription.url}
+                          <span className="flex min-w-0 items-center gap-1.5">
+                            {inTheClear && (
+                              <AlertCircle className="size-3.5 shrink-0 text-amber-600 dark:text-amber-400" aria-label={t("subs.inTheClear")} />
+                            )}
+                            <span className={cn("truncate text-xs", builtIn ? "text-muted-foreground" : "font-mono", inTheClear && "text-amber-600 dark:text-amber-400")} title={inTheClear ? t("subs.inTheClear") : undefined}>
+                              {builtIn ? "Built-in" : subscription.url}
+                            </span>
                           </span>
                         </td>
                         <td className="px-3 py-3">

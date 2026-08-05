@@ -285,13 +285,16 @@ func TestDeletingTheSelectedSubscriptionFallsBackToTheCatalogue(t *testing.T) {
 	}
 }
 
-func TestSubscriptionURLMustBeHTTPSUnlessItIsLoopback(t *testing.T) {
-	for _, rawURL := range []string{"http://example.com/sub", "ftp://example.com/sub", "file:///tmp/sub"} {
+// http is allowed and marked rather than refused: a provider that serves one is
+// a provider whose subscription has to be usable here. Anything that is not a
+// web address is still refused.
+func TestSubscriptionURLTakesWebAddressesAndNothingElse(t *testing.T) {
+	for _, rawURL := range []string{"ftp://example.com/sub", "file:///tmp/sub", "", "not a url"} {
 		if _, err := validateV2RaySubscriptionURL(rawURL); err == nil {
 			t.Fatalf("expected %q to be rejected", rawURL)
 		}
 	}
-	for _, rawURL := range []string{"https://example.com/sub", "http://127.0.0.1:8080/sub", "http://localhost:8080/sub"} {
+	for _, rawURL := range []string{"https://example.com/sub", "http://sh.example.click:2096/sub/abc", "http://127.0.0.1:8080/sub"} {
 		if _, err := validateV2RaySubscriptionURL(rawURL); err != nil {
 			t.Fatalf("expected %q to be accepted: %v", rawURL, err)
 		}
