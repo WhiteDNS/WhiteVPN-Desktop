@@ -457,6 +457,16 @@ Measured 2026-08-04, from Windows:
   it; `countryCodeFromNodeName` reads the flag. A catalogue that stops shipping
   flags takes the location filter with it, and the dialog would show one country:
   none.
+- **The context that cancels a connect must not own the engine's lifetime.**
+  `engine.Spawn` used `exec.CommandContext`, so the core was killed the moment
+  that context was cancelled — and the context handed to it is the cancellable
+  one from `beginConnect`, cancelled by `defer cancel()` the instant the connect
+  function returns. Every proxy-mode connection therefore died about a second
+  after reporting success. TUN was untouched, because `Elevated` spawns through
+  `ShellExecuteExW` and no context can reach that: the entire "TUN works, proxy
+  mode does not" was this one line. `TestLiveConnectionOutlivesItsConnectContext`
+  connects, cancels, and asks the connection to carry a request; it fails within
+  three seconds if the old form comes back.
 - **A connection proves itself once and was never asked again.** Connecting
   health-checks a node and then pins the group to it for the session. That proof
   has a shelf life: a user's log showed the node behind a CDN answering `502 Bad

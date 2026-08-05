@@ -119,6 +119,12 @@ func Spawn(ctx context.Context, opts SpawnOptions) (*Process, error) {
 		opts.ConnectTimeout = 20 * time.Second
 	}
 
+	// A connect that has already been cancelled should not leave a core behind
+	// to be cleaned up; this is what ctx is for here, and all it is for.
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	endpoint := opts.Endpoint
 	if endpoint == "" {
 		generated, err := generateEndpoint()
@@ -143,7 +149,19 @@ func Spawn(ctx context.Context, opts SpawnOptions) (*Process, error) {
 		}
 		child = elevated
 	} else {
-		cmd := exec.CommandContext(ctx, opts.CorePath, endpoint)
+		// exec.Command, not exec.CommandContext: ctx governs *starting* the
+		// core, not how long it may live. It used to be CommandContext, which
+		// meant the core was killed the moment that context was cancelled — and
+		// the context handed in here is the one that lets a user cancel a
+		// connect, cancelled by `defer cancel()` the instant the connect
+		// function returns. So the core died a second after every successful
+		// connection, in proxy mode only: the TUN path spawns through
+		// ShellExecuteExW instead, which no context can reach. That is the whole
+		// of "TUN works and proxy mode does not".
+		//
+		// Nothing depended on that kill for cleanup. Every failure path below
+		// already stops the child explicitly, and so does Session.Close.
+		cmd := exec.Command(opts.CorePath, endpoint)
 		cmd.Dir = opts.WorkingDir
 		cmd.Stdout = opts.Stdout
 		cmd.Stderr = opts.Stderr
