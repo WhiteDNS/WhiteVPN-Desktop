@@ -10,6 +10,7 @@ import "errors"
 // proxy should say so rather than quietly succeed.
 var ErrUnsupported = errors.New("sysproxy: setting the system proxy is only implemented on Windows")
 
-func Current() (State, error)          { return State{}, ErrUnsupported }
-func Apply(State) error                { return ErrUnsupported }
-func Set(string) (State, error)        { return State{}, ErrUnsupported }
+func Current() (State, error)           { return State{}, ErrUnsupported }
+func Apply(State) error                 { return ErrUnsupported }
+func Pointing(string) (State, error)    { return State{}, ErrUnsupported }
+func Verify(State) error                { return ErrUnsupported }

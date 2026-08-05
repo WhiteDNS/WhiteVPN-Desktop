@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -103,6 +104,7 @@ func (a *App) startWhiteDNSVPNWithMihomo() (model.AppState, error) {
 	connected, err := session.Connect(ctx, session.Options{
 		CorePath:     corePath,
 		HomeDir:      homeDir,
+		MixedPort:    chooseProxyPort(),
 		Subscription: subscription,
 		Prefer:       prefer,
 		FrontingIP:   frontingIP,
@@ -327,6 +329,30 @@ func (a *App) stopMihomo() bool {
 	a.mu.Unlock()
 	a.handleRuntimeState(model.RuntimeDisconnected, "Disconnected")
 	return true
+}
+
+// chooseProxyPort is the port the engine will listen on: the usual one if it is
+// free, otherwise any port that is.
+//
+// The engine used to take 2080 unconditionally. When something else already
+// holds it — another VPN client, a previous instance that has not let go — the
+// listener does not come up, and the health check then talks to whatever *is*
+// on 2080 and reports a healthy connection through someone else's proxy. A port
+// this app cannot bind is not a port it can claim.
+func chooseProxyPort() int {
+	for _, port := range []int{mihomoconf.DefaultMixedPort, 0} {
+		listener, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+		if err != nil {
+			continue
+		}
+		bound := listener.Addr().(*net.TCPAddr).Port
+		// Released immediately: this was a question, not a reservation. The
+		// engine binds it a moment later, and losing that race is a connection
+		// that fails loudly rather than one that succeeds through a stranger.
+		_ = listener.Close()
+		return bound
+	}
+	return mihomoconf.DefaultMixedPort
 }
 
 // GetLocalProxyEndpoint is where the engine's local proxy listens, whether or

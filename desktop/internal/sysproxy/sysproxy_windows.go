@@ -64,21 +64,37 @@ func Apply(state State) error {
 	return notify()
 }
 
-// Set points the machine at endpoint and returns what it replaced, so the
-// caller can put it back.
-func Set(endpoint string) (State, error) {
+// Pointing is the state that points the machine at endpoint.
+//
+// The caller composes it, saves what Current returns, and only then calls
+// Apply. That order is deliberate and was wrong once: writing the registry
+// before recording what was there means a failure between the two leaves a
+// machine pointed at this app's proxy with nothing on disk saying what it used
+// to be — which after the app exits is not a broken VPN but a broken internet
+// connection.
+func Pointing(endpoint string) (State, error) {
 	if strings.TrimSpace(endpoint) == "" {
 		return State{}, fmt.Errorf("sysproxy: no proxy address to set")
 	}
-	previous, err := Current()
+	return State{Enabled: true, Server: endpoint, Override: DefaultBypass}, nil
+}
+
+// Verify reads the settings back and reports whether they are what was asked
+// for.
+//
+// Worth the second read: the registry write can succeed against a key another
+// program is also writing, and a badge claiming the machine is using this proxy
+// when it is not is worse than no badge at all.
+func Verify(want State) error {
+	got, err := Current()
 	if err != nil {
-		return State{}, err
+		return err
 	}
-	next := State{Enabled: true, Server: endpoint, Override: DefaultBypass}
-	if err := Apply(next); err != nil {
-		return State{}, err
+	if !got.SameAs(want) {
+		return fmt.Errorf("sysproxy: the settings did not stick — asked for %q (enabled=%t), found %q (enabled=%t)",
+			want.Server, want.Enabled, got.Server, got.Enabled)
 	}
-	return previous, nil
+	return nil
 }
 
 func setOrDelete(key registry.Key, name, value string) error {

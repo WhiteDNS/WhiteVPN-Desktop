@@ -32,22 +32,51 @@ func (a *App) captureSystemProxy(port int) {
 		return
 	}
 	endpoint := fmt.Sprintf("127.0.0.1:%d", port)
-	previous, err := sysproxy.Set(endpoint)
+	next, err := sysproxy.Pointing(endpoint)
 	if err != nil {
-		// Not fatal to the connection: the proxy is up and anything pointed at
-		// it by hand still works. But the user has to be told, because
-		// otherwise this is the failure that looks like the VPN doing nothing.
-		a.appendRuntimeLog(fmt.Sprintf("could not point the system at %s: %v", endpoint, err))
-		a.emit("runtime:error", fmt.Sprintf("Connected, but the system proxy could not be set: %v", err))
+		a.reportSystemProxyFailure(endpoint, err)
 		return
 	}
-	if err := a.writeSystemProxyBackup(previous); err != nil {
-		a.appendRuntimeLog(fmt.Sprintf("could not record the previous system proxy: %v", err))
+	previous, err := sysproxy.Current()
+	if err != nil {
+		a.reportSystemProxyFailure(endpoint, err)
+		return
 	}
+
+	// The record of what was there goes down before anything is changed. A
+	// failure after this point leaves a machine that can be put back; a failure
+	// before it changes nothing.
+	if err := a.writeSystemProxyBackup(previous); err != nil {
+		a.reportSystemProxyFailure(endpoint, fmt.Errorf("could not record the current settings first: %w", err))
+		return
+	}
+	if err := sysproxy.Apply(next); err != nil {
+		a.reportSystemProxyFailure(endpoint, err)
+		return
+	}
+	// Read back rather than assume. Another program can be writing the same
+	// key, and a badge claiming the machine uses this proxy when it does not is
+	// worse than no badge.
+	if err := sysproxy.Verify(next); err != nil {
+		a.reportSystemProxyFailure(endpoint, err)
+		return
+	}
+
 	a.mu.Lock()
 	a.state.Runtime.SystemProxy = true
 	a.mu.Unlock()
-	a.appendRuntimeLog(fmt.Sprintf("system proxy set to %s", endpoint))
+	a.appendRuntimeLog(fmt.Sprintf(
+		"system proxy set to %s, replacing %q (enabled=%t)", endpoint, previous.Server, previous.Enabled))
+}
+
+// reportSystemProxyFailure says so in both places a user might look. The
+// connection itself is fine — the proxy is up and anything pointed at it by
+// hand works — but silence here is the failure that looks like the VPN doing
+// nothing at all.
+func (a *App) reportSystemProxyFailure(endpoint string, err error) {
+	a.appendRuntimeLog(fmt.Sprintf("could not point the system at %s: %v", endpoint, err))
+	a.emit("runtime:error", fmt.Sprintf(
+		"Connected, but Windows was not pointed at %s: %v. Set your browser's proxy to that address by hand, or use TUN mode.", endpoint, err))
 }
 
 // restoreSystemProxy puts back whatever was there before, and is safe to call
