@@ -661,14 +661,18 @@ export type WhiteVPNNode = {
   tls: boolean;
   // The share link this node arrived as, which is what sharing hands back.
   link: string;
-  // Measurements. Each is present only once it has been made: zero with its OK
-  // flag false means "not measured", not "instant" or "nothing".
-  reachMs: number;
+  // Measurements, each in one of three states rather than two: never run, run
+  // and failed, run and measured. A node that could not be reached must not
+  // look like one nobody has tested.
+  reachTested: boolean;
   reachOk: boolean;
-  delayMs: number;
+  reachMs: number;
+  delayTested: boolean;
   delayOk: boolean;
-  speedBytesPerSecond: number;
+  delayMs: number;
+  speedTested: boolean;
   speedOk: boolean;
+  speedBytesPerSecond: number;
 };
 
 // One run of the node tests: which nodes, which tests, and the numbers the user

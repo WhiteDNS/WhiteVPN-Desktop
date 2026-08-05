@@ -522,14 +522,21 @@ type WhiteVPNNode struct {
 	// hands back.
 	Link string `json:"link"`
 
-	// Measurements. Each is present only once it has been made: zero with its
-	// OK flag false means "not measured", not "instant" or "nothing".
-	ReachMs             int   `json:"reachMs"`
-	ReachOK             bool  `json:"reachOk"`
-	DelayMs             int   `json:"delayMs"`
-	DelayOK             bool  `json:"delayOk"`
-	SpeedBytesPerSecond int64 `json:"speedBytesPerSecond"`
+	// Measurements, each in one of three states rather than two: never run,
+	// run and failed, run and measured. Collapsing the first two makes a node
+	// that could not be reached look exactly like one nobody has tested, which
+	// is the difference between "avoid this" and "find out".
+	ReachTested bool `json:"reachTested"`
+	ReachOK     bool `json:"reachOk"`
+	ReachMs     int  `json:"reachMs"`
+
+	DelayTested bool `json:"delayTested"`
+	DelayOK     bool `json:"delayOk"`
+	DelayMs     int  `json:"delayMs"`
+
+	SpeedTested         bool  `json:"speedTested"`
 	SpeedOK             bool  `json:"speedOk"`
+	SpeedBytesPerSecond int64 `json:"speedBytesPerSecond"`
 }
 
 // NodeTestRequest is one run of the tests: which nodes, which tests, and the

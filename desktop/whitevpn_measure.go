@@ -131,6 +131,7 @@ func (a *App) runNodeTest(ctx context.Context, request model.NodeTestRequest) {
 		measurer.DelayAll(ctx, names, request.DelayURL, request.DelayTimeout(), request.DelayWorkers,
 			func(name string, delayMS int, err error) {
 				a.recordNodeMeasurement(name, func(node *model.WhiteVPNNode) {
+					node.DelayTested = true
 					node.DelayOK = err == nil
 					node.DelayMs = delayMS
 				})
@@ -151,6 +152,7 @@ func (a *App) runNodeTest(ctx context.Context, request model.NodeTestRequest) {
 		}
 		rate, err := measurer.Speed(ctx, node.Name, request.SpeedURL, request.SpeedBudget())
 		a.recordNodeMeasurement(node.Name, func(stored *model.WhiteVPNNode) {
+			stored.SpeedTested = true
 			stored.SpeedOK = err == nil
 			stored.SpeedBytesPerSecond = rate
 		})
@@ -167,6 +169,11 @@ func (a *App) measureReachability(ctx context.Context, nodes []model.WhiteVPNNod
 	var wg sync.WaitGroup
 	for _, node := range nodes {
 		if strings.TrimSpace(node.Server) == "" || node.Port <= 0 {
+			// Nothing to dial. Recorded as tested and failed rather than left
+			// looking untested, which would be a row that never resolves.
+			a.recordNodeMeasurement(node.Name, func(stored *model.WhiteVPNNode) {
+				stored.ReachTested, stored.ReachOK, stored.ReachMs = true, false, 0
+			})
 			continue
 		}
 		wg.Add(1)
@@ -188,6 +195,7 @@ func (a *App) measureReachability(ctx context.Context, nodes []model.WhiteVPNNod
 				_ = conn.Close()
 			}
 			a.recordNodeMeasurement(target.Name, func(stored *model.WhiteVPNNode) {
+				stored.ReachTested = true
 				stored.ReachOK = err == nil
 				if err == nil {
 					stored.ReachMs = latency

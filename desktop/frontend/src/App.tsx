@@ -2249,6 +2249,70 @@ function WhiteDNSVPNPage({
   );
 }
 
+// One measurement, in whichever of its four states it is: waiting to be run,
+// running, run and failed, run and measured. Failure and "not run yet" were the
+// same dash until a user reported nodes whose tests "did not happen" — they had
+// happened, and had failed, which is the more useful of the two answers.
+function MeasurementCell({
+  tested,
+  ok,
+  pending,
+  children,
+  quality,
+  t,
+}: {
+  tested: boolean;
+  ok: boolean;
+  pending: boolean;
+  children: ReactNode;
+  quality?: "good" | "fair" | "poor";
+  t: TranslateFn;
+}) {
+  if (pending) {
+    return (
+      <span className="inline-flex items-center gap-1 text-muted-foreground">
+        <RotateCcw className="size-3 animate-spin" />
+      </span>
+    );
+  }
+  if (!tested) {
+    return <span className="text-muted-foreground">-</span>;
+  }
+  if (!ok) {
+    return (
+      <span className="text-destructive" title={t("servers.failed.hint")}>
+        {t("servers.failed")}
+      </span>
+    );
+  }
+  return (
+    <span
+      className={cn(
+        quality === "good" && "text-emerald-600 dark:text-emerald-400",
+        quality === "fair" && "text-amber-600 dark:text-amber-400",
+        quality === "poor" && "text-orange-600 dark:text-orange-400"
+      )}
+    >
+      {children}
+    </span>
+  );
+}
+
+// Thresholds, so a column can be read at a glance rather than compared by hand.
+function latencyQuality(ms: number): "good" | "fair" | "poor" {
+  if (ms <= 300) {
+    return "good";
+  }
+  return ms <= 800 ? "fair" : "poor";
+}
+
+function speedQuality(bytesPerSecond: number): "good" | "fair" | "poor" {
+  if (bytesPerSecond >= 2 * 1024 * 1024) {
+    return "good";
+  }
+  return bytesPerSecond >= 512 * 1024 ? "fair" : "poor";
+}
+
 // The Servers page: the workbench.
 //
 // It and the dashboard's connection dialog read the same list — the one the
@@ -2393,11 +2457,34 @@ function NodesPage({
     });
   }
 
+  // A row has to show that its turn has not come yet, or a long run looks like
+  // a broken one. The backend reports each result as it lands; anything in the
+  // run that has not reported is still waiting.
+  const [pending, setPending] = useState<{ nodes: Set<string>; tests: NodeTestRequest } | null>(null);
+  useEffect(() => {
+    if (!testing) {
+      setPending(null);
+    }
+  }, [testing]);
+
+  function pendingFor(name: string, test: "reachability" | "delay" | "speed"): boolean {
+    if (!pending || !pending.nodes.has(name) || !pending.tests[test]) {
+      return false;
+    }
+    const node = nodes.find((entry) => entry.name === name);
+    if (!node) {
+      return false;
+    }
+    // A result for this test clears it; results for the others do not.
+    return test === "reachability" ? !node.reachTested : test === "delay" ? !node.delayTested : !node.speedTested;
+  }
+
   function runTests() {
     if (!targets.length) {
       onError(t("vpn.nodes.none"));
       return;
     }
+    setPending({ nodes: new Set(targets), tests: request });
     onRunTest({ ...request, nodes: targets });
   }
 
@@ -2615,13 +2702,37 @@ function NodesPage({
                       </span>
                     </td>
                     <td className="px-2 py-1.5 text-end font-mono text-xs">
-                      {node.reachOk ? `${node.reachMs} ms` : <span className="text-muted-foreground">-</span>}
+                      <MeasurementCell
+                        tested={node.reachTested}
+                        ok={node.reachOk}
+                        pending={pendingFor(node.name, "reachability")}
+                        quality={latencyQuality(node.reachMs)}
+                        t={t}
+                      >
+                        {node.reachMs} ms
+                      </MeasurementCell>
                     </td>
                     <td className="px-2 py-1.5 text-end font-mono text-xs">
-                      {node.delayOk ? `${node.delayMs} ms` : <span className="text-muted-foreground">-</span>}
+                      <MeasurementCell
+                        tested={node.delayTested}
+                        ok={node.delayOk}
+                        pending={pendingFor(node.name, "delay")}
+                        quality={latencyQuality(node.delayMs)}
+                        t={t}
+                      >
+                        {node.delayMs} ms
+                      </MeasurementCell>
                     </td>
                     <td className="px-2 py-1.5 text-end font-mono text-xs">
-                      {node.speedOk ? formatRate(node.speedBytesPerSecond) : <span className="text-muted-foreground">-</span>}
+                      <MeasurementCell
+                        tested={node.speedTested}
+                        ok={node.speedOk}
+                        pending={pendingFor(node.name, "speed")}
+                        quality={speedQuality(node.speedBytesPerSecond)}
+                        t={t}
+                      >
+                        {formatRate(node.speedBytesPerSecond)}
+                      </MeasurementCell>
                     </td>
                     <td className="px-2 py-1.5">
                       <div className="flex justify-end gap-1">

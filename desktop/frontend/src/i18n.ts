@@ -206,6 +206,11 @@ const strings = {
   "servers.column.node": { en: "Node", fa: "سرور" },
   "servers.column.address": { en: "Address", fa: "آدرس" },
   "servers.column.actions": { en: "Actions", fa: "عملیات" },
+  "servers.failed": { en: "failed", fa: "ناموفق" },
+  "servers.failed.hint": {
+    en: "The test ran and did not succeed. Reachable dials the address directly, without the VPN, so a node that is blocked from here fails it while still working through the engine.",
+    fa: "آزمون اجرا شد و موفق نبود. «در دسترس» آدرس را مستقیم و بدون وی‌پی‌ان می‌زند، پس سروری که از اینجا مسدود است در این آزمون رد می‌شود ولی ممکن است از راه موتور کاملاً کار کند.",
+  },
   "servers.use": { en: "Connect through this node", fa: "اتصال از این سرور" },
   "servers.share": { en: "Share", fa: "اشتراک‌گذاری" },
   "servers.copy": { en: "Copy link", fa: "کپی لینک" },
@@ -217,8 +222,8 @@ const strings = {
   "servers.option.speedBudget": { en: "Speed budget (ms)", fa: "بودجهٔ سرعت (ms)" },
   "servers.option.speedUrl": { en: "Speed test file", fa: "فایل آزمون سرعت" },
   "servers.option.hint": {
-    en: "Reachable opens a TCP connection and needs no engine. Delay and speed run on an engine of their own, so they never disturb a live connection — and speed is one node at a time, so it is capped at 25.",
-    fa: "«در دسترس» فقط یک اتصال TCP باز می‌کند و به موتور نیاز ندارد. تأخیر و سرعت روی موتور جداگانه‌ای اجرا می‌شوند و هرگز اتصال زندهٔ شما را مختل نمی‌کنند — و سرعت هر بار یک سرور است، پس تا ۲۵ مورد محدود می‌شود.",
+    en: "Reachable dials the address directly, without the VPN and without an engine — so a node blocked from where you are fails it while still working through the engine. Delay and speed run on an engine of their own, so they never disturb a live connection, and speed is one node at a time, so it is capped at 25.",
+    fa: "«در دسترس» آدرس را مستقیم می‌زند، بدون وی‌پی‌ان و بدون موتور — پس سروری که از محل شما مسدود است در این آزمون رد می‌شود، در حالی که از راه موتور کاملاً کار می‌کند. تأخیر و سرعت روی موتور جداگانه‌ای اجرا می‌شوند و هرگز اتصال زنده را مختل نمی‌کنند، و سرعت هر بار یک سرور است، پس تا ۲۵ مورد محدود می‌شود.",
   },
 
   "common.close": { en: "Close", fa: "بستن" },
