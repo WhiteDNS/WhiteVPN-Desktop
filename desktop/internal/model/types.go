@@ -518,6 +518,9 @@ type WhiteVPNNode struct {
 	// Transport and TLS say how it carries traffic.
 	Transport string `json:"transport"`
 	TLS       bool   `json:"tls"`
+	// Link is the share link this node arrived as, which is what sharing it
+	// hands back.
+	Link string `json:"link"`
 
 	// Measurements. Each is present only once it has been made: zero with its
 	// OK flag false means "not measured", not "instant" or "nothing".

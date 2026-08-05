@@ -233,12 +233,12 @@ func measureNodeDelays(ctx context.Context, client *engine.Process, names []stri
 // whiteVPNNodesFromSubscription turns a decrypted catalogue into nodes, in the
 // order the catalogue gave them — which is the order the connect path tries.
 func whiteVPNNodesFromSubscription(subscription string) ([]model.WhiteVPNNode, error) {
-	proxies, err := mihomoconf.ConvertLinks(subscription)
+	proxies, sources, err := mihomoconf.ConvertLinksWithSources(subscription)
 	if err != nil {
 		return nil, fmt.Errorf("the catalogue held no usable nodes: %w", err)
 	}
 	nodes := make([]model.WhiteVPNNode, 0, len(proxies))
-	for _, proxy := range proxies {
+	for index, proxy := range proxies {
 		name := proxy.Name()
 		if strings.TrimSpace(name) == "" {
 			continue
@@ -256,6 +256,7 @@ func whiteVPNNodesFromSubscription(subscription string) ([]model.WhiteVPNNode, e
 			Port:        proxyPort(proxy),
 			Transport:   strings.ToLower(strings.TrimSpace(transport)),
 			TLS:         tls,
+			Link:        sources[index],
 		})
 	}
 	if len(nodes) == 0 {

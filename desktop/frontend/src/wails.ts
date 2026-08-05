@@ -23,6 +23,7 @@ import type {
   WhiteVPNSettings,
   WhiteVPNNodeList,
   ConnectionSelection,
+  NodeTestRequest,
 } from "./types";
 
 type WailsNotificationOptions = {
@@ -88,6 +89,8 @@ type AppApi = {
   AcceptPrivacyPolicy(): Promise<AppState>;
   ListWhiteVPNNodes(refresh: boolean): Promise<WhiteVPNNodeList>;
   MeasureWhiteVPNNodeDelays(names: string[]): Promise<WhiteVPNNodeList>;
+  StartNodeTest(request: NodeTestRequest): Promise<void>;
+  CancelNodeTest(): Promise<void>;
   SaveWhiteVPNSelection(countryCode: string, selection: ConnectionSelection): Promise<AppState>;
   GetLegacyImportOffer(): Promise<LegacyImportOffer>;
   ImportLegacyProfiles(): Promise<AppState>;
@@ -179,6 +182,8 @@ export const backend = {
   acceptPrivacyPolicy: () => app().AcceptPrivacyPolicy(),
   listWhiteVpnNodes: (refresh: boolean) => app().ListWhiteVPNNodes(refresh),
   measureWhiteVpnNodeDelays: (names: string[]) => app().MeasureWhiteVPNNodeDelays(names),
+  startNodeTest: (request: NodeTestRequest) => app().StartNodeTest(request),
+  cancelNodeTest: () => app().CancelNodeTest(),
   saveWhiteVpnSelection: (countryCode: string, selection: ConnectionSelection) => app().SaveWhiteVPNSelection(countryCode, selection),
   getLegacyImportOffer: () => app().GetLegacyImportOffer(),
   importLegacyProfiles: () => app().ImportLegacyProfiles(),

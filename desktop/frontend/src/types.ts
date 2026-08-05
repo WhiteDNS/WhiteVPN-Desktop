@@ -655,9 +655,37 @@ export type WhiteVPNNode = {
   label: string;
   type: string;
   countryCode: string;
-  // Zero with delayOk false means "not measured", not "instant".
+  server: string;
+  port: number;
+  transport: string;
+  tls: boolean;
+  // The share link this node arrived as, which is what sharing hands back.
+  link: string;
+  // Measurements. Each is present only once it has been made: zero with its OK
+  // flag false means "not measured", not "instant" or "nothing".
+  reachMs: number;
+  reachOk: boolean;
   delayMs: number;
   delayOk: boolean;
+  speedBytesPerSecond: number;
+  speedOk: boolean;
+};
+
+// One run of the node tests: which nodes, which tests, and the numbers the user
+// is allowed to change. Bounds live in internal/model; anything outside them is
+// replaced with the default rather than clamped.
+export type NodeTestRequest = {
+  nodes: string[];
+  reachability: boolean;
+  delay: boolean;
+  speed: boolean;
+  reachabilityTimeoutMs: number;
+  reachabilityWorkers: number;
+  delayTimeoutMs: number;
+  delayWorkers: number;
+  delayUrl: string;
+  speedBudgetMs: number;
+  speedUrl: string;
 };
 
 export type WhiteVPNNodeList = {

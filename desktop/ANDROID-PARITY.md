@@ -209,6 +209,30 @@ stops any engine it had already spawned, and a session that finishes in the gap
 is closed rather than adopted. A cancelled connect ends `disconnected`, not
 `failed`: the user asked for this one.
 
+## 5a. Servers, and why it agrees with the dashboard now
+
+The Servers page and the dashboard's connection dialog show the same thing, so
+they read the same list: `ListWhiteVPNNodes`, which is the engine's own view of
+the selected subscription. They cannot disagree about how many nodes there are
+or what protocols they speak, because there is nothing to disagree with.
+
+Before this they read two different parsers of the same subscription. The
+Servers page used the Xray-era importer, which accepted protocols the engine
+cannot carry, and — once the Xray path went — stopped refreshing at all, so it
+showed a frozen count from whenever it was last filled. That is where "862
+profiles" against the dialog's 585 came from.
+
+The two views have different jobs. The dialog picks one node quickly. The page
+is for finding out which one to pick: test, sort, compare, share.
+
+| | Dialog | Servers |
+|---|---|---|
+| Search, country and protocol filters | ✓ | ✓ |
+| Delay | measured through the live engine | measured on an engine of its own |
+| Reachability, speed | — | ✓ |
+| Sort by any column | — | ✓ |
+| Share a node's link | — | ✓ |
+
 ## 5b. Desktop additions
 
 Things the phone has no equivalent for, added because a desktop needs them.

@@ -9,8 +9,6 @@ import {
   Copy,
   Cpu,
   Download,
-  Eye,
-  EyeOff,
   ExternalLink,
   FileText,
   Gauge,
@@ -18,7 +16,6 @@ import {
   Monitor,
   Moon,
   Pause,
-  Pencil,
   Plus,
   Play,
   Power,
@@ -37,9 +34,8 @@ import {
   Wifi,
   X,
 } from "lucide-react";
-import QRCode from "qrcode";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactNode, UIEvent as ReactUIEvent } from "react";
+import type { ReactNode } from "react";
 
 import {
   Alert,
@@ -114,7 +110,6 @@ import {
   SidebarProvider,
   SidebarSeparator,
   SidebarTrigger,
-  useSidebar,
 } from "@/components/ui/sidebar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
@@ -139,6 +134,7 @@ import type {
   RuntimeStatusName,
   ConnectionSelection,
   WhiteVPNNode,
+  NodeTestRequest,
   RuntimeType,
   ValidatorEndpointInput,
   ValidatorOptions,
@@ -157,55 +153,7 @@ import { backend, initializeNotifications, onRuntimeEvent, openExternalUrl, send
 type Page = "vpn" | "servers" | "subscriptions" | "settings" | "engine-settings" | "logs" | "white-ips" | "validator" | "backup";
 type NavItem = { id: Page; label: StringKey; icon: ReactNode };
 type NavGroup = { id: "whitevpn" | "tools"; label: StringKey; items: NavItem[] };
-type V2RayPingSortDirection = "none" | "asc" | "desc";
-type V2RayProfileTestKind = "" | "ping" | "speed" | "delay";
-type V2RayProfileSortColumn = "none" | "delay" | "speed";
-type V2RayStatusFilter = "all" | "reachable" | "failed" | "unchecked";
-type V2RayTypeFilter = "all" | V2RayProtocol;
-type V2RayProfileTableColumnId =
-  | "select"
-  | "type"
-  | "remarks"
-  | "address"
-  | "port"
-  | "transport"
-  | "tls"
-  | "delay"
-  | "speed"
-  | "actions";
-type V2RayProfileTableColumn = {
-  id: V2RayProfileTableColumnId;
-  label: string;
-  defaultWidth: number;
-  minWidth: number;
-  maxWidth: number;
-  align?: "left" | "center" | "right";
-  sticky?: "right";
-};
-type V2RayProfileSort = {
-  column: V2RayProfileSortColumn;
-  direction: V2RayPingSortDirection;
-};
-type V2RayProfileFilters = {
-  status: V2RayStatusFilter;
-  type: V2RayTypeFilter;
-  subscriptionId: string;
-};
 type ValidatorStateUpdate = Omit<ValidatorState, "results"> & { results?: unknown; appendResults?: boolean };
-type V2RayPingState = {
-  running: boolean;
-  activeKind: V2RayProfileTestKind;
-  results: Record<string, V2RayPingResult>;
-  scanningIds: Record<string, boolean>;
-  checkedAt: Record<string, number>;
-};
-type V2RayShareDialogState = {
-  profile: V2RayProfile;
-  link: string;
-  qrDataUrl: string;
-  qrError: string;
-  copyStatus: string;
-};
 type AppErrorToast = {
   id: number;
   message: string;
@@ -219,22 +167,6 @@ const maxValidatorSelectedRangeHosts = 4000000;
 const defaultValidatorWorkers = 128;
 const maxValidatorWorkers = 2048;
 const errorToastTTLMS = 6000;
-const v2rayPingBatchSize = 128;
-const v2rayProfileVirtualRowHeight = 40;
-const v2rayProfileVirtualOverscan = 12;
-const v2rayProfileTableColumnStorageKey = "whitedns.v2ray.profileTable.columnWidths.v2";
-const v2rayProfileTableColumns: V2RayProfileTableColumn[] = [
-  { id: "select", label: "", defaultWidth: 36, minWidth: 32, maxWidth: 52, align: "center" },
-  { id: "type", label: "Type", defaultWidth: 60, minWidth: 52, maxWidth: 96 },
-  { id: "remarks", label: "Remarks", defaultWidth: 128, minWidth: 88, maxWidth: 280 },
-  { id: "address", label: "Address", defaultWidth: 104, minWidth: 80, maxWidth: 220 },
-  { id: "port", label: "Port", defaultWidth: 52, minWidth: 44, maxWidth: 88 },
-  { id: "transport", label: "Transport", defaultWidth: 78, minWidth: 64, maxWidth: 128 },
-  { id: "tls", label: "TLS", defaultWidth: 48, minWidth: 40, maxWidth: 72 },
-  { id: "delay", label: "Delay", defaultWidth: 64, minWidth: 56, maxWidth: 104, align: "right" },
-  { id: "speed", label: "Speed", defaultWidth: 78, minWidth: 64, maxWidth: 128, align: "right" },
-  { id: "actions", label: "Actions", defaultWidth: 128, minWidth: 112, maxWidth: 176, align: "right", sticky: "right" },
-];
 const whiteDnsTelegramUrl = "https://t.me/whitedns";
 // Mirrors the limits in internal/model/whitevpn_settings.go. Values outside them
 // are repaired on save, so these only decide when a control stops accepting more.
@@ -244,43 +176,6 @@ const maxNoiseCount = 20;
 const minNoiseSize = 1;
 const maxNoiseSize = 1280;
 const whiteDNSVPNSubscriptionID = "whitedns-vpn";
-const v2rayProtocolOptions: Array<[V2RayProtocol, string]> = [
-  ["vless", "VLESS"],
-  ["vmess", "VMess"],
-  ["trojan", "Trojan"],
-  ["shadowsocks", "Shadowsocks"],
-  ["hysteria2", "Hysteria2"],
-  ["wireguard", "WireGuard"],
-  ["socks", "SOCKS"],
-  ["http", "HTTP"],
-];
-const v2rayNetworkOptions: Array<[string, string]> = [
-  ["tcp", "TCP"],
-  ["kcp", "mKCP"],
-  ["ws", "WebSocket"],
-  ["grpc", "gRPC"],
-  ["http", "HTTP/2"],
-  ["quic", "QUIC"],
-  ["httpupgrade", "HTTPUpgrade"],
-  ["xhttp", "XHTTP"],
-];
-const v2rayFlowNoneValue = "__none__";
-const v2rayBaseFlowOptions: Array<[string, string]> = [
-  [v2rayFlowNoneValue, "None"],
-  ["xtls-rprx-vision", "XTLS Vision"],
-];
-const v2raySubscriptionFilterAll = "__all_v2ray_subscriptions__";
-const v2raySubscriptionFilterManual = "__manual_v2ray_profiles__";
-const v2rayProfileStatusFilterOptions: Array<[V2RayStatusFilter, string]> = [
-  ["all", "All"],
-  ["reachable", "Reachable"],
-  ["failed", "Failed"],
-  ["unchecked", "Unchecked"],
-];
-const v2rayProfileTypeFilterOptions: Array<[V2RayTypeFilter, string]> = [
-  ["all", "All"],
-  ...v2rayProtocolOptions,
-];
 const enhancedConnectionLabel = "Enhanced Connection";
 const iranRoutingDescription = [
   "Private/local IPs go direct, not through V2Ray.",
@@ -606,114 +501,6 @@ function normalizeAppState(state: AppState, previous?: AppState | null): AppStat
   return next;
 }
 
-function filterRecordKeys<T>(record: Record<string, T>, allowedIds: Set<string>): Record<string, T> {
-  let changed = false;
-  const next: Record<string, T> = {};
-  for (const [id, value] of Object.entries(record)) {
-    if (allowedIds.has(id)) {
-      next[id] = value;
-    } else {
-      changed = true;
-    }
-  }
-  return changed ? next : record;
-}
-
-function omitRecordKeys<T>(record: Record<string, T>, ids: Set<string>): Record<string, T> {
-  if (!ids.size) {
-    return record;
-  }
-  let changed = false;
-  const next: Record<string, T> = {};
-  for (const [id, value] of Object.entries(record)) {
-    if (ids.has(id)) {
-      changed = true;
-    } else {
-      next[id] = value;
-    }
-  }
-  return changed ? next : record;
-}
-
-function clampNumber(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
-}
-
-function defaultV2RayProfileTableColumnWidths(): Record<V2RayProfileTableColumnId, number> {
-  return Object.fromEntries(v2rayProfileTableColumns.map((column) => [column.id, column.defaultWidth])) as Record<V2RayProfileTableColumnId, number>;
-}
-
-function normalizeV2RayProfileTableColumnWidths(input: unknown): Record<V2RayProfileTableColumnId, number> {
-  const source = input && typeof input === "object" ? (input as Partial<Record<V2RayProfileTableColumnId, unknown>>) : {};
-  return Object.fromEntries(
-    v2rayProfileTableColumns.map((column) => {
-      const raw = Number(source[column.id]);
-      const width = Number.isFinite(raw) ? raw : column.defaultWidth;
-      return [column.id, clampNumber(Math.round(width), column.minWidth, column.maxWidth)];
-    })
-  ) as Record<V2RayProfileTableColumnId, number>;
-}
-
-function loadV2RayProfileTableColumnWidths(): Record<V2RayProfileTableColumnId, number> {
-  if (typeof window === "undefined") {
-    return defaultV2RayProfileTableColumnWidths();
-  }
-  try {
-    return normalizeV2RayProfileTableColumnWidths(JSON.parse(window.localStorage.getItem(v2rayProfileTableColumnStorageKey) || "{}"));
-  } catch {
-    return defaultV2RayProfileTableColumnWidths();
-  }
-}
-
-function v2rayProfileTableWidth(widths: Record<V2RayProfileTableColumnId, number>): number {
-  return v2rayProfileTableColumns.reduce((total, column) => total + widths[column.id], 0);
-}
-
-function mergeV2RayPingResult(previous: V2RayPingResult | undefined, next: V2RayPingResult, kind: V2RayProfileTestKind): V2RayPingResult {
-  const base: V2RayPingResult = {
-    ...(previous || {}),
-    ...next,
-    ok: Boolean(next.ok),
-    speedOk: Boolean(next.speedOk),
-    delayOk: Boolean(next.delayOk),
-    downloadBytesPerSecond: next.downloadBytesPerSecond || 0,
-    speedTestBytes: next.speedTestBytes || 0,
-    speedTestDurationMs: next.speedTestDurationMs || 0,
-    realDelayMs: next.realDelayMs || 0,
-    speedMessage: next.speedMessage || "",
-    delayMessage: next.delayMessage || "",
-  };
-  if (kind === "speed") {
-    return {
-      ...base,
-      delayOk: Boolean(previous?.delayOk),
-      realDelayMs: previous?.realDelayMs || 0,
-      delayMessage: previous?.delayMessage || "",
-    };
-  }
-  if (kind === "delay") {
-    return {
-      ...base,
-      speedOk: Boolean(previous?.speedOk),
-      downloadBytesPerSecond: previous?.downloadBytesPerSecond || 0,
-      speedTestBytes: previous?.speedTestBytes || 0,
-      speedTestDurationMs: previous?.speedTestDurationMs || 0,
-      speedMessage: previous?.speedMessage || "",
-    };
-  }
-  return {
-    ...base,
-    speedOk: Boolean(previous?.speedOk),
-    downloadBytesPerSecond: previous?.downloadBytesPerSecond || 0,
-    speedTestBytes: previous?.speedTestBytes || 0,
-    speedTestDurationMs: previous?.speedTestDurationMs || 0,
-    speedMessage: previous?.speedMessage || "",
-    delayOk: Boolean(previous?.delayOk),
-    realDelayMs: previous?.realDelayMs || 0,
-    delayMessage: previous?.delayMessage || "",
-  };
-}
-
 function profileSelectionLocked(runtime: RuntimeStatus): boolean {
   return runtime.status !== "disconnected" && runtime.status !== "failed";
 }
@@ -753,16 +540,6 @@ function whiteDNSVPNRuntimeActive(state: AppState): boolean {
   ));
 }
 
-function makeV2RayProfileId(profiles: V2RayProfile[]): string {
-  const existing = new Set(profiles.map((profile) => profile.id));
-  const base = `v2ray-${Date.now()}`;
-  let id = base;
-  for (let attempt = 1; existing.has(id); attempt += 1) {
-    id = `${base}-${attempt}`;
-  }
-  return id;
-}
-
 function makeV2RaySettingsProfileId(profiles: V2RaySettingsProfile[]): string {
   const existing = new Set(profiles.map((profile) => profile.id));
   const base = `v2ray-settings-${Date.now()}`;
@@ -771,17 +548,6 @@ function makeV2RaySettingsProfileId(profiles: V2RaySettingsProfile[]): string {
     id = `${base}-${attempt}`;
   }
   return id;
-}
-
-function effectiveV2RayProfile(state: AppState): V2RayProfile | undefined {
-  const activeProfile = profileSelectionLocked(state.runtime) && v2RayRuntimeActive(state)
-    ? state.v2rayProfiles.find((profile) => profile.id === state.runtime.activeConnectionId)
-    : undefined;
-  return (
-    activeProfile ||
-    state.v2rayProfiles.find((profile) => profile.id === state.selectedV2RayProfileId) ||
-    state.v2rayProfiles[0]
-  );
 }
 
 function effectiveV2RaySettingsProfile(state: AppState): V2RaySettingsProfile | undefined {
@@ -922,14 +688,13 @@ function App() {
   const [errorToast, setErrorToast] = useState<AppErrorToast | null>(null);
   const [successToast, setSuccessToast] = useState<AppErrorToast | null>(null);
   const [validatorState, setValidatorState] = useState<ValidatorState>(defaultValidatorState);
-  const [v2rayPingRunning, setV2RayPingRunning] = useState(false);
-  const [v2rayPingActiveKind, setV2RayPingActiveKind] = useState<V2RayProfileTestKind>("");
-  const [v2rayPingResults, setV2RayPingResults] = useState<Record<string, V2RayPingResult>>({});
-  const [v2rayPingScanningIds, setV2RayPingScanningIds] = useState<Record<string, boolean>>({});
-  const [v2rayPingCheckedAt, setV2RayPingCheckedAt] = useState<Record<string, number>>({});
+  // One catalogue, shared. The dashboard dialog picks from it and the Servers
+  // page tests it; two fetches would be two lists that drift.
+  const [nodes, setNodes] = useState<WhiteVPNNode[]>([]);
+  const [nodesLoading, setNodesLoading] = useState(false);
+  const [nodeTestRunning, setNodeTestRunning] = useState(false);
   const runtimeLogBufferRef = useRef<RuntimeLogEntry[]>([]);
   const runtimeLogFlushTimerRef = useRef<number | null>(null);
-  const v2rayPingRunRef = useRef(0);
 
   function applyState(next: AppState) {
     setState((current) => normalizeAppState(next, current));
@@ -965,6 +730,51 @@ function App() {
   async function acceptPrivacyPolicy() {
     try {
       applyState(await backend.acceptPrivacyPolicy());
+    } catch (err) {
+      showError(messageFromError(err));
+    }
+  }
+
+  async function loadNodes(refresh: boolean) {
+    setNodesLoading(true);
+    try {
+      const list = await backend.listWhiteVpnNodes(refresh);
+      setNodes(list.nodes || []);
+    } catch (err) {
+      showError(messageFromError(err));
+    } finally {
+      setNodesLoading(false);
+    }
+  }
+
+  async function runNodeTest(request: NodeTestRequest) {
+    try {
+      setNodeTestRunning(true);
+      await backend.startNodeTest(request);
+    } catch (err) {
+      setNodeTestRunning(false);
+      showError(messageFromError(err));
+    }
+  }
+
+  async function cancelNodeTest() {
+    try {
+      await backend.cancelNodeTest();
+    } catch (err) {
+      showError(messageFromError(err));
+    }
+  }
+
+  // Picking a node from the Servers page means the same thing as picking one in
+  // the dashboard dialog, and goes through the same call, so a live connection
+  // follows it there too.
+  async function useNode(name: string) {
+    if (!state) {
+      return;
+    }
+    try {
+      applyState(await backend.saveWhiteVpnSelection(state.whiteVpn.countryCode, { ...state.whiteVpn.connection, node: name }));
+      showSuccess(name);
     } catch (err) {
       showError(messageFromError(err));
     }
@@ -1045,6 +855,14 @@ function App() {
           runtimeLogFlushTimerRef.current = window.setTimeout(flushRuntimeLogs, 250);
         }
       }),
+      onRuntimeEvent<WhiteVPNNode>("nodes:test", (node) => {
+        setNodes((current) => current.map((entry) => (entry.name === node.name ? node : entry)));
+      }),
+      onRuntimeEvent<unknown>("nodes:test-done", () => setNodeTestRunning(false)),
+      onRuntimeEvent<string>("nodes:test-error", (message) => {
+        setNodeTestRunning(false);
+        showError(message);
+      }),
       onRuntimeEvent<AppState>("app:state", applyState),
       onRuntimeEvent<ValidatorStateUpdate>("validator:state", applyValidatorState),
       onRuntimeEvent<ValidatorStateUpdate>("validator:progress", applyValidatorState),
@@ -1088,128 +906,6 @@ function App() {
     return () => window.clearTimeout(timer);
   }, [successToast]);
 
-  useEffect(() => {
-    if (!state) {
-      return;
-    }
-    const profileIds = new Set(state.v2rayProfiles.map((profile) => profile.id));
-    setV2RayPingResults((current) => filterRecordKeys(current, profileIds));
-    setV2RayPingScanningIds((current) => filterRecordKeys(current, profileIds));
-    setV2RayPingCheckedAt((current) => filterRecordKeys(current, profileIds));
-  }, [state?.v2rayProfiles]);
-
-  function forgetV2RayPingProfiles(ids: string[]) {
-    const remove = new Set(ids.filter(Boolean));
-    if (!remove.size) {
-      return;
-    }
-    setV2RayPingResults((current) => omitRecordKeys(current, remove));
-    setV2RayPingScanningIds((current) => omitRecordKeys(current, remove));
-    setV2RayPingCheckedAt((current) => omitRecordKeys(current, remove));
-  }
-
-  async function runV2RayProfileTests(
-    profiles: V2RayProfile[],
-    runBatch: (ids: string[]) => Promise<V2RayPingResult[]>,
-    options: { batchSize?: number; clearExisting?: boolean; kind?: V2RayProfileTestKind; requireSpeedOk?: boolean; skippedLabel?: string } = {}
-  ): Promise<{ completed: boolean; results: V2RayPingResult[] }> {
-    clearErrorToast();
-    const requestedIds = Array.from(new Set(profiles.map((profile) => profile.id).filter(Boolean)));
-    const profileIdsToPing = options.requireSpeedOk ? requestedIds.filter((id) => v2rayPingResults[id]?.speedOk) : requestedIds;
-    const batchSize = Math.max(1, Math.floor(options.batchSize || v2rayPingBatchSize));
-    const skippedCount = requestedIds.length - profileIdsToPing.length;
-    if (skippedCount > 0) {
-      showSuccess(`Skipped ${skippedCount} V2Ray profile${skippedCount === 1 ? "" : "s"} without a successful speed test.`);
-    }
-    const runId = v2rayPingRunRef.current + 1;
-    v2rayPingRunRef.current = runId;
-
-    setV2RayPingRunning(Boolean(profileIdsToPing.length));
-    setV2RayPingActiveKind(profileIdsToPing.length ? options.kind || "ping" : "");
-    setV2RayPingScanningIds(Object.fromEntries(profileIdsToPing.map((id) => [id, true])));
-    if (options.clearExisting) {
-      setV2RayPingResults((current) => {
-        const next = { ...current };
-        profileIdsToPing.forEach((id) => {
-          delete next[id];
-        });
-        return next;
-      });
-    }
-
-    if (!profileIdsToPing.length) {
-      return { completed: true, results: [] };
-    }
-
-    const allResults: V2RayPingResult[] = [];
-    try {
-      for (let idx = 0; idx < profileIdsToPing.length; idx += batchSize) {
-        const batchIds = profileIdsToPing.slice(idx, idx + batchSize);
-        const batchResults = await runBatch(batchIds);
-        if (v2rayPingRunRef.current !== runId) {
-          return { completed: false, results: allResults };
-        }
-        const checkedAt = Date.now();
-        if (batchResults.length) {
-          allResults.push(...batchResults);
-          setV2RayPingResults((current) => {
-            const next = { ...current };
-            batchResults.forEach((result) => {
-              next[result.profileId] = mergeV2RayPingResult(next[result.profileId], result, options.kind || "");
-            });
-            return next;
-          });
-          setV2RayPingCheckedAt((current) => {
-            const next = { ...current };
-            batchResults.forEach((result) => {
-              next[result.profileId] = checkedAt;
-            });
-            return next;
-          });
-        }
-        setV2RayPingScanningIds((current) => {
-          const next = { ...current };
-          batchIds.forEach((id) => {
-            delete next[id];
-          });
-          return next;
-        });
-      }
-    } catch (err) {
-      if (v2rayPingRunRef.current === runId) {
-        showError(messageFromError(err));
-      }
-      return { completed: false, results: allResults };
-    } finally {
-      if (v2rayPingRunRef.current === runId) {
-        setV2RayPingRunning(false);
-        setV2RayPingActiveKind("");
-        setV2RayPingScanningIds({});
-      }
-    }
-    return { completed: true, results: allResults };
-  }
-
-  async function pingV2RayProfiles(profiles: V2RayProfile[]) {
-    await runV2RayProfileTests(profiles, backend.pingV2RayProfileIds, { clearExisting: true, kind: "ping" });
-  }
-
-  // Real delay and speed used to be measured by starting a temporary Xray for
-  // each profile. That engine is gone; the connection dialog measures delay
-  // through the running one instead. What is left here is the reachability
-  // ping, which needs no engine at all.
-  async function cancelV2RayProfileTests() {
-    v2rayPingRunRef.current += 1;
-    setV2RayPingRunning(false);
-    setV2RayPingActiveKind("");
-    setV2RayPingScanningIds({});
-    try {
-      await backend.cancelV2RayProfileTests();
-    } catch (err) {
-      showError(messageFromError(err));
-    }
-  }
-
   async function acceptLegacyImport() {
     setLegacyOffer(null);
     try {
@@ -1230,6 +926,15 @@ function App() {
     }
   }
 
+  // The Servers page is useless without the catalogue; one load serves it and
+  // the dashboard dialog both. Above the early return below, because it is a
+  // hook and hooks cannot be conditional.
+  useEffect(() => {
+    if (page === "servers" && !nodes.length && !nodesLoading) {
+      void loadNodes(false);
+    }
+  }, [page]);
+
   if (!state) {
     return (
       <>
@@ -1240,13 +945,6 @@ function App() {
     );
   }
 
-  const v2rayPing: V2RayPingState = {
-    running: v2rayPingRunning,
-    activeKind: v2rayPingActiveKind,
-    results: v2rayPingResults,
-    scanningIds: v2rayPingScanningIds,
-    checkedAt: v2rayPingCheckedAt,
-  };
   const activePage = page;
 
   return (
@@ -1273,23 +971,25 @@ function App() {
               )}
 
               {activePage === "servers" && (
-                <V2RayProfilesPage
+                <NodesPage
                   state={state}
-                  ping={v2rayPing}
-                  onPingProfiles={pingV2RayProfiles}
-                  onCancelProfileTests={cancelV2RayProfileTests}
-                  onForgetPingProfiles={forgetV2RayPingProfiles}
-                  onState={applyState}
+                  nodes={nodes}
+                  loading={nodesLoading}
+                  testing={nodeTestRunning}
+                  onReload={() => void loadNodes(true)}
+                  onRunTest={(request) => void runNodeTest(request)}
+                  onCancelTest={() => void cancelNodeTest()}
+                  onSelectNode={(name) => void useNode(name)}
                   onError={showError}
                   onSuccess={showSuccess}
+                  language={language}
+                  t={t}
                 />
               )}
 
               {activePage === "subscriptions" && (
                 <V2RaySubscriptionsPage
                   state={state}
-                  ping={v2rayPing}
-                  onForgetPingProfiles={forgetV2RayPingProfiles}
                   onState={applyState}
                   onError={showError}
                   onSuccess={showSuccess}
@@ -2549,1602 +2249,475 @@ function WhiteDNSVPNPage({
   );
 }
 
-function V2RayProfilesPage({
+// The Servers page: the workbench.
+//
+// It and the dashboard's connection dialog read the same list — the one the
+// engine itself is built from — so they cannot disagree about how many nodes
+// there are or what protocols they speak. That was the whole problem with the
+// page this replaces: it read a second parser's output, which accepted
+// protocols the engine cannot carry and stopped refreshing entirely once the
+// path that filled it was removed.
+//
+// The dialog is for picking one quickly. This is for finding out which one to
+// pick: test, sort, compare, share.
+type NodeSortColumn = "label" | "country" | "type" | "reach" | "delay" | "speed";
+type NodeSort = { column: NodeSortColumn; direction: "asc" | "desc" };
+
+const defaultNodeTest: NodeTestRequest = {
+  nodes: [],
+  reachability: true,
+  delay: false,
+  speed: false,
+  reachabilityTimeoutMs: 3500,
+  reachabilityWorkers: 64,
+  delayTimeoutMs: 5000,
+  delayWorkers: 16,
+  delayUrl: "",
+  speedBudgetMs: 8000,
+  speedUrl: "",
+};
+
+function formatRate(bytesPerSecond: number): string {
+  return `${formatBytes(bytesPerSecond)}/s`;
+}
+
+function NodesPage({
   state,
-  ping,
-  onPingProfiles,
-  onCancelProfileTests,
-  onForgetPingProfiles,
-  onState,
+  nodes,
+  loading,
+  testing,
+  onReload,
+  onRunTest,
+  onCancelTest,
+  onSelectNode,
   onError,
   onSuccess,
+  language,
+  t,
 }: {
   state: AppState;
-  ping: V2RayPingState;
-  onPingProfiles: (profiles: V2RayProfile[]) => Promise<void>;
-  onCancelProfileTests: () => Promise<void>;
-  onForgetPingProfiles: (ids: string[]) => void;
-  onState: (state: AppState) => void;
+  nodes: WhiteVPNNode[];
+  loading: boolean;
+  testing: boolean;
+  onReload: () => void;
+  onRunTest: (request: NodeTestRequest) => void;
+  onCancelTest: () => void;
+  onSelectNode: (name: string) => void;
   onError: (message: string) => void;
   onSuccess: (message: string) => void;
+  language: Language;
+  t: TranslateFn;
 }) {
-  const sidebar = useSidebar();
-  const isProfileLocked = profileSelectionLocked(state.runtime);
-  const fallbackDraft = useMemo(() => defaultV2RayDraft(), []);
-  const activeProfile = effectiveV2RayProfile(state) || state.v2rayProfiles[0] || fallbackDraft;
-  const selected = state.v2rayProfiles.find((profile) => profile.id === state.selectedV2RayProfileId) || activeProfile;
-  const [draft, setDraft] = useState(selected);
-  const [editorOpen, setEditorOpen] = useState(false);
-  const [importOpen, setImportOpen] = useState(false);
-  const [importText, setImportText] = useState("");
-  const [exportText, setExportText] = useState("");
-  const [dedupeRunning, setDedupeRunning] = useState(false);
-  const [shareDialog, setShareDialog] = useState<V2RayShareDialogState | null>(null);
-  const [selectedProfileIds, setSelectedProfileIds] = useState<Set<string>>(() => new Set());
-  const [bulkMenuOpen, setBulkMenuOpen] = useState(false);
-  const [bulkMenuPosition, setBulkMenuPosition] = useState({ top: 0, right: 0 });
-  const bulkMenuRef = useRef<HTMLDivElement>(null);
-  const bulkButtonRef = useRef<HTMLDivElement>(null);
-  const [profileContextMenu, setProfileContextMenu] = useState<{ profile: V2RayProfile; top: number; left: number } | null>(null);
-  const profileContextMenuRef = useRef<HTMLDivElement>(null);
-  const profileTableScrollRef = useRef<HTMLDivElement>(null);
-  const [profileListScrollTop, setProfileListScrollTop] = useState(0);
-  const [profileListViewportHeight, setProfileListViewportHeight] = useState(640);
-  const [settingsSaving, setSettingsSaving] = useState(false);
-  const [profileSort, setProfileSort] = useState<V2RayProfileSort>({ column: "none", direction: "none" });
-  const [profileStatusFilter, setProfileStatusFilter] = useState<V2RayStatusFilter>("all");
-  const [profileTypeFilter, setProfileTypeFilter] = useState<V2RayTypeFilter>("all");
-  const [profileSubscriptionFilter, setProfileSubscriptionFilter] = useState(v2raySubscriptionFilterAll);
-  const [profileTableColumnWidths, setProfileTableColumnWidths] = useState<Record<V2RayProfileTableColumnId, number>>(loadV2RayProfileTableColumnWidths);
-  const profileTableWidth = useMemo(() => v2rayProfileTableWidth(profileTableColumnWidths), [profileTableColumnWidths]);
-  const runtime = state.runtime;
-  const selectedSettings = effectiveV2RaySettingsProfile(state);
-  const v2rayRuntimeActiveForSetup = v2RayRuntimeActive(state);
-  const pingRunning = ping.running;
-  const pingTestRunning = ping.running && ping.activeKind === "ping";
-  const pingResults = ping.results;
-  const pingScanningIds = ping.scanningIds;
-  const runtimeBusy = runtime.status !== "disconnected" && runtime.status !== "failed";
-  const canStart = runtime.status === "disconnected" || runtime.status === "failed";
-  const selectedSettingsMissing = !selectedSettings || !selectedSettings.listenIp.trim() || selectedSettings.listenPort <= 0;
-  const setupStatus = v2rayRuntimeActiveForSetup ? runtime.status : runtimeBusy ? "connecting" : "disconnected";
-  const setupStatusLabel = v2rayRuntimeActiveForSetup ? statusLabel(runtime.status) : runtimeBusy ? "Busy" : "Disconnected";
-  const localProxyEndpoint = runtimeProxyDisplayEndpoint(runtime) || (selectedSettings ? proxyEndpoint(selectedSettings.listenIp, selectedSettings.listenPort) : "-");
-  // Logical rather than left/right: the sidebar moves to the other side under a
-  // right-to-left language, and a bar that reserved space for it on the left
-  // would be laid across it.
-  const controlBarInset = sidebar.isMobile
-    ? { insetInlineStart: "1rem", insetInlineEnd: "1rem" }
-    : {
-        insetInlineStart:
-          sidebar.state === "collapsed" ? "calc(var(--sidebar-width-icon) + 1.5rem)" : "calc(var(--sidebar-width) + 1.5rem)",
-        insetInlineEnd: "1.5rem",
-      };
-  const settingsControlsDisabled = settingsSaving || (v2rayRuntimeActiveForSetup && runtime.status === "connecting") || (runtimeBusy && !v2rayRuntimeActiveForSetup);
-  const settingsItems = useMemo(
-    () => state.v2raySettingsProfiles.map((profile) => ({ id: profile.id, title: profile.name })),
-    [state.v2raySettingsProfiles]
-  );
-  const missingServer = !draft.server.trim();
-  const missingCredential = !v2rayProfileCredentialReady(draft);
-  const importDisabled = !importText.trim();
-  const pingedCount = Object.keys(pingResults).length;
-  const reachableCount = Object.values(pingResults).filter((result) => result.ok).length;
-  const profileIndex = useMemo(
-    () => buildV2RayProfileIndex(state.v2rayProfiles, pingResults, pingScanningIds),
-    [pingResults, pingScanningIds, state.v2rayProfiles]
-  );
-  const hasExportableProfiles = profileIndex.hasExportable;
-  const fastestProfile = profileIndex.fastestProfile;
-  const failedProfiles = profileIndex.failedProfiles;
-  const uncheckedProfiles = profileIndex.uncheckedProfiles;
-  const profileFilters = useMemo<V2RayProfileFilters>(
-    () => ({
-      status: profileStatusFilter,
-      type: profileTypeFilter,
-      subscriptionId: profileSubscriptionFilter,
-    }),
-    [profileStatusFilter, profileSubscriptionFilter, profileTypeFilter]
-  );
-  const subscriptionFilterOptions = useMemo(
-    () => v2raySubscriptionFilterOptions(profileIndex, state.v2raySubscriptions),
-    [profileIndex, state.v2raySubscriptions]
-  );
-  const filterCounts = useMemo(
-    () => buildV2RayFilterCounts(state.v2rayProfiles, pingResults, pingScanningIds, profileFilters),
-    [pingResults, pingScanningIds, profileFilters, state.v2rayProfiles]
-  );
-  const filteredV2RayProfiles = useMemo(
-    () => filterV2RayProfiles(state.v2rayProfiles, pingResults, pingScanningIds, profileFilters),
-    [pingResults, pingScanningIds, profileFilters, state.v2rayProfiles]
-  );
-  const sortedV2RayProfiles = useMemo(
-    () => sortV2RayProfilesByMetric(filteredV2RayProfiles, pingResults, pingScanningIds, profileSort),
-    [filteredV2RayProfiles, pingResults, pingScanningIds, profileSort]
-  );
-  const virtualStartIndex = Math.min(
-    sortedV2RayProfiles.length,
-    Math.max(0, Math.floor(profileListScrollTop / v2rayProfileVirtualRowHeight) - v2rayProfileVirtualOverscan)
-  );
-  const virtualEndIndex = Math.min(
-    sortedV2RayProfiles.length,
-    Math.max(
-      virtualStartIndex,
-      Math.ceil((profileListScrollTop + profileListViewportHeight) / v2rayProfileVirtualRowHeight) + v2rayProfileVirtualOverscan
-    )
-  );
-  const virtualV2RayProfiles = useMemo(
-    () => sortedV2RayProfiles.slice(virtualStartIndex, virtualEndIndex),
-    [sortedV2RayProfiles, virtualEndIndex, virtualStartIndex]
-  );
-  const virtualTopPadding = virtualStartIndex * v2rayProfileVirtualRowHeight;
-  const virtualBottomPadding = Math.max(0, (sortedV2RayProfiles.length - virtualEndIndex) * v2rayProfileVirtualRowHeight);
-  const visibleProfileIds = useMemo(() => sortedV2RayProfiles.map((profile) => profile.id), [sortedV2RayProfiles]);
-  const selectedV2RayProfiles = useMemo(
-    () => Array.from(selectedProfileIds, (id) => profileIndex.profileById[id]).filter((profile): profile is V2RayProfile => Boolean(profile)),
-    [profileIndex.profileById, selectedProfileIds]
-  );
-  const selectedProfileCount = selectedV2RayProfiles.length;
-  const selectedVisibleCount = countSelectedIds(visibleProfileIds, selectedProfileIds);
-  const allVisibleSelected = visibleProfileIds.length > 0 && selectedVisibleCount === visibleProfileIds.length;
-  const someVisibleSelected = selectedVisibleCount > 0 && !allVisibleSelected;
-  const selectedFastestProfile = useMemo(
-    () => fastestReachableV2RayProfile(selectedV2RayProfiles, pingResults),
-    [pingResults, selectedV2RayProfiles]
-  );
-  const singleSelectedProfile = selectedProfileCount === 1 ? selectedV2RayProfiles[0] : undefined;
-  const selectedConnectDisabled =
-    !canStart || settingsSaving || selectedSettingsMissing || !singleSelectedProfile || !isConnectableV2RayProfile(singleSelectedProfile);
+  const [search, setSearch] = useState("");
+  const [country, setCountry] = useState("");
+  const [protocol, setProtocol] = useState("");
+  const [sort, setSort] = useState<NodeSort>({ column: "label", direction: "asc" });
+  const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  const [request, setRequest] = useState<NodeTestRequest>(defaultNodeTest);
+  const [optionsOpen, setOptionsOpen] = useState(false);
+  const [shareNode, setShareNode] = useState<WhiteVPNNode | null>(null);
+  const unknown = t("vpn.nodes.unknownCountry");
 
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-    window.localStorage.setItem(v2rayProfileTableColumnStorageKey, JSON.stringify(profileTableColumnWidths));
-  }, [profileTableColumnWidths]);
+  const countries = useMemo(() => countryOptions(nodes, language, unknown), [nodes, language, unknown]);
+  const protocols = useMemo(() => [...new Set(nodes.map((node) => node.type).filter(Boolean))].sort(), [nodes]);
 
-  useEffect(() => {
-    setSelectedProfileIds((current) => {
-      const profileIds = new Set(state.v2rayProfiles.map((profile) => profile.id));
-      const next = new Set([...current].filter((id) => profileIds.has(id)));
-      return next.size === current.size ? current : next;
-    });
-  }, [state.v2rayProfiles]);
-
-  useEffect(() => {
-    if (subscriptionFilterOptions.some(([filter]) => filter === profileSubscriptionFilter)) {
-      return;
-    }
-    setProfileSubscriptionFilter(v2raySubscriptionFilterAll);
-  }, [profileSubscriptionFilter, subscriptionFilterOptions]);
-
-  useEffect(() => {
-    if (!editorOpen) {
-      setDraft(selected || fallbackDraft);
-    }
-  }, [editorOpen, fallbackDraft, selected]);
-
-  useEffect(() => {
-    if (!bulkMenuOpen) {
-      return;
-    }
-
-    function onPointerDown(event: PointerEvent) {
-      const target = event.target as Node;
-      if (bulkMenuRef.current?.contains(target) || bulkButtonRef.current?.contains(target)) {
-        return;
+  const visible = useMemo(() => {
+    const needle = search.trim().toLowerCase();
+    const filtered = nodes.filter((node) => {
+      if (country && node.countryCode !== country) {
+        return false;
       }
-      setBulkMenuOpen(false);
-    }
-
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        setBulkMenuOpen(false);
+      if (protocol && node.type !== protocol) {
+        return false;
       }
-    }
-
-    function onViewportChange() {
-      positionBulkMenu();
-    }
-
-    document.addEventListener("pointerdown", onPointerDown);
-    document.addEventListener("keydown", onKeyDown);
-    window.addEventListener("resize", onViewportChange);
-    window.addEventListener("scroll", onViewportChange, true);
-    return () => {
-      document.removeEventListener("pointerdown", onPointerDown);
-      document.removeEventListener("keydown", onKeyDown);
-      window.removeEventListener("resize", onViewportChange);
-      window.removeEventListener("scroll", onViewportChange, true);
-    };
-  }, [bulkMenuOpen]);
-
-  useEffect(() => {
-    if (!profileContextMenu) {
-      return;
-    }
-
-    function onPointerDown(event: PointerEvent) {
-      const target = event.target as Node;
-      if (profileContextMenuRef.current?.contains(target)) {
-        return;
+      if (!needle) {
+        return true;
       }
-      setProfileContextMenu(null);
-    }
-
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        setProfileContextMenu(null);
-      }
-    }
-
-    function onViewportChange() {
-      setProfileContextMenu(null);
-    }
-
-    document.addEventListener("pointerdown", onPointerDown);
-    document.addEventListener("keydown", onKeyDown);
-    window.addEventListener("resize", onViewportChange);
-    window.addEventListener("scroll", onViewportChange, true);
-    return () => {
-      document.removeEventListener("pointerdown", onPointerDown);
-      document.removeEventListener("keydown", onKeyDown);
-      window.removeEventListener("resize", onViewportChange);
-      window.removeEventListener("scroll", onViewportChange, true);
-    };
-  }, [profileContextMenu]);
-
-  useEffect(() => {
-    const element = profileTableScrollRef.current;
-    if (!element) {
-      return;
-    }
-    const scrollElement = element;
-
-    function updateViewportHeight() {
-      setProfileListViewportHeight(scrollElement.clientHeight || 640);
-    }
-
-    updateViewportHeight();
-    const resizeObserver = typeof ResizeObserver !== "undefined" ? new ResizeObserver(updateViewportHeight) : null;
-    resizeObserver?.observe(scrollElement);
-    window.addEventListener("resize", updateViewportHeight);
-    return () => {
-      resizeObserver?.disconnect();
-      window.removeEventListener("resize", updateViewportHeight);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (profileTableScrollRef.current) {
-      profileTableScrollRef.current.scrollTop = 0;
-    }
-    setProfileListScrollTop(0);
-  }, [profileSort, profileStatusFilter, profileSubscriptionFilter, profileTypeFilter]);
-
-  function positionBulkMenu() {
-    const rect = bulkButtonRef.current?.getBoundingClientRect();
-    if (!rect) {
-      return;
-    }
-    setBulkMenuPosition({
-      top: Math.min(rect.bottom + 6, window.innerHeight - 16),
-      right: Math.max(12, window.innerWidth - rect.right),
-    });
-  }
-
-  function toggleBulkMenu() {
-    if (!state.v2rayProfiles.length || dedupeRunning) {
-      return;
-    }
-    setProfileContextMenu(null);
-    positionBulkMenu();
-    setBulkMenuOpen((open) => !open);
-  }
-
-  function runBulkAction(action: () => void | Promise<void>) {
-    setBulkMenuOpen(false);
-    void action();
-  }
-
-  function openProfileContextMenu(event: ReactMouseEvent<HTMLTableRowElement>, profile: V2RayProfile) {
-    event.preventDefault();
-    event.stopPropagation();
-    setBulkMenuOpen(false);
-    setProfileContextMenu({
-      profile,
-      top: Math.max(8, Math.min(event.clientY, window.innerHeight - 152)),
-      left: Math.max(8, Math.min(event.clientX, window.innerWidth - 232)),
-    });
-  }
-
-  function runProfileContextAction(action: () => void | Promise<void>) {
-    setProfileContextMenu(null);
-    void action();
-  }
-
-  function handleProfileTableScroll(event: ReactUIEvent<HTMLDivElement>) {
-    setProfileListScrollTop(event.currentTarget.scrollTop);
-  }
-
-  function resizeProfileTableColumn(columnId: V2RayProfileTableColumnId, width: number) {
-    const column = v2rayProfileTableColumns.find((candidate) => candidate.id === columnId);
-    if (!column) {
-      return;
-    }
-    setProfileTableColumnWidths((current) => ({
-      ...current,
-      [columnId]: clampNumber(Math.round(width), column.minWidth, column.maxWidth),
-    }));
-  }
-
-  function resetProfileTableColumn(columnId: V2RayProfileTableColumnId) {
-    const column = v2rayProfileTableColumns.find((candidate) => candidate.id === columnId);
-    if (!column) {
-      return;
-    }
-    setProfileTableColumnWidths((current) => ({ ...current, [columnId]: column.defaultWidth }));
-  }
-
-  function startProfileTableColumnResize(event: ReactPointerEvent<HTMLButtonElement>, columnId: V2RayProfileTableColumnId) {
-    const column = v2rayProfileTableColumns.find((candidate) => candidate.id === columnId);
-    if (!column) {
-      return;
-    }
-    event.preventDefault();
-    event.stopPropagation();
-    const startX = event.clientX;
-    const startWidth = profileTableColumnWidths[columnId];
-
-    function onPointerMove(moveEvent: PointerEvent) {
-      resizeProfileTableColumn(columnId, startWidth + moveEvent.clientX - startX);
-    }
-
-    function onPointerUp() {
-      window.removeEventListener("pointermove", onPointerMove);
-      window.removeEventListener("pointerup", onPointerUp);
-    }
-
-    window.addEventListener("pointermove", onPointerMove);
-    window.addEventListener("pointerup", onPointerUp, { once: true });
-  }
-
-  function v2rayHeaderCellClass(column: V2RayProfileTableColumn, extra?: string): string {
-    return cn(
-      "relative h-9 overflow-hidden px-1.5 py-2 font-medium",
-      column.align === "center" && "text-center",
-      column.align === "right" && "text-end",
-      column.sticky === "right" && "v2ray-actions-header sticky end-0 z-20 border-s shadow-[-8px_0_12px_-12px_rgba(0,0,0,0.55)]",
-      extra
-    );
-  }
-
-  function renderProfileTableColumnResizeHandle(column: V2RayProfileTableColumn) {
-    return (
-      <button
-        type="button"
-        className="absolute inset-y-0 end-0 z-30 w-2 cursor-col-resize touch-none select-none rounded-sm outline-none hover:bg-primary/25 focus-visible:bg-primary/30"
-        aria-label={`Resize ${column.label || "selection"} column`}
-        onPointerDown={(event) => startProfileTableColumnResize(event, column.id)}
-        onClick={(event) => {
-          event.preventDefault();
-          event.stopPropagation();
-        }}
-        onDoubleClick={(event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          resetProfileTableColumn(column.id);
-        }}
-      />
-    );
-  }
-
-  function v2rayStickyActionCellClass(selectedProfile = false): string {
-    if (selectedProfile) {
-      return "v2ray-actions-cell--selected";
-    }
-    return "";
-  }
-
-  function toggleProfileSelection(id: string, checked: boolean) {
-    setSelectedProfileIds((current) => {
-      const next = new Set(current);
-      if (checked) {
-        next.add(id);
-      } else {
-        next.delete(id);
-      }
-      return next;
-    });
-  }
-
-  function toggleVisibleProfileSelection(checked: boolean) {
-    setSelectedProfileIds((current) => {
-      const next = new Set(current);
-      visibleProfileIds.forEach((id) => {
-        if (checked) {
-          next.add(id);
-        } else {
-          next.delete(id);
-        }
-      });
-      return next;
-    });
-  }
-
-  async function saveDraft() {
-    onError("");
-    const profile = draft.id ? draft : { ...draft, id: makeV2RayProfileId(state.v2rayProfiles) };
-    try {
-      const nextState = await backend.saveV2RayProfile(profile);
-      onState(nextState);
-      const savedProfile = nextState.v2rayProfiles.find((candidate) => candidate.id === profile.id) || profile;
-      setDraft(savedProfile);
-      onForgetPingProfiles([savedProfile.id]);
-      setEditorOpen(false);
-    } catch (err) {
-      onError(messageFromError(err));
-    }
-  }
-
-  async function deleteDraft() {
-    if (!draft.id) {
-      return;
-    }
-    onError("");
-    try {
-      const nextState = await backend.deleteV2RayProfile(draft.id);
-      onState(nextState);
-      setEditorOpen(false);
-      onForgetPingProfiles([draft.id]);
-      const nextActive = effectiveV2RayProfile(nextState);
-      setDraft(nextActive || nextState.v2rayProfiles[0] || fallbackDraft);
-    } catch (err) {
-      onError(messageFromError(err));
-    }
-  }
-
-  function openExistingProfile(profile: V2RayProfile) {
-    onError("");
-    setDraft(profile);
-    setEditorOpen(true);
-  }
-
-  function openNewProfile() {
-    onError("");
-    setDraft(defaultV2RayDraft());
-    setEditorOpen(true);
-  }
-
-  async function importProfilesFromText(rawText: string) {
-    if (!rawText.trim()) {
-      return;
-    }
-    onError("");
-    try {
-      const result = await backend.importV2RayProfiles(rawText);
-      onState(result.state);
-      setImportText("");
-      setImportOpen(false);
-      onSuccess(`Imported ${result.imported} V2Ray profile${result.imported === 1 ? "" : "s"}.`);
-    } catch (err) {
-      onError(messageFromError(err));
-    }
-  }
-
-  async function importProfiles() {
-    await importProfilesFromText(importText);
-  }
-
-  async function importProfilesFromClipboard() {
-    const clipboard = navigator.clipboard as Clipboard | undefined;
-    if (!clipboard) {
-      onError("Clipboard import is unavailable.");
-      return;
-    }
-    try {
-      const clipboardText = await clipboard.readText();
-      if (!clipboardText.trim()) {
-        onError("Clipboard does not contain a V2Ray profile.");
-        return;
-      }
-      await importProfilesFromText(clipboardText);
-    } catch (err) {
-      onError(messageFromError(err));
-    }
-  }
-
-  async function exportAllProfiles() {
-    onError("");
-    try {
-      setExportText(await backend.exportAllV2RayProfileLinks());
-    } catch (err) {
-      onError(messageFromError(err));
-    }
-  }
-
-  async function pingProfiles() {
-    await onPingProfiles(state.v2rayProfiles);
-  }
-
-  async function pingSelectedProfiles() {
-    await onPingProfiles(selectedV2RayProfiles);
-  }
-
-  function toggleMetricSort(column: Exclude<V2RayProfileSortColumn, "none">) {
-    setProfileSort((current) => {
-      if (current.column !== column) {
-        return { column, direction: column === "speed" ? "desc" : "asc" };
-      }
-      return { column, direction: current.direction === "asc" ? "desc" : "asc" };
-    });
-  }
-
-  async function useFastestProfile() {
-    if (!fastestProfile || settingsSaving) {
-      return;
-    }
-    onError("");
-    try {
-      const nextState = await backend.selectV2RayProfile(fastestProfile.id);
-      onState(nextState);
-      onSuccess(`Selected fastest V2Ray profile: ${fastestProfile.name || fastestProfile.server}.`);
-    } catch (err) {
-      onError(messageFromError(err));
-    }
-  }
-
-  async function useFastestSelectedProfile() {
-    if (!selectedFastestProfile || settingsSaving) {
-      return;
-    }
-    onError("");
-    try {
-      const nextState = await backend.selectV2RayProfile(selectedFastestProfile.id);
-      onState(nextState);
-      onSuccess(`Selected fastest selected V2Ray profile: ${selectedFastestProfile.name || selectedFastestProfile.server}.`);
-    } catch (err) {
-      onError(messageFromError(err));
-    }
-  }
-
-  async function startSelectedProfile() {
-    if (singleSelectedProfile) {
-      await connectProfile(singleSelectedProfile);
-    }
-  }
-
-  async function stopRuntime() {
-    onError("");
-    try {
-      onState(await backend.stopConnection());
-    } catch (err) {
-      onError(messageFromError(err));
-    }
-  }
-
-  async function applyV2RaySettingsChange(change: () => Promise<AppState>) {
-    if (settingsControlsDisabled) {
-      return;
-    }
-    const shouldRestart = v2rayRuntimeActiveForSetup && runtime.status === "connected";
-    onError("");
-    setSettingsSaving(true);
-    try {
-      if (shouldRestart) {
-        onState(await backend.stopConnection());
-      }
-      onState(await change());
-    } catch (err) {
-      onError(messageFromError(err));
-    } finally {
-      setSettingsSaving(false);
-    }
-  }
-
-
-  async function selectSettingsProfile(id: string) {
-    if (!id || id === selectedSettings?.id) {
-      return;
-    }
-    await applyV2RaySettingsChange(() => backend.selectV2RaySettingsProfile(id));
-  }
-
-
-
-
-
-
-  async function connectProfile(profile: V2RayProfile) {
-    if (runtimeBusy || settingsSaving || !isConnectableV2RayProfile(profile)) {
-      return;
-    }
-    onError("");
-    try {
-      if (state.selectedV2RayProfileId !== profile.id) {
-        onState(await backend.selectV2RayProfile(profile.id));
-      }
-    } catch (err) {
-      onError(messageFromError(err));
-    }
-  }
-
-  async function shareProfile(profile: V2RayProfile) {
-    onError("");
-    try {
-      const link = await backend.exportV2RayProfileLink(profile);
-      let qrDataUrl = "";
-      let qrError = "";
-      try {
-        qrDataUrl = await QRCode.toDataURL(link, { margin: 1, width: 220 });
-      } catch (err) {
-        qrError = messageFromError(err);
-      }
-      setShareDialog({ profile, link, qrDataUrl, qrError, copyStatus: "" });
-    } catch (err) {
-      onError(messageFromError(err));
-    }
-  }
-
-  async function copySharedProfileLink() {
-    if (!shareDialog) {
-      return;
-    }
-    try {
-      await navigator.clipboard?.writeText(shareDialog.link);
-      setShareDialog({ ...shareDialog, copyStatus: "Copied" });
-    } catch {
-      setShareDialog({ ...shareDialog, copyStatus: "Copy failed" });
-    }
-  }
-
-  async function deleteProfilesBulk(items: V2RayProfile[], label: string) {
-    if (!items.length) {
-      return;
-    }
-    onError("");
-    setDedupeRunning(true);
-    try {
-      const nextState = await backend.deleteV2RayProfiles(items.map((profile) => profile.id));
-      onState(nextState);
-      onSuccess(`Deleted ${items.length} ${label} V2Ray profile${items.length === 1 ? "" : "s"}.`);
-      onForgetPingProfiles(items.map((profile) => profile.id));
-    } catch (err) {
-      onError(messageFromError(err));
-    } finally {
-      setDedupeRunning(false);
-    }
-  }
-
-  async function deleteDuplicateProfiles() {
-    onError("");
-    setDedupeRunning(true);
-    try {
-      const result = await backend.deleteDuplicateV2RayProfiles();
-      onState(result.state);
-      onSuccess(
-        result.removed > 0
-          ? `Deleted ${result.removed} duplicate V2Ray profile${result.removed === 1 ? "" : "s"}.`
-          : "No duplicate V2Ray profiles found."
+      return (
+        node.label.toLowerCase().includes(needle) ||
+        node.server.toLowerCase().includes(needle) ||
+        node.type.includes(needle) ||
+        countryName(node.countryCode, language, unknown).toLowerCase().includes(needle)
       );
-      const remainingIds = new Set(result.state.v2rayProfiles.map((profile) => profile.id));
-      onForgetPingProfiles(state.v2rayProfiles.filter((profile) => !remainingIds.has(profile.id)).map((profile) => profile.id));
+    });
+
+    // Unmeasured sinks to the bottom whichever way the column is sorted: it is
+    // absence, not a value, and it should never sit above a real measurement.
+    const rank = (node: WhiteVPNNode): number | string => {
+      switch (sort.column) {
+        case "country":
+          return countryName(node.countryCode, language, unknown);
+        case "type":
+          return node.type;
+        case "reach":
+          return node.reachOk ? node.reachMs : Number.MAX_SAFE_INTEGER;
+        case "delay":
+          return node.delayOk ? node.delayMs : Number.MAX_SAFE_INTEGER;
+        case "speed":
+          return node.speedOk ? -node.speedBytesPerSecond : Number.MAX_SAFE_INTEGER;
+        default:
+          return node.label;
+      }
+    };
+    const sorted = [...filtered].sort((a, b) => {
+      const left = rank(a);
+      const right = rank(b);
+      if (typeof left === "string" || typeof right === "string") {
+        return String(left).localeCompare(String(right), language);
+      }
+      return left - right;
+    });
+    return sort.direction === "desc" ? sorted.reverse() : sorted;
+  }, [nodes, search, country, protocol, sort, language, unknown]);
+
+  const selectedNames = useMemo(() => visible.filter((node) => selected.has(node.name)).map((node) => node.name), [visible, selected]);
+  const targets = selectedNames.length ? selectedNames : visible.map((node) => node.name);
+
+  function toggleSort(column: NodeSortColumn) {
+    setSort((current) =>
+      current.column === column
+        ? { column, direction: current.direction === "asc" ? "desc" : "asc" }
+        : { column, direction: column === "speed" ? "asc" : "asc" }
+    );
+  }
+
+  function toggleSelected(name: string) {
+    setSelected((current) => {
+      const next = new Set(current);
+      if (next.has(name)) {
+        next.delete(name);
+      } else {
+        next.add(name);
+      }
+      return next;
+    });
+  }
+
+  function runTests() {
+    if (!targets.length) {
+      onError(t("vpn.nodes.none"));
+      return;
+    }
+    onRunTest({ ...request, nodes: targets });
+  }
+
+  async function copyLink(node: WhiteVPNNode) {
+    try {
+      await navigator.clipboard?.writeText(node.link);
+      onSuccess(t("servers.copied"));
     } catch (err) {
       onError(messageFromError(err));
-    } finally {
-      setDedupeRunning(false);
     }
   }
 
-  useEffect(() => {
-    const shortcutsBlocked = editorOpen || importOpen || Boolean(shareDialog) || Boolean(exportText) || bulkMenuOpen || Boolean(profileContextMenu);
-    if (shortcutsBlocked) {
-      return;
-    }
-
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.defaultPrevented || isTextEntryKeyboardTarget(event.target)) {
-        return;
-      }
-      const key = event.key.toLowerCase();
-      const commandOrControl = event.metaKey || event.ctrlKey;
-
-      if (commandOrControl && !event.altKey && key === "a") {
-        event.preventDefault();
-        setSelectedProfileIds(new Set(visibleProfileIds));
-        return;
-      }
-
-      if (commandOrControl && !event.altKey && key === "v") {
-        if (navigator.clipboard) {
-          event.preventDefault();
-          void importProfilesFromClipboard();
-        }
-        return;
-      }
-
-      if (
-        (event.key === "Delete" || event.key === "Backspace") &&
-        !event.repeat &&
-        !event.metaKey &&
-        !event.ctrlKey &&
-        !event.altKey &&
-        selectedProfileCount > 0 &&
-        !runtimeBusy &&
-        !settingsSaving &&
-        !dedupeRunning
-      ) {
-        event.preventDefault();
-        void deleteProfilesBulk(selectedV2RayProfiles, "selected");
-      }
-    }
-
-    function onPaste(event: ClipboardEvent) {
-      if (event.defaultPrevented || isTextEntryKeyboardTarget(event.target)) {
-        return;
-      }
-      const text = event.clipboardData?.getData("text") || "";
-      if (!text.trim()) {
-        return;
-      }
-      event.preventDefault();
-      void importProfilesFromText(text);
-    }
-
-    document.addEventListener("keydown", onKeyDown);
-    document.addEventListener("paste", onPaste);
-    return () => {
-      document.removeEventListener("keydown", onKeyDown);
-      document.removeEventListener("paste", onPaste);
-    };
-  }, [
-    bulkMenuOpen,
-    dedupeRunning,
-    editorOpen,
-    exportText,
-    importOpen,
-    profileContextMenu,
-    runtimeBusy,
-    selectedProfileCount,
-    selectedV2RayProfiles,
-    settingsSaving,
-    shareDialog,
-    visibleProfileIds,
-  ]);
+  const subscriptionName =
+    state.v2raySubscriptions.find((subscription) => subscription.id === state.selectedSubscriptionId)?.name || "";
 
   return (
-    <>
-      <PageShell
-        eyebrow="WhiteVPN"
-        title="Servers"
-        actions={
-          <>
-            <Button variant="outline" disabled={!hasExportableProfiles} onClick={exportAllProfiles}>
-              <Upload />
-              Export all
+    <PageShell
+      eyebrow="WhiteVPN"
+      title={t("nav.servers")}
+      actions={
+        <>
+          <Button variant="outline" onClick={onReload} disabled={loading}>
+            <RotateCcw className={cn(loading && "animate-spin")} />
+            {t("vpn.nodes.reload")}
+          </Button>
+          {testing ? (
+            <Button variant="destructive" onClick={onCancelTest}>
+              <Square />
+              {t("servers.stop")}
             </Button>
-            <Button variant="outline" onClick={() => setImportOpen(true)}>
-              <Download />
-              Import
+          ) : (
+            <Button onClick={runTests} disabled={!visible.length}>
+              <Gauge />
+              {selectedNames.length ? t("servers.testSelected") : t("servers.testAll")}
             </Button>
-            <Button variant="outline" onClick={openNewProfile}>
-              <Plus />
-              New
-            </Button>
-          </>
-        }
-      >
-        <div className="overflow-hidden rounded-lg border bg-card">
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-muted/30 px-3 py-2.5">
-            <div className="min-w-0">
-              <p className="text-sm font-semibold">Connection profiles</p>
-              <p className="text-xs text-muted-foreground">
-                {state.v2rayProfiles.length} profile{state.v2rayProfiles.length === 1 ? "" : "s"}
-                {pingedCount > 0 ? `, ${reachableCount} reachable` : ""}
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    type="button"
-                    variant={pingTestRunning ? "destructive" : "outline"}
-                    disabled={!pingTestRunning && (!state.v2rayProfiles.length || pingRunning)}
-                    onClick={pingTestRunning ? onCancelProfileTests : pingProfiles}
-                    aria-label={pingTestRunning ? "Stop V2Ray ping test" : "Ping all V2Ray servers"}
-                  >
-                    {pingTestRunning ? <Square /> : <Wifi className={cn(pingRunning && ping.activeKind === "ping" && "animate-pulse")} />}
-                    {pingTestRunning ? "Stop" : "Ping"}
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>{pingTestRunning ? "Stop ping test" : "Ping only"}</TooltipContent>
-              </Tooltip>
-              <Button
-                type="button"
-                variant="outline"
-                disabled={!fastestProfile || isProfileLocked || settingsSaving}
-                onClick={useFastestProfile}
-              >
-                <Gauge />
-                Use fastest
-              </Button>
-              <div ref={bulkButtonRef} className="inline-flex">
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={!state.v2rayProfiles.length || dedupeRunning}
-                  aria-haspopup="menu"
-                  aria-expanded={bulkMenuOpen}
-                  onClick={toggleBulkMenu}
-                >
-                  <SlidersHorizontal />
-                  Bulk actions
-                  {selectedProfileCount > 0 && (
-                    <Badge variant="secondary" className="ms-1 px-1.5">
-                      {selectedProfileCount}
-                    </Badge>
-                  )}
-                </Button>
-              </div>
-            </div>
-          </div>
-          {bulkMenuOpen && (
-            <div
-              ref={bulkMenuRef}
-              role="menu"
-              className="fixed z-[100] min-w-60 rounded-md border bg-popover p-1 text-popover-foreground shadow-xl"
-              style={{ top: bulkMenuPosition.top, right: bulkMenuPosition.right }}
-            >
-              <div className="px-2 py-1.5 text-sm font-medium">
-                {selectedProfileCount > 0
-                  ? `${selectedProfileCount} selected profile${selectedProfileCount === 1 ? "" : "s"}`
-                  : "No profiles selected"}
-              </div>
-              <BulkActionMenuItem disabled={!selectedProfileCount || pingRunning} onClick={() => runBulkAction(pingSelectedProfiles)}>
-                <Wifi className={cn(pingRunning && ping.activeKind === "ping" && "animate-pulse")} />
-                Ping selected
-              </BulkActionMenuItem>
-              <BulkActionMenuItem disabled={!selectedFastestProfile || isProfileLocked || settingsSaving} onClick={() => runBulkAction(useFastestSelectedProfile)}>
-                <Gauge />
-                Use fastest selected
-              </BulkActionMenuItem>
-              <BulkActionMenuItem
-                disabled={!singleSelectedProfile || runtimeBusy || settingsSaving || !isConnectableV2RayProfile(singleSelectedProfile)}
-                onClick={() => runBulkAction(() => singleSelectedProfile && connectProfile(singleSelectedProfile))}
-              >
-                <Play />
-                Connect selected
-              </BulkActionMenuItem>
-              <BulkActionMenuItem
-                destructive
-                disabled={!selectedProfileCount || runtimeBusy || settingsSaving}
-                onClick={() => runBulkAction(() => deleteProfilesBulk(selectedV2RayProfiles, "selected"))}
-              >
-                <Trash2 />
-                Delete selected
-              </BulkActionMenuItem>
-              <div className="-mx-1 my-1 h-px bg-border" />
-              <div className="px-2 py-1.5 text-sm font-medium">All profiles</div>
-              <BulkActionMenuItem disabled={!state.v2rayProfiles.length || pingRunning} onClick={() => runBulkAction(pingProfiles)}>
-                <Wifi className={cn(pingRunning && ping.activeKind === "ping" && "animate-pulse")} />
-                Ping all
-              </BulkActionMenuItem>
-              <BulkActionMenuItem disabled={!fastestProfile || isProfileLocked || settingsSaving} onClick={() => runBulkAction(useFastestProfile)}>
-                <Gauge />
-                Use fastest
-              </BulkActionMenuItem>
-              <BulkActionMenuItem disabled={state.v2rayProfiles.length < 2} onClick={() => runBulkAction(deleteDuplicateProfiles)}>
-                <Trash2 />
-                Delete duplicates
-              </BulkActionMenuItem>
-              <BulkActionMenuItem
-                destructive
-                disabled={!failedProfiles.length || runtimeBusy || settingsSaving}
-                onClick={() => runBulkAction(() => deleteProfilesBulk(failedProfiles, "failed"))}
-              >
-                <Trash2 />
-                Delete failed
-              </BulkActionMenuItem>
-              <BulkActionMenuItem
-                destructive
-                disabled={!uncheckedProfiles.length || runtimeBusy || settingsSaving}
-                onClick={() => runBulkAction(() => deleteProfilesBulk(uncheckedProfiles, "unchecked"))}
-              >
-                <Trash2 />
-                Delete unchecked
-              </BulkActionMenuItem>
-            </div>
           )}
-          {profileContextMenu && (
-            <div
-              ref={profileContextMenuRef}
-              role="menu"
-              className="fixed z-[110] min-w-56 rounded-md border bg-popover p-1 text-popover-foreground shadow-xl"
-              style={{ top: profileContextMenu.top, left: profileContextMenu.left }}
-            >
-              <div className="max-w-64 truncate px-2 py-1.5 text-sm font-medium">
-                {profileContextMenu.profile.name || "V2Ray profile"}
-              </div>
-              <BulkActionMenuItem
-                disabled={runtimeBusy || settingsSaving || !isConnectableV2RayProfile(profileContextMenu.profile)}
-                onClick={() => runProfileContextAction(() => connectProfile(profileContextMenu.profile))}
-              >
-                <Play />
-                Connect
-              </BulkActionMenuItem>
-              <BulkActionMenuItem onClick={() => runProfileContextAction(() => openExistingProfile(profileContextMenu.profile))}>
-                <Pencil />
-                Edit
-              </BulkActionMenuItem>
-              <BulkActionMenuItem
-                disabled={pingRunning || Boolean(pingScanningIds[profileContextMenu.profile.id])}
-                onClick={() => runProfileContextAction(() => onPingProfiles([profileContextMenu.profile]))}
-              >
-                <Wifi className={cn((pingRunning || pingScanningIds[profileContextMenu.profile.id]) && "animate-pulse")} />
-                Ping
-              </BulkActionMenuItem>
-              <BulkActionMenuItem
-                disabled={!isExportableV2RayProfile(profileContextMenu.profile)}
-                onClick={() => runProfileContextAction(() => shareProfile(profileContextMenu.profile))}
-              >
-                <Share2 />
-                Share
-              </BulkActionMenuItem>
-              <BulkActionMenuItem
-                destructive
-                disabled={runtimeBusy || settingsSaving}
-                onClick={() => runProfileContextAction(() => deleteProfilesBulk([profileContextMenu.profile], "selected"))}
-              >
-                <Trash2 />
-                Delete
-              </BulkActionMenuItem>
+        </>
+      }
+    >
+      <Card>
+        <CardHeader className="p-3 pb-2">
+          <CardTitle className="flex flex-wrap items-center gap-2 text-sm">
+            <Shield className="size-4" />
+            {subscriptionName || t("nav.subscriptions")}
+            <Badge variant="outline">
+              {visible.length} / {nodes.length} {t("vpn.nodes.count")}
+            </Badge>
+            {selectedNames.length > 0 && <Badge>{selectedNames.length} {t("servers.selected")}</Badge>}
+          </CardTitle>
+          <CardDescription className="text-xs">{t("servers.description")}</CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-3 p-3 pt-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative min-w-48 flex-1">
+              <Search className="pointer-events-none absolute start-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t("vpn.search")} className="ps-8" />
             </div>
-          )}
-          <div className="flex flex-wrap items-center gap-3 border-b bg-background px-3 py-2">
-            <div className="flex items-center gap-1.5">
-              <span className="text-xs font-medium text-muted-foreground">Status</span>
-              <Select value={profileStatusFilter} onValueChange={(value) => setProfileStatusFilter(value as V2RayStatusFilter)}>
-                <SelectTrigger size="sm" className="min-w-[9.5rem] bg-card">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent position="popper" align="start">
-                  {v2rayProfileStatusFilterOptions.map(([filter, label]) => (
-                    <SelectItem key={filter} value={filter}>
-                      <span className="flex min-w-0 items-center gap-3 pr-4">
-                        <span className="truncate">{label}</span>
-                        <span className="ms-auto text-xs tabular-nums text-muted-foreground">
-                          {filterCounts.status[filter] || 0}
-                        </span>
-                      </span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="text-xs font-medium text-muted-foreground">Type</span>
-              <Select value={profileTypeFilter} onValueChange={(value) => setProfileTypeFilter(value as V2RayTypeFilter)}>
-                <SelectTrigger size="sm" className="min-w-[9rem] bg-card">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent position="popper" align="start">
-                  {v2rayProfileTypeFilterOptions.map(([filter, label]) => (
-                    <SelectItem key={filter} value={filter}>
-                      <span className="flex min-w-0 items-center gap-3 pr-4">
-                        <span className="truncate">{label}</span>
-                        <span className="ms-auto text-xs tabular-nums text-muted-foreground">
-                          {filterCounts.type[filter] || 0}
-                        </span>
-                      </span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex min-w-0 items-center gap-1.5">
-              <span className="text-xs font-medium text-muted-foreground">Subs</span>
-              <Select value={profileSubscriptionFilter} onValueChange={setProfileSubscriptionFilter}>
-                <SelectTrigger size="sm" className="min-w-[12rem] max-w-full bg-card sm:min-w-[16rem]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent position="popper" align="start" className="max-w-[min(28rem,calc(100vw-2rem))]">
-                  {subscriptionFilterOptions.map(([filter, label]) => (
-                    <SelectItem key={filter} value={filter}>
-                      <span className="flex min-w-0 items-center gap-3 pr-4">
-                        <span className="truncate">{label}</span>
-                        <span className="ms-auto text-xs tabular-nums text-muted-foreground">
-                          {filterCounts.subscription[filter] || 0}
-                        </span>
-                      </span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <div
-            ref={profileTableScrollRef}
-            className="max-h-[min(68svh,46rem)] overflow-auto"
-            onScroll={handleProfileTableScroll}
-          >
-            <table className="table-fixed text-start" style={{ width: profileTableWidth, minWidth: profileTableWidth }}>
-              <colgroup>
-                {v2rayProfileTableColumns.map((column) => (
-                  <col key={column.id} style={{ width: profileTableColumnWidths[column.id] }} />
+            <Select value={country || "all"} onValueChange={(value) => setCountry(value === "all" ? "" : value)}>
+              <SelectTrigger className="w-44">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent position="popper">
+                <SelectItem value="all">{t("vpn.location")}: {t("vpn.types.all")}</SelectItem>
+                {countries.map((entry) => (
+                  <SelectItem key={entry.code} value={entry.code}>
+                    {flagFromCountryCode(entry.code)} {entry.name} ({entry.count})
+                  </SelectItem>
                 ))}
-              </colgroup>
-              <thead className="sticky top-0 z-10 border-b bg-muted/95 text-xs uppercase text-muted-foreground backdrop-blur supports-backdrop-filter:bg-muted/80">
+              </SelectContent>
+            </Select>
+            <Select value={protocol || "all"} onValueChange={(value) => setProtocol(value === "all" ? "" : value)}>
+              <SelectTrigger className="w-40">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent position="popper">
+                <SelectItem value="all">{t("vpn.types")}: {t("vpn.types.all")}</SelectItem>
+                {protocols.map((type) => (
+                  <SelectItem key={type} value={type}>
+                    {type}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3 rounded-md border bg-background/60 px-3 py-2">
+            <span className="text-xs font-medium text-muted-foreground">{t("servers.tests")}</span>
+            <label className="flex items-center gap-2 text-sm">
+              <Switch checked={request.reachability} onCheckedChange={(checked) => setRequest({ ...request, reachability: checked })} />
+              {t("servers.test.reach")}
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <Switch checked={request.delay} onCheckedChange={(checked) => setRequest({ ...request, delay: checked })} />
+              {t("servers.test.delay")}
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <Switch checked={request.speed} onCheckedChange={(checked) => setRequest({ ...request, speed: checked })} />
+              {t("servers.test.speed")}
+            </label>
+            <Button variant="ghost" size="sm" className="ms-auto" onClick={() => setOptionsOpen((open) => !open)}>
+              <SlidersHorizontal className="size-3.5" />
+              {t("servers.testOptions")}
+            </Button>
+          </div>
+
+          {optionsOpen && (
+            <FieldGroup className="grid gap-3 rounded-md border bg-background/60 p-3 md:grid-cols-3">
+              <NumberField
+                label={t("servers.option.reachTimeout")}
+                value={request.reachabilityTimeoutMs}
+                min={500}
+                max={60000}
+                onChange={(value) => setRequest({ ...request, reachabilityTimeoutMs: value })}
+              />
+              <NumberField
+                label={t("servers.option.reachWorkers")}
+                value={request.reachabilityWorkers}
+                min={1}
+                max={256}
+                onChange={(value) => setRequest({ ...request, reachabilityWorkers: value })}
+              />
+              <NumberField
+                label={t("servers.option.delayTimeout")}
+                value={request.delayTimeoutMs}
+                min={500}
+                max={60000}
+                onChange={(value) => setRequest({ ...request, delayTimeoutMs: value })}
+              />
+              <NumberField
+                label={t("servers.option.delayWorkers")}
+                value={request.delayWorkers}
+                min={1}
+                max={256}
+                onChange={(value) => setRequest({ ...request, delayWorkers: value })}
+              />
+              <NumberField
+                label={t("servers.option.speedBudget")}
+                value={request.speedBudgetMs}
+                min={500}
+                max={60000}
+                onChange={(value) => setRequest({ ...request, speedBudgetMs: value })}
+              />
+              <TextField
+                label={t("servers.option.speedUrl")}
+                value={request.speedUrl}
+                placeholder="https://speed.cloudflare.com/__down?bytes=10000000"
+                onChange={(value) => setRequest({ ...request, speedUrl: value })}
+              />
+              <FieldDescription className="md:col-span-3">{t("servers.option.hint")}</FieldDescription>
+            </FieldGroup>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="min-h-0">
+        <CardContent className="p-0">
+          <ScrollArea className="h-[calc(100svh-24rem)]">
+            <table className="w-full min-w-[860px] table-fixed text-start text-sm">
+              <thead className="sticky top-0 z-10 bg-muted/95 text-xs uppercase text-muted-foreground backdrop-blur">
                 <tr>
-                  {v2rayProfileTableColumns.map((column) => {
-                    if (column.id === "select") {
-                      return (
-                        <th key={column.id} className={v2rayHeaderCellClass(column)}>
-                          <input
-                            ref={(node) => {
-                              if (node) {
-                                node.indeterminate = someVisibleSelected;
-                              }
-                            }}
-                            type="checkbox"
-                            className="size-4 rounded border-border accent-emerald-600"
-                            checked={allVisibleSelected}
-                            disabled={!visibleProfileIds.length}
-                            aria-label="Select all visible V2Ray profiles"
-                            aria-checked={someVisibleSelected ? "mixed" : allVisibleSelected}
-                            onChange={(event) => toggleVisibleProfileSelection(event.target.checked)}
-                            onClick={(event) => event.stopPropagation()}
-                          />
-                          {renderProfileTableColumnResizeHandle(column)}
-                        </th>
-                      );
-                    }
-                    if (column.id === "delay" || column.id === "speed") {
-                      const metricDirection = profileSort.column === column.id ? profileSort.direction : "none";
-                      return (
-                        <th key={column.id} className={v2rayHeaderCellClass(column)}>
-                          <div className={cn("flex min-w-0 items-center gap-1.5 truncate pe-2", column.align === "right" && "justify-end")}>
-                            <button
-                              type="button"
-                              className="inline-flex shrink-0 items-center gap-1 rounded-md text-xs font-medium uppercase text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                              onClick={() => toggleMetricSort(column.id as "delay" | "speed")}
-                              aria-label={`Sort V2Ray profiles by ${column.id === "delay" ? "ping" : "speed"}`}
-                            >
-                              <span className="truncate">{column.label}</span>
-                              <ChevronDown
-                                className={cn(
-                                  "size-3 transition-transform",
-                                  metricDirection === "asc" && "rotate-180",
-                                  metricDirection === "none" && "opacity-40"
-                                )}
-                              />
-                            </button>
-                          </div>
-                          {renderProfileTableColumnResizeHandle(column)}
-                        </th>
-                      );
-                    }
-                    return (
-                      <th key={column.id} className={v2rayHeaderCellClass(column)}>
-                        <span className="block truncate pe-2">{column.label}</span>
-                        {renderProfileTableColumnResizeHandle(column)}
-                      </th>
-                    );
-                  })}
+                  <th className="w-10 px-2 py-2"></th>
+                  <NodeHeader column="country" sort={sort} onSort={toggleSort} className="w-32">
+                    {t("vpn.location")}
+                  </NodeHeader>
+                  <NodeHeader column="label" sort={sort} onSort={toggleSort}>
+                    {t("servers.column.node")}
+                  </NodeHeader>
+                  <NodeHeader column="type" sort={sort} onSort={toggleSort} className="w-24">
+                    {t("vpn.types")}
+                  </NodeHeader>
+                  <th className="w-44 px-2 py-2 font-medium">{t("servers.column.address")}</th>
+                  <NodeHeader column="reach" sort={sort} onSort={toggleSort} className="w-24 text-end">
+                    {t("servers.test.reach")}
+                  </NodeHeader>
+                  <NodeHeader column="delay" sort={sort} onSort={toggleSort} className="w-24 text-end">
+                    {t("servers.test.delay")}
+                  </NodeHeader>
+                  <NodeHeader column="speed" sort={sort} onSort={toggleSort} className="w-28 text-end">
+                    {t("servers.test.speed")}
+                  </NodeHeader>
+                  <th className="w-24 px-2 py-2 text-end font-medium">{t("servers.column.actions")}</th>
                 </tr>
               </thead>
               <tbody>
-                {sortedV2RayProfiles.length === 0 && (
-                  <tr>
-                    <td colSpan={v2rayProfileTableColumns.length} className="px-3 py-8 text-center text-sm text-muted-foreground">
-                      No V2Ray profiles match the current filters.
+                {visible.map((node) => (
+                  <tr key={node.name} className="border-b last:border-b-0 hover:bg-muted/40">
+                    <td className="px-2 py-1.5">
+                      <input
+                        type="checkbox"
+                        className="size-4"
+                        checked={selected.has(node.name)}
+                        onChange={() => toggleSelected(node.name)}
+                        aria-label={node.label}
+                      />
+                    </td>
+                    <td className="min-w-0 px-2 py-1.5">
+                      <span className="flex min-w-0 items-center gap-1.5">
+                        <span className="leading-none">{flagFromCountryCode(node.countryCode) || "🏳️"}</span>
+                        <span className="truncate text-xs">{countryName(node.countryCode, language, unknown)}</span>
+                      </span>
+                    </td>
+                    <td className="min-w-0 px-2 py-1.5">
+                      <span className="block truncate" title={node.name}>
+                        {node.label}
+                      </span>
+                    </td>
+                    <td className="px-2 py-1.5">
+                      <Badge variant="outline" className="h-5 px-1.5 text-[10px] uppercase">
+                        {node.type}
+                      </Badge>
+                    </td>
+                    <td className="min-w-0 px-2 py-1.5">
+                      <span className="block truncate font-mono text-xs text-muted-foreground">
+                        {node.server}:{node.port}
+                      </span>
+                    </td>
+                    <td className="px-2 py-1.5 text-end font-mono text-xs">
+                      {node.reachOk ? `${node.reachMs} ms` : <span className="text-muted-foreground">-</span>}
+                    </td>
+                    <td className="px-2 py-1.5 text-end font-mono text-xs">
+                      {node.delayOk ? `${node.delayMs} ms` : <span className="text-muted-foreground">-</span>}
+                    </td>
+                    <td className="px-2 py-1.5 text-end font-mono text-xs">
+                      {node.speedOk ? formatRate(node.speedBytesPerSecond) : <span className="text-muted-foreground">-</span>}
+                    </td>
+                    <td className="px-2 py-1.5">
+                      <div className="flex justify-end gap-1">
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button variant="ghost" size="icon-sm" onClick={() => onSelectNode(node.name)} aria-label={t("servers.use")}>
+                              <Play />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>{t("servers.use")}</TooltipContent>
+                        </Tooltip>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button variant="ghost" size="icon-sm" onClick={() => setShareNode(node)} aria-label={t("servers.share")}>
+                              <Share2 />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>{t("servers.share")}</TooltipContent>
+                        </Tooltip>
+                      </div>
                     </td>
                   </tr>
-                )}
-                {virtualTopPadding > 0 && (
-                  <tr aria-hidden="true">
-                    <td colSpan={v2rayProfileTableColumns.length} className="border-0 p-0" style={{ height: virtualTopPadding }} />
-                  </tr>
-                )}
-                {virtualV2RayProfiles.map((profile) => {
-                  const result = pingResults[profile.id];
-                  const scanning = Boolean(pingScanningIds[profile.id]);
-                  const selectedProfile = profile.id === selected?.id;
-                  const selectedForBulk = selectedProfileIds.has(profile.id);
-                  const connectDisabled = runtimeBusy || settingsSaving || !isConnectableV2RayProfile(profile);
-                  return (
-                    <tr
-                      key={profile.id}
-                      style={{ height: v2rayProfileVirtualRowHeight }}
-                      className={cn(
-                        "border-b text-sm transition-colors last:border-b-0 hover:bg-muted/50",
-                        selectedProfile && "bg-muted/40",
-                        selectedForBulk && "shadow-[inset_3px_0_0_var(--primary)]"
-                      )}
-                      onContextMenu={(event) => openProfileContextMenu(event, profile)}
-                    >
-                      <td className="px-1 py-1 text-center">
-                        <input
-                          type="checkbox"
-                          className="size-4 rounded border-border accent-emerald-600"
-                          checked={selectedForBulk}
-                          aria-label={`Select ${profile.name || "V2Ray profile"}`}
-                          onChange={(event) => toggleProfileSelection(profile.id, event.target.checked)}
-                          onClick={(event) => event.stopPropagation()}
-                          onKeyDown={(event) => event.stopPropagation()}
-                        />
-                      </td>
-                      <td className="px-1.5 py-1">
-                        <span className="text-xs font-medium uppercase">{v2rayProtocolLabel(profile.protocol)}</span>
-                      </td>
-                      <td className="min-w-0 px-1.5 py-1" title={result?.message || undefined}>
-                        <span className={cn("block truncate font-medium", selectedProfile && "text-primary")}>
-                          {profile.name || "V2Ray Connection"}
-                        </span>
-                      </td>
-                      <td className="min-w-0 px-1.5 py-1" title={profile.server || undefined}>
-                        <span className="block truncate font-mono text-xs">{profile.server || "-"}</span>
-                      </td>
-                      <td className="px-1.5 py-1 font-mono text-xs">{profile.serverPort || 443}</td>
-                      <td className="px-1.5 py-1 text-xs" title={v2rayNetworkLabel(profile.network)}>{v2rayNetworkLabel(profile.network)}</td>
-                      <td className="px-1.5 py-1 text-xs">{profile.tls || profile.reality ? "tls" : "-"}</td>
-                      <td className={cn("px-1.5 py-1 text-end text-xs tabular-nums", v2rayDelayClass(result, scanning))}>
-                        {formatV2RayDelay(result, scanning)}
-                      </td>
-                      <td className={cn("px-1.5 py-1 text-end text-xs tabular-nums", v2raySpeedClass(result, scanning))}>
-                        {formatV2RaySpeedResult(result, scanning)}
-                      </td>
-                      <td
-                        className={cn(
-                          "v2ray-actions-cell sticky end-0 z-[1] border-s px-1 py-1 text-end shadow-[-8px_0_12px_-12px_rgba(0,0,0,0.55)]",
-                          v2rayStickyActionCellClass(selectedProfile || selectedForBulk)
-                        )}
-                      >
-                        <div className="flex justify-end gap-0.5">
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon-sm"
-                                disabled={connectDisabled}
-                                aria-label={`Connect ${profile.name || "V2Ray profile"}`}
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  void connectProfile(profile);
-                                }}
-                                onKeyDown={(event) => event.stopPropagation()}
-                              >
-                                <Play />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>{connectDisabled ? "Unavailable" : "Connect"}</TooltipContent>
-                          </Tooltip>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon-sm"
-                                aria-label={`Share ${profile.name || "V2Ray profile"}`}
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  void shareProfile(profile);
-                                }}
-                                onKeyDown={(event) => event.stopPropagation()}
-                              >
-                                <Share2 />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>Share</TooltipContent>
-                          </Tooltip>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon-sm"
-                                aria-label={`Edit ${profile.name || "V2Ray profile"}`}
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  openExistingProfile(profile);
-                                }}
-                                onKeyDown={(event) => event.stopPropagation()}
-                              >
-                                <Pencil />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>Edit</TooltipContent>
-                          </Tooltip>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon-sm"
-                                disabled={runtimeBusy || settingsSaving}
-                                aria-label={`Delete ${profile.name || "V2Ray profile"}`}
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  void deleteProfilesBulk([profile], "selected");
-                                }}
-                                onKeyDown={(event) => event.stopPropagation()}
-                              >
-                                <Trash2 />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>{runtimeBusy || settingsSaving ? "Disconnect first" : "Delete"}</TooltipContent>
-                          </Tooltip>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-                {virtualBottomPadding > 0 && (
-                  <tr aria-hidden="true">
-                    <td colSpan={v2rayProfileTableColumns.length} className="border-0 p-0" style={{ height: virtualBottomPadding }} />
+                ))}
+                {!visible.length && (
+                  <tr>
+                    <td colSpan={9} className="px-3 py-10 text-center text-sm text-muted-foreground">
+                      {loading ? t("vpn.nodes.loading") : t("vpn.nodes.none")}
+                    </td>
                   </tr>
                 )}
               </tbody>
             </table>
-          </div>
-        </div>
+            <ScrollBar orientation="vertical" />
+            <ScrollBar orientation="horizontal" />
+          </ScrollArea>
+        </CardContent>
+      </Card>
 
-        <div className="h-24 shrink-0" aria-hidden="true" />
-        <div className="fixed bottom-3 z-40" style={controlBarInset}>
-          <div
-            className={cn(
-              "flex flex-col gap-2 rounded-lg border bg-background/95 px-3 py-2 shadow-lg backdrop-blur supports-backdrop-filter:bg-background/80 xl:flex-row xl:items-center xl:justify-between",
-              setupStatus === "connected" && "border-emerald-200",
-              setupStatus === "connecting" && "border-amber-200",
-              setupStatus === "failed" && "border-red-200"
-            )}
-          >
-            <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
-              <span className="inline-flex items-center gap-2 text-sm font-semibold">
-                <StatusDot status={setupStatus} className="size-2.5" />
-                {setupStatusLabel}
-              </span>
-              <span className="min-w-0 truncate font-mono text-xs text-muted-foreground">{localProxyEndpoint}</span>
-            </div>
-            <div className="flex min-w-0 flex-wrap items-center gap-2">
-              <Select
-                value={selectedSettings?.id || state.selectedV2RaySettingsId}
-                disabled={settingsControlsDisabled || !settingsItems.length}
-                onValueChange={(id) => void selectSettingsProfile(id)}
-              >
-                <SelectTrigger size="sm" className="min-w-40 max-w-56 bg-card">
-                  <SelectValue placeholder="Settings" />
-                </SelectTrigger>
-                <SelectContent position="popper" align="end">
-                  {settingsItems.map((item) => (
-                    <SelectItem key={item.id} value={item.id}>
-                      {item.title}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
-
-              {v2rayRuntimeActiveForSetup && runtime.status !== "disconnected" && runtime.status !== "failed" ? (
-                <Button type="button" variant="outline" size="sm" disabled={settingsSaving} onClick={stopRuntime}>
-                  <Square />
-                  Disconnect
-                </Button>
-              ) : (
-                <Button
-                  type="button"
-                  size="sm"
-                  className={cn(!selectedConnectDisabled && "bg-emerald-600 hover:bg-emerald-700")}
-                  disabled={selectedConnectDisabled}
-                  onClick={startSelectedProfile}
-                >
-                  <Play />
-                  Connect selected
-                </Button>
-              )}
-            </div>
-          </div>
-        </div>
-      </PageShell>
-
-      <Dialog open={editorOpen} onOpenChange={setEditorOpen}>
-        <DialogContent className="max-h-[calc(100svh-2rem)] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden sm:max-w-5xl">
+      <Dialog open={Boolean(shareNode)} onOpenChange={(open) => !open && setShareNode(null)}>
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>{draft.id ? draft.name : "New V2Ray profile"}</DialogTitle>
-            <DialogDescription>Xray direct profile</DialogDescription>
-          </DialogHeader>
-          <div className="min-h-0 overflow-y-auto pr-1">
-            <div className="space-y-6">
-              <FieldSet>
-                <FieldTitle className="text-base">Remote server</FieldTitle>
-                <Separator />
-                <FieldGroup className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                  <TextField label="Name" value={draft.name} onChange={(name) => setDraft({ ...draft, name })} />
-                  <SelectField
-                    label="Protocol"
-                    value={draft.protocol}
-                    onChange={(protocol) => setDraft({ ...draft, protocol: normalizeV2RayProtocol(String(protocol)) })}
-                    options={v2rayProtocolOptions}
-                  />
-                  <TextField
-                    label="Server"
-                    value={draft.server}
-                    onChange={(server) => setDraft({ ...draft, server })}
-                    placeholder="example.com"
-                    error={missingServer ? "Server is required." : undefined}
-                  />
-                  <NumberField label="Server port" value={draft.serverPort} min={1} max={65535} onChange={(serverPort) => setDraft({ ...draft, serverPort })} />
-                  {draft.protocol === "trojan" ? (
-                    <SecretField
-                      label="Password"
-                      value={draft.password}
-                      onChange={(password) => setDraft({ ...draft, password })}
-                      error={missingCredential ? "Trojan password is required." : undefined}
-                      revealable
-                    />
-                  ) : (draft.protocol === "vless" || draft.protocol === "vmess") ? (
-                    <SecretField
-                      label={draft.protocol === "vmess" ? "VMess UUID" : "VLESS UUID"}
-                      value={draft.uuid}
-                      onChange={(uuid) => setDraft({ ...draft, uuid })}
-                      error={missingCredential ? "UUID is required." : undefined}
-                      revealable
-                    />
-                  ) : draft.protocol === "shadowsocks" ? (
-                    <>
-                      <TextField label="Method" value={draft.shadowsocksMethod} onChange={(shadowsocksMethod) => setDraft({ ...draft, shadowsocksMethod })} placeholder="2022-blake3-aes-256-gcm" />
-                      <SecretField label="Password" value={draft.password} onChange={(password) => setDraft({ ...draft, password })} error={missingCredential ? "Shadowsocks password is required." : undefined} revealable />
-                      <ToggleField label="UDP over TCP" checked={draft.uot} onChange={(uot) => setDraft({ ...draft, uot })} />
-                      {draft.uot && <NumberField label="UoT version" value={draft.uotVersion} min={1} max={2} onChange={(uotVersion) => setDraft({ ...draft, uotVersion })} />}
-                    </>
-                  ) : draft.protocol === "hysteria2" ? (
-                    <>
-                      <SecretField label="Auth" value={draft.hysteriaAuth} onChange={(hysteriaAuth) => setDraft({ ...draft, hysteriaAuth })} error={missingCredential ? "Hysteria2 auth is required." : undefined} revealable />
-                      <NumberField label="UDP idle timeout" value={draft.hysteriaUdpIdleTimeout} min={0} onChange={(hysteriaUdpIdleTimeout) => setDraft({ ...draft, hysteriaUdpIdleTimeout })} />
-                    </>
-                  ) : draft.protocol === "wireguard" ? (
-                    <>
-                      <SecretField label="Private key" value={draft.wireGuardSecretKey} onChange={(wireGuardSecretKey) => setDraft({ ...draft, wireGuardSecretKey })} error={!draft.wireGuardSecretKey.trim() ? "WireGuard private key is required." : undefined} revealable />
-                      <SecretField label="Peer public key" value={draft.wireGuardPeerPublicKey} onChange={(wireGuardPeerPublicKey) => setDraft({ ...draft, wireGuardPeerPublicKey })} error={!draft.wireGuardPeerPublicKey.trim() ? "Peer public key is required." : undefined} revealable />
-                      <SecretField label="Preshared key" value={draft.wireGuardPreSharedKey} onChange={(wireGuardPreSharedKey) => setDraft({ ...draft, wireGuardPreSharedKey })} revealable />
-                      <TextField label="Local addresses" value={draft.wireGuardLocalAddresses} onChange={(wireGuardLocalAddresses) => setDraft({ ...draft, wireGuardLocalAddresses })} placeholder="10.0.0.2/32, fd00::2/128" />
-                      <TextField label="Allowed IPs" value={draft.wireGuardAllowedIps} onChange={(wireGuardAllowedIps) => setDraft({ ...draft, wireGuardAllowedIps })} placeholder="0.0.0.0/0, ::/0" />
-                      <NumberField label="Keepalive" value={draft.wireGuardKeepAlive} min={0} onChange={(wireGuardKeepAlive) => setDraft({ ...draft, wireGuardKeepAlive })} />
-                      <NumberField label="MTU" value={draft.wireGuardMtu} min={0} onChange={(wireGuardMtu) => setDraft({ ...draft, wireGuardMtu })} />
-                      <TextField label="Reserved bytes" value={draft.wireGuardReserved} onChange={(wireGuardReserved) => setDraft({ ...draft, wireGuardReserved })} placeholder="1, 2, 3" />
-                      <ToggleField label="Disable kernel TUN" checked={draft.wireGuardNoKernelTun} onChange={(wireGuardNoKernelTun) => setDraft({ ...draft, wireGuardNoKernelTun })} />
-                      <SelectField
-                        label="Domain strategy"
-                        value={draft.wireGuardDomainStrategy || "ForceIP"}
-                        onChange={(wireGuardDomainStrategy) => setDraft({ ...draft, wireGuardDomainStrategy: String(wireGuardDomainStrategy) })}
-                        options={[
-                          ["ForceIP", "ForceIP"],
-                          ["ForceIPv4", "ForceIPv4"],
-                          ["ForceIPv6", "ForceIPv6"],
-                          ["ForceIPv4v6", "ForceIPv4v6"],
-                          ["ForceIPv6v4", "ForceIPv6v4"],
-                        ]}
-                      />
-                    </>
-                  ) : (
-                    <>
-                      <TextField label="Username" value={draft.username} onChange={(username) => setDraft({ ...draft, username })} />
-                      <SecretField label="Password" value={draft.password} onChange={(password) => setDraft({ ...draft, password })} revealable />
-                    </>
-                  )}
-                  {draft.protocol === "vmess" && (
-                    <>
-                      <NumberField label="Alter ID" value={draft.alterId} min={0} onChange={(alterId) => setDraft({ ...draft, alterId })} />
-                      <TextField label="Security" value={draft.security} onChange={(security) => setDraft({ ...draft, security })} placeholder="auto" />
-                    </>
-                  )}
-                  {draft.protocol === "vless" && (
-                    <SelectField
-                      label="Flow"
-                      value={draft.flow || v2rayFlowNoneValue}
-                      onChange={(flow) => setDraft({ ...draft, flow: flow === v2rayFlowNoneValue ? "" : String(flow) })}
-                      options={v2rayFlowOptions(draft.flow)}
-                    />
-                  )}
-                  {(draft.protocol === "vless" || draft.protocol === "vmess") && (
-                    <TextField label="Packet encoding" value={draft.packetEncoding} onChange={(packetEncoding) => setDraft({ ...draft, packetEncoding })} placeholder="xudp" />
-                  )}
-                  {draft.protocol === "http" && (
-                    <TextField label="Headers JSON" value={draft.httpHeaders} onChange={(httpHeaders) => setDraft({ ...draft, httpHeaders })} placeholder='{"User-Agent":"Mozilla/5.0"}' />
-                  )}
-                </FieldGroup>
-              </FieldSet>
-
-              {draft.protocol !== "wireguard" && draft.protocol !== "shadowsocks" && draft.protocol !== "socks" && (
-                <FieldSet>
-                  <FieldTitle className="text-base">TLS and transport</FieldTitle>
-                  <Separator />
-                  <FieldGroup className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                    {(draft.protocol === "vless" || draft.protocol === "vmess" || draft.protocol === "trojan") && (
-                      <SelectField
-                        label="Network"
-                        value={draft.network || "tcp"}
-                        onChange={(network) => setDraft({ ...draft, network: String(network) })}
-                        options={v2rayNetworkOptions}
-                      />
-                    )}
-                  <ToggleField label="TLS" checked={draft.tls} onChange={(tls) => setDraft({ ...draft, tls })} />
-                  <ToggleField label="Allow insecure certs" checked={draft.allowInsecure} onChange={(allowInsecure) => setDraft({ ...draft, allowInsecure })} />
-                  <TextField label="SNI" value={draft.sni} onChange={(sni) => setDraft({ ...draft, sni })} placeholder={draft.server || "example.com"} />
-                  <TextField label="ALPN" value={draft.alpn} onChange={(alpn) => setDraft({ ...draft, alpn })} placeholder="h2,http/1.1" />
-                  <TextField label="uTLS fingerprint" value={draft.utlsFingerprint} onChange={(utlsFingerprint) => setDraft({ ...draft, utlsFingerprint })} placeholder="chrome" />
-                  {!draft.reality && (
-                    <TextField label="ECH config list" value={draft.echConfigList} onChange={(echConfigList) => setDraft({ ...draft, echConfigList })} placeholder="ip.gs+udp://8.8.8.8" />
-                  )}
-                  {draft.protocol === "vless" && (
-                    <ToggleField label="Reality" checked={draft.reality} onChange={(reality) => setDraft({ ...draft, reality, tls: reality ? true : draft.tls })} />
-                  )}
-                  {draft.reality && (
-                    <>
-                      <TextField label="Reality public key" value={draft.realityPublicKey} onChange={(realityPublicKey) => setDraft({ ...draft, realityPublicKey })} />
-                      <TextField label="Reality short ID" value={draft.realityShortId} onChange={(realityShortId) => setDraft({ ...draft, realityShortId })} />
-                    </>
-                  )}
-                  {(draft.network === "ws" || draft.network === "http" || draft.network === "httpupgrade" || draft.network === "xhttp") && (
-                    <>
-                      <TextField label="Path" value={draft.transportPath} onChange={(transportPath) => setDraft({ ...draft, transportPath })} placeholder="/" />
-                      <TextField label="Host header" value={draft.transportHost} onChange={(transportHost) => setDraft({ ...draft, transportHost })} />
-                    </>
-                  )}
-                  {draft.network === "xhttp" && (
-                    <>
-                      <TextField label="XHTTP mode" value={draft.xhttpMode} onChange={(xhttpMode) => setDraft({ ...draft, xhttpMode })} placeholder="auto" />
-                      <TextField label="XHTTP extra" value={draft.xhttpExtra} onChange={(xhttpExtra) => setDraft({ ...draft, xhttpExtra })} placeholder='{"noGRPCHeader":false}' />
-                    </>
-                  )}
-                  {draft.network === "ws" && (
-                    <>
-                      <NumberField label="WS early data" value={draft.webSocketEarlyData} min={0} onChange={(webSocketEarlyData) => setDraft({ ...draft, webSocketEarlyData })} />
-                      <TextField label="Early data header" value={draft.webSocketEarlyDataHeader} onChange={(webSocketEarlyDataHeader) => setDraft({ ...draft, webSocketEarlyDataHeader })} placeholder="Sec-WebSocket-Protocol" />
-                    </>
-                  )}
-                  {draft.network === "grpc" && (
-                    <TextField label="Service name" value={draft.serviceName} onChange={(serviceName) => setDraft({ ...draft, serviceName })} />
-                  )}
-                  {draft.protocol === "hysteria2" && (
-                    <TextField label="Masquerade JSON" value={draft.hysteriaMasquerade} onChange={(hysteriaMasquerade) => setDraft({ ...draft, hysteriaMasquerade })} placeholder='{"type":"string","content":"ok"}' />
-                  )}
-                  </FieldGroup>
-                </FieldSet>
-              )}
-
-              <FieldSet>
-                <FieldTitle className="text-base">Advanced Xray JSON</FieldTitle>
-                <Separator />
-                <FieldGroup className="grid gap-4 md:grid-cols-2">
-                  <TextAreaField label="Outbound settings override" value={draft.outboundSettings} onChange={(outboundSettings) => setDraft({ ...draft, outboundSettings })} placeholder='{"level":0}' className="h-24 font-mono text-xs" />
-                  {draft.protocol !== "wireguard" && (
-                    <TextAreaField label="Stream settings override" value={draft.streamSettings} onChange={(streamSettings) => setDraft({ ...draft, streamSettings })} placeholder='{"sockopt":{}}' className="h-24 font-mono text-xs" />
-                  )}
-                </FieldGroup>
-              </FieldSet>
-            </div>
-          </div>
-          <DialogFooter className="sm:justify-between">
-            {Boolean(draft.id) ? (
-              <Button type="button" variant="destructive" onClick={deleteDraft} className="sm:me-auto">
-                <Trash2 />
-                Delete
-              </Button>
-            ) : (
-              <span />
-            )}
-            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-              <Button type="button" variant="outline" onClick={() => setEditorOpen(false)}>
-                Cancel
-              </Button>
-              <Button type="button" onClick={saveDraft}>
-                <Save />
-                Save
-              </Button>
-            </div>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={Boolean(shareDialog)} onOpenChange={(open) => !open && setShareDialog(null)}>
-        <DialogContent className="max-h-[calc(100svh-2rem)] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden sm:max-w-xl">
-          <DialogHeader>
-            <DialogTitle>Share V2Ray Profile</DialogTitle>
-            <DialogDescription>{shareDialog?.profile.name || "V2Ray Connection"}</DialogDescription>
-          </DialogHeader>
-          <div className="min-h-0 space-y-4 overflow-y-auto pr-1">
-            <div className="flex justify-center">
-              {shareDialog?.qrDataUrl ? (
-                <img
-                  src={shareDialog.qrDataUrl}
-                  alt="V2Ray share QR code"
-                  className="size-56 rounded-md border bg-white p-2"
-                />
-              ) : (
-                <div className="grid size-56 place-items-center rounded-md border bg-muted text-center text-sm text-muted-foreground">
-                  {shareDialog?.qrError || "QR code unavailable"}
-                </div>
-              )}
-            </div>
-            <Textarea
-              readOnly
-              value={shareDialog?.link || ""}
-              className="h-28 min-h-0 resize-none overflow-auto font-mono text-xs leading-relaxed [field-sizing:fixed]"
-            />
-          </div>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setShareDialog(null)}>
-              Close
-            </Button>
-            <Button type="button" onClick={copySharedProfileLink}>
-              <Copy />
-              {shareDialog?.copyStatus || "Copy"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={importOpen} onOpenChange={setImportOpen}>
-        <DialogContent className="max-h-[calc(100svh-2rem)] overflow-hidden sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Import V2Ray Profiles</DialogTitle>
-            <DialogDescription>Paste VLESS, VMess, Trojan, Shadowsocks, Hysteria2, SOCKS, HTTP proxy links, or WireGuard config.</DialogDescription>
-          </DialogHeader>
-          <TextAreaField
-            label="Profiles"
-            value={importText}
-            onChange={setImportText}
-            placeholder={"vless://...\nvmess://...\ntrojan://...\nss://...\nhy2://...\nsocks5://...\n[Interface]\nPrivateKey = ..."}
-            className="h-[min(45svh,18rem)] min-h-0 resize-none overflow-auto font-mono text-xs"
-          />
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setImportOpen(false)}>
-              Cancel
-            </Button>
-            <Button disabled={importDisabled} onClick={importProfiles}>
-              <Download />
-              Import
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={Boolean(exportText)} onOpenChange={(open) => !open && setExportText("")}>
-        <DialogContent className="max-h-[calc(100svh-2rem)] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden sm:max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Export All V2Ray Profiles</DialogTitle>
-            <DialogDescription>Copy these profile links or WireGuard configs for import on another device.</DialogDescription>
+            <DialogTitle>{t("servers.share")}</DialogTitle>
+            <DialogDescription>{shareNode?.label}</DialogDescription>
           </DialogHeader>
           <Textarea
             readOnly
-            value={exportText}
-            className="h-[min(45svh,18rem)] min-h-0 resize-none overflow-auto font-mono text-xs leading-relaxed [field-sizing:fixed]"
+            value={shareNode?.link || ""}
+            className="h-28 min-h-0 resize-none overflow-auto font-mono text-xs leading-relaxed [field-sizing:fixed]"
           />
           <DialogFooter>
-            <Button type="button" onClick={() => navigator.clipboard?.writeText(exportText)}>
+            <Button variant="outline" onClick={() => setShareNode(null)}>
+              {t("common.close")}
+            </Button>
+            <Button onClick={() => shareNode && void copyLink(shareNode)}>
               <Copy />
-              Copy links
+              {t("servers.copy")}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </>
+    </PageShell>
+  );
+}
+
+function NodeHeader({
+  column,
+  sort,
+  onSort,
+  className,
+  children,
+}: {
+  column: NodeSortColumn;
+  sort: NodeSort;
+  onSort: (column: NodeSortColumn) => void;
+  className?: string;
+  children: ReactNode;
+}) {
+  const active = sort.column === column;
+  return (
+    <th className={cn("px-2 py-2 font-medium", className)}>
+      <button type="button" className="inline-flex items-center gap-1 hover:text-foreground" onClick={() => onSort(column)}>
+        {children}
+        {active && <ChevronDown className={cn("size-3", sort.direction === "asc" && "rotate-180")} />}
+      </button>
+    </th>
   );
 }
 
 function V2RaySubscriptionsPage({
   state,
-  ping,
-  onForgetPingProfiles,
   onState,
   onError,
   onSuccess,
   t,
 }: {
   state: AppState;
-  ping: V2RayPingState;
-  onForgetPingProfiles: (ids: string[]) => void;
   onState: (state: AppState) => void;
   onError: (message: string) => void;
   onSuccess: (message: string) => void;
@@ -4157,8 +2730,8 @@ function V2RaySubscriptionsPage({
   const [refreshingSubscriptionIds, setRefreshingSubscriptionIds] = useState<Record<string, boolean>>({});
   const [selectingSubscription, setSelectingSubscription] = useState(false);
   const profileIndex = useMemo(
-    () => buildV2RayProfileIndex(state.v2rayProfiles, ping.results, ping.scanningIds),
-    [ping.results, ping.scanningIds, state.v2rayProfiles]
+    () => buildV2RayProfileIndex(state.v2rayProfiles, {}, {}),
+    [state.v2rayProfiles]
   );
   const saveDisabled = !draft.url.trim();
 
@@ -4226,9 +2799,6 @@ function V2RaySubscriptionsPage({
       if (draft.id === subscription.id) {
         setDraft(normalizeV2RaySubscription(result.subscription));
       }
-      const managedIds = result.state.v2rayProfiles.filter((profile) => profile.subscriptionId === subscription.id).map((profile) => profile.id);
-      const beforeManagedIds = profileIndex.subscriptionProfileIds[subscription.id] || [];
-      onForgetPingProfiles(beforeManagedIds.filter((id) => !managedIds.includes(id)));
       if (result.ok) {
         onSuccess(result.message || `Imported ${result.imported} V2Ray profile${result.imported === 1 ? "" : "s"}.`);
       } else {
@@ -4263,7 +2833,6 @@ function V2RaySubscriptionsPage({
       const beforeManagedIds = profileIndex.subscriptionProfileIds[subscription.id] || [];
       const nextState = await backend.deleteV2RaySubscription(subscription.id);
       onState(nextState);
-      onForgetPingProfiles(beforeManagedIds);
       setDeleteTarget(null);
       setEditorOpen(false);
       onSuccess(
@@ -4531,90 +3100,6 @@ function V2RaySubscriptionsPage({
   );
 }
 
-function BulkActionMenuItem({
-  children,
-  disabled,
-  destructive,
-  onClick,
-}: {
-  children: ReactNode;
-  disabled?: boolean;
-  destructive?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      role="menuitem"
-      disabled={disabled}
-      className={cn(
-        "flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-start text-sm outline-none transition-colors disabled:pointer-events-none disabled:opacity-50 [&_svg]:size-4 [&_svg]:shrink-0",
-        destructive
-          ? "text-destructive hover:bg-destructive/10 focus-visible:bg-destructive/10"
-          : "hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent focus-visible:text-accent-foreground"
-      )}
-      onClick={onClick}
-    >
-      {children}
-    </button>
-  );
-}
-
-function formatV2RayDelay(result?: V2RayPingResult, scanning = false): string {
-  if (scanning) {
-    return "...";
-  }
-  if (!result) {
-    return "-";
-  }
-  if (result.delayOk) {
-    return `${result.realDelayMs || result.latencyMs} ms`;
-  }
-  if (result.delayMessage) {
-    return "-1";
-  }
-  if (result.ok && result.latencyMs > 0 && !result.speedOk) {
-    return `${result.latencyMs} ms`;
-  }
-  return "-";
-}
-
-function v2rayDelayClass(result?: V2RayPingResult, scanning = false): string {
-  if (scanning) {
-    return "text-amber-600";
-  }
-  if (!result || (!result.delayOk && !result.delayMessage && !result.latencyMs)) {
-    return "text-muted-foreground";
-  }
-  return result.delayOk || (result.ok && result.latencyMs > 0 && !result.speedOk) ? "text-emerald-600" : "text-red-600";
-}
-
-function formatV2RaySpeedResult(result?: V2RayPingResult, scanning = false): string {
-  if (scanning) {
-    return "...";
-  }
-  if (!result) {
-    return "-";
-  }
-  if (result.speedOk && result.downloadBytesPerSecond > 0) {
-    return `${((result.downloadBytesPerSecond * 8) / 1_000_000).toFixed(1)} Mbps`;
-  }
-  if (result.speedMessage) {
-    return "-1";
-  }
-  return "-";
-}
-
-function v2raySpeedClass(result?: V2RayPingResult, scanning = false): string {
-  if (scanning) {
-    return "text-amber-600";
-  }
-  if (!result || (!result.speedOk && !result.speedMessage)) {
-    return "text-muted-foreground";
-  }
-  return result.speedOk ? "text-emerald-600" : "text-red-600";
-}
-
 type V2RayProfileIndex = {
   hasExportable: boolean;
   fastestProfile?: V2RayProfile;
@@ -4623,12 +3108,6 @@ type V2RayProfileIndex = {
   profileById: Record<string, V2RayProfile>;
   subscriptionProfileIds: Record<string, string[]>;
   manualProfileCount: number;
-};
-
-type V2RayFilterCounts = {
-  status: Record<string, number>;
-  type: Record<string, number>;
-  subscription: Record<string, number>;
 };
 
 function buildV2RayProfileIndex(
@@ -4671,253 +3150,8 @@ function buildV2RayProfileIndex(
   return { hasExportable, fastestProfile, failedProfiles, uncheckedProfiles, profileById, subscriptionProfileIds, manualProfileCount };
 }
 
-function buildV2RayFilterCounts(
-  profiles: V2RayProfile[],
-  results: Record<string, V2RayPingResult>,
-  scanningIds: Record<string, boolean>,
-  filters: V2RayProfileFilters
-): V2RayFilterCounts {
-  const counts: V2RayFilterCounts = {
-    status: { all: 0, reachable: 0, failed: 0, unchecked: 0 },
-    type: Object.fromEntries(v2rayProfileTypeFilterOptions.map(([filter]) => [filter, 0])),
-    subscription: { [v2raySubscriptionFilterAll]: 0, [v2raySubscriptionFilterManual]: 0 },
-  };
-
-  profiles.forEach((profile) => {
-    const result = results[profile.id];
-    const scanning = Boolean(scanningIds[profile.id]);
-    const protocol = normalizeV2RayProtocol(profile.protocol);
-    const subscriptionKey = profile.subscriptionId || v2raySubscriptionFilterManual;
-    const statusKey = v2rayProfileStatusCountKey(result, scanning);
-
-    if ((filters.type === "all" || protocol === filters.type) && v2rayProfileMatchesSubscriptionFilter(profile, filters.subscriptionId)) {
-      counts.status.all += 1;
-      if (statusKey) {
-        counts.status[statusKey] = (counts.status[statusKey] || 0) + 1;
-      }
-    }
-
-    if (v2rayProfileMatchesStatusFilter(result, scanning, filters.status) && v2rayProfileMatchesSubscriptionFilter(profile, filters.subscriptionId)) {
-      counts.type.all += 1;
-      counts.type[protocol] = (counts.type[protocol] || 0) + 1;
-    }
-
-    if (v2rayProfileMatchesStatusFilter(result, scanning, filters.status) && (filters.type === "all" || protocol === filters.type)) {
-      counts.subscription[v2raySubscriptionFilterAll] += 1;
-      counts.subscription[subscriptionKey] = (counts.subscription[subscriptionKey] || 0) + 1;
-    }
-  });
-
-  return counts;
-}
-
-function countSelectedIds(ids: string[], selectedIds: Set<string>): number {
-  let count = 0;
-  ids.forEach((id) => {
-    if (selectedIds.has(id)) {
-      count += 1;
-    }
-  });
-  return count;
-}
-
-function isTextEntryKeyboardTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) {
-    return false;
-  }
-  if (target.isContentEditable || target.closest("[contenteditable='true'], [contenteditable=''], textarea, select, [role='textbox']")) {
-    return true;
-  }
-  const input = target.closest("input");
-  if (!(input instanceof HTMLInputElement)) {
-    return false;
-  }
-  const nonTextTypes = new Set(["button", "checkbox", "radio", "range", "reset", "submit", "image"]);
-  return !nonTextTypes.has(input.type.toLowerCase());
-}
-
-function v2rayProfileStatusCountKey(result: V2RayPingResult | undefined, scanning: boolean): V2RayStatusFilter | "" {
-  if (result?.ok || result?.speedOk || result?.delayOk) {
-    return "reachable";
-  }
-  if (result) {
-    return "failed";
-  }
-  if (!scanning) {
-    return "unchecked";
-  }
-  return "";
-}
-
-function sortV2RayProfilesByMetric(
-  profiles: V2RayProfile[],
-  results: Record<string, V2RayPingResult>,
-  scanningIds: Record<string, boolean>,
-  sort: V2RayProfileSort
-): V2RayProfile[] {
-  if (sort.column === "none" || sort.direction === "none") {
-    return profiles;
-  }
-  return profiles
-    .map((profile, index) => ({ profile, index }))
-    .sort((left, right) => {
-      const comparison = compareV2RayMetricSort(
-        results[left.profile.id],
-        Boolean(scanningIds[left.profile.id]),
-        results[right.profile.id],
-        Boolean(scanningIds[right.profile.id]),
-        sort
-      );
-      return comparison || left.index - right.index;
-    })
-    .map((item) => item.profile);
-}
-
-function compareV2RayMetricSort(
-  left?: V2RayPingResult,
-  leftScanning = false,
-  right?: V2RayPingResult,
-  rightScanning = false,
-  sort: V2RayProfileSort = { column: "delay", direction: "asc" }
-): number {
-  const leftGroup = sort.column === "speed" ? v2raySpeedSortGroup(left, leftScanning) : v2rayPingSortGroup(left, leftScanning);
-  const rightGroup = sort.column === "speed" ? v2raySpeedSortGroup(right, rightScanning) : v2rayPingSortGroup(right, rightScanning);
-  if (leftGroup !== rightGroup) {
-    return leftGroup - rightGroup;
-  }
-  if (leftGroup === 0) {
-    const delta = sort.column === "speed" ? v2raySpeedSortValue(left) - v2raySpeedSortValue(right) : v2rayDelaySortValue(left) - v2rayDelaySortValue(right);
-    return sort.direction === "desc" ? -delta : delta;
-  }
-  return 0;
-}
-
-function v2rayPingSortGroup(result?: V2RayPingResult, scanning = false): number {
-  if (result?.delayOk || (result?.ok && (result.latencyMs || 0) > 0)) {
-    return 0;
-  }
-  if (result?.speedOk) {
-    return 1;
-  }
-  if (scanning) {
-    return 2;
-  }
-  if (result) {
-    return 3;
-  }
-  return 4;
-}
-
 function v2rayDelaySortValue(result?: V2RayPingResult): number {
   return result?.realDelayMs || result?.latencyMs || Number.POSITIVE_INFINITY;
-}
-
-function v2raySpeedSortGroup(result?: V2RayPingResult, scanning = false): number {
-  if (result?.speedOk) {
-    return 0;
-  }
-  if (scanning) {
-    return 1;
-  }
-  if (result?.delayOk || result?.ok) {
-    return 2;
-  }
-  if (result) {
-    return 3;
-  }
-  return 4;
-}
-
-function v2raySpeedSortValue(result?: V2RayPingResult): number {
-  return result?.downloadBytesPerSecond || Number.NEGATIVE_INFINITY;
-}
-
-function filterV2RayProfiles(
-  profiles: V2RayProfile[],
-  results: Record<string, V2RayPingResult>,
-  scanningIds: Record<string, boolean>,
-  filters: V2RayProfileFilters
-): V2RayProfile[] {
-  if (filters.status === "all" && filters.type === "all" && filters.subscriptionId === v2raySubscriptionFilterAll) {
-    return profiles;
-  }
-  return profiles.filter((profile) => v2rayProfileMatchesFilters(profile, results[profile.id], Boolean(scanningIds[profile.id]), filters));
-}
-
-function v2rayProfileMatchesFilters(profile: V2RayProfile, result: V2RayPingResult | undefined, scanning: boolean, filters: V2RayProfileFilters): boolean {
-  return (
-    v2rayProfileMatchesStatusFilter(result, scanning, filters.status) &&
-    (filters.type === "all" || normalizeV2RayProtocol(profile.protocol) === filters.type) &&
-    v2rayProfileMatchesSubscriptionFilter(profile, filters.subscriptionId)
-  );
-}
-
-function v2rayProfileMatchesStatusFilter(result: V2RayPingResult | undefined, scanning: boolean, filter: V2RayStatusFilter): boolean {
-  switch (filter) {
-    case "reachable":
-      return Boolean(result?.ok || result?.speedOk || result?.delayOk);
-    case "failed":
-      return Boolean(result && !result.ok && !result.speedOk && !result.delayOk);
-    case "unchecked":
-      return !result && !scanning;
-    default:
-      return true;
-  }
-}
-
-function v2rayProfileMatchesSubscriptionFilter(profile: V2RayProfile, filter: string): boolean {
-  if (filter === v2raySubscriptionFilterAll) {
-    return true;
-  }
-  if (filter === v2raySubscriptionFilterManual) {
-    return !profile.subscriptionId;
-  }
-  return profile.subscriptionId === filter;
-}
-
-function v2raySubscriptionFilterOptions(profileIndex: V2RayProfileIndex, subscriptions: V2RaySubscription[]): Array<[string, string]> {
-  const options: Array<[string, string]> = [[v2raySubscriptionFilterAll, "All subs"]];
-  const knownSubscriptionIds = new Set<string>();
-  if (profileIndex.manualProfileCount > 0) {
-    options.push([v2raySubscriptionFilterManual, "Manual"]);
-  }
-  subscriptions.forEach((subscription) => {
-    if (!subscription.id) {
-      return;
-    }
-    knownSubscriptionIds.add(subscription.id);
-    options.push([subscription.id, v2raySubscriptionFilterLabel(subscription)]);
-  });
-  Object.keys(profileIndex.subscriptionProfileIds)
-    .filter((id) => !knownSubscriptionIds.has(id))
-    .sort((left, right) => left.localeCompare(right))
-    .forEach((id) => options.push([id, `Unknown sub ${id}`]));
-  return options;
-}
-
-function v2raySubscriptionFilterLabel(subscription: V2RaySubscription): string {
-  return subscription.name.trim() || subscription.url.trim() || "V2Ray subscription";
-}
-
-function fastestReachableV2RayProfile(profiles: V2RayProfile[], results: Record<string, V2RayPingResult>): V2RayProfile | undefined {
-  return profiles.reduce<V2RayProfile | undefined>((fastest, profile) => {
-    const result = results[profile.id];
-    if (!result?.delayOk && !(result?.ok && result.latencyMs > 0)) {
-      return fastest;
-    }
-    if (!fastest) {
-      return profile;
-    }
-    const fastestResult = results[fastest.id];
-    return v2rayDelaySortValue(result) < v2rayDelaySortValue(fastestResult) ? profile : fastest;
-  }, undefined);
-}
-
-function isConnectableV2RayProfile(profile: V2RayProfile): boolean {
-  if (!profile.server.trim()) {
-    return false;
-  }
-  return v2rayProfileCredentialReady(profile);
 }
 
 function v2rayProfileCredentialReady(profile: V2RayProfile): boolean {
@@ -4951,60 +3185,6 @@ function v2raySubscriptionStatusLabel(subscription: V2RaySubscription): string {
     hour: "2-digit",
     minute: "2-digit",
   })}`;
-}
-
-function defaultV2RayDraft(): V2RayProfile {
-  return {
-    id: "",
-    name: "V2Ray Connection",
-    subscriptionId: "",
-    protocol: "vless",
-    server: "",
-    serverPort: 443,
-    uuid: "",
-    password: "",
-    alterId: 0,
-    security: "auto",
-    flow: "",
-    packetEncoding: "",
-    network: "tcp",
-    tls: true,
-    sni: "",
-    alpn: "",
-    allowInsecure: false,
-    utlsFingerprint: "",
-    echConfigList: "",
-    reality: false,
-    realityPublicKey: "",
-    realityShortId: "",
-    transportPath: "",
-    transportHost: "",
-    serviceName: "",
-    xhttpMode: "",
-    xhttpExtra: "",
-    webSocketEarlyData: 0,
-    webSocketEarlyDataHeader: "",
-    username: "",
-    shadowsocksMethod: "2022-blake3-aes-256-gcm",
-    uot: false,
-    uotVersion: 2,
-    hysteriaAuth: "",
-    hysteriaUdpIdleTimeout: 60,
-    hysteriaMasquerade: "",
-    httpHeaders: "",
-    wireGuardSecretKey: "",
-    wireGuardLocalAddresses: "10.0.0.2/32",
-    wireGuardPeerPublicKey: "",
-    wireGuardPreSharedKey: "",
-    wireGuardAllowedIps: "0.0.0.0/0, ::/0",
-    wireGuardKeepAlive: 0,
-    wireGuardMtu: 1420,
-    wireGuardReserved: "",
-    wireGuardNoKernelTun: true,
-    wireGuardDomainStrategy: "ForceIP",
-    outboundSettings: "",
-    streamSettings: "",
-  };
 }
 
 function defaultV2RaySubscriptionDraft(): V2RaySubscription {
@@ -5335,40 +3515,6 @@ function defaultV2RaySettingsDraft(): V2RaySettingsProfile {
     iranRoutingEnabled: false,
     logLevel: "WARN",
   };
-}
-
-function v2rayProtocolLabel(protocol: string): string {
-  switch (normalizeV2RayProtocol(protocol)) {
-    case "vmess":
-      return "VMess";
-    case "trojan":
-      return "Trojan";
-    case "shadowsocks":
-      return "Shadowsocks";
-    case "hysteria2":
-      return "Hysteria2";
-    case "wireguard":
-      return "WireGuard";
-    case "socks":
-      return "SOCKS";
-    case "http":
-      return "HTTP";
-    default:
-      return "VLESS";
-  }
-}
-
-function v2rayNetworkLabel(network: string): string {
-  const match = v2rayNetworkOptions.find(([value]) => value === (network || "tcp"));
-  return match?.[1] || (network || "tcp").toUpperCase();
-}
-
-function v2rayFlowOptions(currentFlow: string): Array<[string, string]> {
-  const flow = currentFlow.trim();
-  if (!flow || v2rayBaseFlowOptions.some(([value]) => value === flow)) {
-    return v2rayBaseFlowOptions;
-  }
-  return [...v2rayBaseFlowOptions, [flow, flow]];
 }
 
 function isExportableV2RayProfile(profile: V2RayProfile): boolean {
@@ -6673,51 +4819,6 @@ function TextField({
       />
       {description && <FieldDescription>{description}</FieldDescription>}
       <FieldError>{error}</FieldError>
-    </Field>
-  );
-}
-
-function SecretField(props: {
-  label: string;
-  value: string;
-  error?: string;
-  revealable?: boolean;
-  onChange: (value: string) => void;
-}) {
-  const [visible, setVisible] = useState(false);
-  const revealLabel = visible ? `Hide ${props.label.toLowerCase()}` : `Show ${props.label.toLowerCase()}`;
-
-  return (
-    <Field data-invalid={Boolean(props.error)}>
-      <FieldLabel>{props.label}</FieldLabel>
-      <div className="relative">
-        <Input
-          type={props.revealable && visible ? "text" : "password"}
-          value={props.value}
-          aria-invalid={Boolean(props.error)}
-          className={props.revealable ? "pe-9" : undefined}
-          onChange={(event) => props.onChange(event.target.value)}
-        />
-        {props.revealable && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                className="absolute end-1 top-1/2 size-6 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                aria-label={revealLabel}
-                aria-pressed={visible}
-                onClick={() => setVisible((current) => !current)}
-              >
-                {visible ? <EyeOff /> : <Eye />}
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>{revealLabel}</TooltipContent>
-          </Tooltip>
-        )}
-      </div>
-      <FieldError>{props.error}</FieldError>
     </Field>
   );
 }

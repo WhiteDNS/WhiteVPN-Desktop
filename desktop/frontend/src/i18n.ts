@@ -189,6 +189,38 @@ const strings = {
   "subs.inUse": { en: "In use", fa: "در حال استفاده" },
   "subs.disconnectFirst": { en: "Disconnect first", fa: "اول قطع کنید" },
 
+  // The Servers page: the workbench.
+  "servers.description": {
+    en: "The same nodes the VPN connects through. Test them, sort them, share them.",
+    fa: "همان سرورهایی که وی‌پی‌ان از آن‌ها وصل می‌شود. آزمایش، مرتب‌سازی و اشتراک‌گذاری.",
+  },
+  "servers.tests": { en: "Tests", fa: "آزمون‌ها" },
+  "servers.test.reach": { en: "Reachable", fa: "در دسترس" },
+  "servers.test.delay": { en: "Delay", fa: "تأخیر" },
+  "servers.test.speed": { en: "Speed", fa: "سرعت" },
+  "servers.testAll": { en: "Test all", fa: "آزمون همه" },
+  "servers.testSelected": { en: "Test selected", fa: "آزمون انتخاب‌شده‌ها" },
+  "servers.testOptions": { en: "Options", fa: "تنظیمات" },
+  "servers.stop": { en: "Stop", fa: "توقف" },
+  "servers.selected": { en: "selected", fa: "انتخاب‌شده" },
+  "servers.column.node": { en: "Node", fa: "سرور" },
+  "servers.column.address": { en: "Address", fa: "آدرس" },
+  "servers.column.actions": { en: "Actions", fa: "عملیات" },
+  "servers.use": { en: "Connect through this node", fa: "اتصال از این سرور" },
+  "servers.share": { en: "Share", fa: "اشتراک‌گذاری" },
+  "servers.copy": { en: "Copy link", fa: "کپی لینک" },
+  "servers.copied": { en: "Link copied.", fa: "لینک کپی شد." },
+  "servers.option.reachTimeout": { en: "Reachable timeout (ms)", fa: "مهلت در دسترس بودن (ms)" },
+  "servers.option.reachWorkers": { en: "Reachable at once", fa: "همزمانی در دسترس بودن" },
+  "servers.option.delayTimeout": { en: "Delay timeout (ms)", fa: "مهلت تأخیر (ms)" },
+  "servers.option.delayWorkers": { en: "Delay at once", fa: "همزمانی تأخیر" },
+  "servers.option.speedBudget": { en: "Speed budget (ms)", fa: "بودجهٔ سرعت (ms)" },
+  "servers.option.speedUrl": { en: "Speed test file", fa: "فایل آزمون سرعت" },
+  "servers.option.hint": {
+    en: "Reachable opens a TCP connection and needs no engine. Delay and speed run on an engine of their own, so they never disturb a live connection — and speed is one node at a time, so it is capped at 25.",
+    fa: "«در دسترس» فقط یک اتصال TCP باز می‌کند و به موتور نیاز ندارد. تأخیر و سرعت روی موتور جداگانه‌ای اجرا می‌شوند و هرگز اتصال زندهٔ شما را مختل نمی‌کنند — و سرعت هر بار یک سرور است، پس تا ۲۵ مورد محدود می‌شود.",
+  },
+
   "common.close": { en: "Close", fa: "بستن" },
 
   // Settings page

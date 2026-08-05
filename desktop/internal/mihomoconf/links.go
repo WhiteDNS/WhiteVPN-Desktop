@@ -61,6 +61,14 @@ var pickUserAgent = func() string { return userAgents[rand.Intn(len(userAgents))
 // batch, because one bad node in a subscription of hundreds should not cost the
 // user the rest.
 func ConvertLinks(input string) ([]Proxy, error) {
+	proxies, _, err := ConvertLinksWithSources(input)
+	return proxies, err
+}
+
+// ConvertLinksWithSources is ConvertLinks, and also the line each proxy came
+// from. Sharing a node means handing back the link it arrived as, and only the
+// converter knows which line survived and which was skipped.
+func ConvertLinksWithSources(input string) ([]Proxy, []string, error) {
 	body := input
 	if decoded, ok := decodeBase64Text(input); ok {
 		body = decoded
@@ -68,6 +76,7 @@ func ConvertLinks(input string) ([]Proxy, error) {
 
 	names := newNameRegistry()
 	var proxies []Proxy
+	var sources []string
 	for _, raw := range strings.Split(body, "\n") {
 		line := strings.TrimRight(raw, " \r")
 		if !strings.Contains(line, "://") {
@@ -97,11 +106,12 @@ func ConvertLinks(input string) ([]Proxy, error) {
 			continue
 		}
 		proxies = append(proxies, proxy)
+		sources = append(sources, strings.TrimSpace(line))
 	}
 	if len(proxies) == 0 {
-		return nil, errors.New("mihomoconf: no usable proxies in this subscription")
+		return nil, nil, errors.New("mihomoconf: no usable proxies in this subscription")
 	}
-	return proxies, nil
+	return proxies, sources, nil
 }
 
 // --- vless / vmess-aead ------------------------------------------------------
