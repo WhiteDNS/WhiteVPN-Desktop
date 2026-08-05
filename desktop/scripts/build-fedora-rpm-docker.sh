@@ -98,6 +98,6 @@ printf 'Building Fedora 44 WebKitGTK 4.1 RPM for %s\n' "$target_arch"
       HELPER_GO_LDFLAGS="$HELPER_GO_LDFLAGS" \
       UPX="$UPX" \
       UPX_FLAGS="$UPX_FLAGS"
-    rpm -qpR "build/releases/all/WhiteDNS-Desktop-$VERSION-$TARGET_NAME.rpm" | grep -E "lib(webkit2gtk|javascriptcoregtk)-4.1"
+    rpm -qpR "build/releases/all/WhiteVPN-Desktop-$VERSION-$TARGET_NAME.rpm" | grep -E "lib(webkit2gtk|javascriptcoregtk)-4.1"
     chown -R "$HOST_UID:$HOST_GID" build clients cores .cache frontend/dist frontend/wailsjs 2>/dev/null || true
   '

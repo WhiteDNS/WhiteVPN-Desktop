@@ -100,7 +100,11 @@ if [ -n "$icon_source" ]; then
 fi
 
 installed_size="$(du -sk "$payload_root" | awk '{print $1}')"
-asset_base="WhiteDNS-Desktop-$version-$asset_suffix"
+# WhiteVPN, not WhiteDNS: the app was renamed and this line was missed, so the
+# .deb and .rpm came out under the old name while the .tar.gz beside them used
+# the new one. Everything built; only the names disagreed, and the workflow went
+# looking for files that were never going to be there.
+asset_base="WhiteVPN-Desktop-$version-$asset_suffix"
 
 format_enabled() {
   case ",$formats," in
