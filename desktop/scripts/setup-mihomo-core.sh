@@ -56,7 +56,15 @@ if [[ ! -f "${MIHOMO_DIR}/go.mod" ]]; then
   rm -rf "${MIHOMO_DIR}"
   git clone --quiet --depth 1 --branch "${MIHOMO_TAG}" "${MIHOMO_REPO}" "${MIHOMO_DIR}"
   git -C "${MIHOMO_DIR}" fetch --quiet --depth 2 "${FLCLASH_PATCH_REPO}" "${FLCLASH_PATCH_COMMIT}"
-  git -c commit.gpgsign=false -C "${MIHOMO_DIR}" cherry-pick "${FLCLASH_PATCH_COMMIT}"
+  # The identity is supplied rather than assumed. A cherry-pick writes a
+  # commit, and git refuses to write one without a committer — which is every
+  # CI runner that has not been told who it is, and every developer who has
+  # just installed git. It goes on the command line so nothing outside this
+  # tree is configured on the way past.
+  git -c commit.gpgsign=false \
+    -c user.name="WhiteVPN Desktop build" \
+    -c user.email="build@localhost" \
+    -C "${MIHOMO_DIR}" cherry-pick "${FLCLASH_PATCH_COMMIT}"
 fi
 
 # Same checks Android's script makes, for the same reason.
