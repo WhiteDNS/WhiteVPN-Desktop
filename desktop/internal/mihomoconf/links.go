@@ -6,12 +6,12 @@
 // the phone understands — vless, vmess, trojan and ss — so a subscription that
 // yields the same nodes there yields them here.
 //
-// Hysteria2 is the one deliberate addition. The phone skips it; this engine
-// supports it, and a desktop has the bandwidth to make it worth having. That is
-// a divergence from parity, recorded as one in ANDROID-PARITY.md, rather than a
-// gap. Everything else the phone drops — socks, tuic — is still dropped, because
-// a desktop quietly connecting through a node the phone never offers is a
-// different product.
+// Hysteria2 and WireGuard are the deliberate additions. The phone skips both;
+// this engine supports them, and a desktop has the bandwidth to make them worth
+// having. Those are divergences from parity, recorded as such in
+// ANDROID-PARITY.md, rather than gaps. Everything else the phone drops — socks,
+// tuic — is still dropped, because a desktop quietly connecting through a node
+// the phone never offers is a different product.
 package mihomoconf
 
 import (
@@ -99,6 +99,8 @@ func ConvertLinksWithSources(input string) ([]Proxy, []string, error) {
 			proxy, err = parseShadowsocks(line, names)
 		case "hysteria2", "hy2":
 			proxy, err = parseHysteria2(line, names)
+		case "wireguard", "wg":
+			proxy, err = parseWireGuard(line, names)
 		default:
 			continue
 		}
@@ -429,6 +431,108 @@ func parseHysteria2(line string, names *nameRegistry) (Proxy, error) {
 		proxy["fingerprint"] = fingerprint
 	}
 	return proxy, nil
+}
+
+// parseWireGuard converts a wireguard:// link.
+//
+// There is no standard for these, so the names below are the ones the clients
+// that emit them actually use: the private key sits where the user info goes,
+// the peer is the host and port, and everything else is a query parameter under
+// two or three different spellings each.
+func parseWireGuard(line string, names *nameRegistry) (Proxy, error) {
+	uri, err := splitURI(line)
+	if err != nil {
+		return nil, err
+	}
+	endpoint, err := parseEndpoint(uri, false)
+	if err != nil {
+		return nil, err
+	}
+	query := parseQuery(uri.rawQuery)
+
+	privateKey := decodeComponent(endpoint.userInfo)
+	if strings.TrimSpace(privateKey) == "" {
+		privateKey = firstQueryValue(query, "privatekey", "private-key", "private_key", "secretkey")
+	}
+	publicKey := firstQueryValue(query, "publickey", "public-key", "public_key", "peer_public_key", "peerpublickey")
+	if strings.TrimSpace(privateKey) == "" || strings.TrimSpace(publicKey) == "" {
+		// Without both keys there is no tunnel to build, only a proxy that
+		// would fail at the first packet.
+		return nil, errSkipLink
+	}
+
+	proxy := Proxy{
+		"name":        names.register(decodeComponent(uri.rawFragment)),
+		"type":        "wireguard",
+		"server":      endpoint.host,
+		"port":        endpoint.port,
+		"private-key": privateKey,
+		"public-key":  publicKey,
+		"udp":         true,
+	}
+
+	// The tunnel's own addresses, which arrive in one comma-separated parameter
+	// and have to be split by family: mihomo keeps v4 and v6 in separate fields.
+	for _, address := range splitCSV(firstQueryValue(query, "address", "ip", "addresses", "local_address")) {
+		if strings.Contains(address, ":") {
+			if _, taken := proxy["ipv6"]; !taken {
+				proxy["ipv6"] = address
+			}
+			continue
+		}
+		if _, taken := proxy["ip"]; !taken {
+			proxy["ip"] = address
+		}
+	}
+	if presharedKey := firstQueryValue(query, "presharedkey", "pre-shared-key", "pre_shared_key", "psk"); presharedKey != "" {
+		proxy["pre-shared-key"] = presharedKey
+	}
+	if allowed := splitCSV(firstQueryValue(query, "allowed_ips", "allowedips", "allowed-ips")); len(allowed) > 0 {
+		proxy["allowed-ips"] = allowed
+	}
+	if mtu := parseIntOrZero(firstQueryValue(query, "mtu")); mtu > 0 {
+		proxy["mtu"] = mtu
+	}
+	if keepalive := parseIntOrZero(firstQueryValue(query, "keepalive", "persistent-keepalive", "persistentkeepalive")); keepalive > 0 {
+		proxy["persistent-keepalive"] = keepalive
+	}
+	// Cloudflare WARP and the clients that imitate it carry three reserved
+	// bytes. The engine wants exactly three or none at all.
+	if reserved := splitCSV(firstQueryValue(query, "reserved")); len(reserved) == 3 {
+		values := make([]int, 0, 3)
+		for _, part := range reserved {
+			// Not parseIntOrZero: zero is a legal byte, so "not a number" has to
+			// be told apart from it rather than accepted as one.
+			value, err := strconv.Atoi(part)
+			if err != nil || value < 0 || value > 255 {
+				values = values[:0]
+				break
+			}
+			values = append(values, value)
+		}
+		if len(values) == 3 {
+			proxy["reserved"] = values
+		}
+	}
+	return proxy, nil
+}
+
+// firstQueryValue returns the first of several spellings that carries anything.
+func firstQueryValue(query map[string]string, keys ...string) string {
+	for _, key := range keys {
+		if value := strings.TrimSpace(query[key]); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func parseIntOrZero(value string) int {
+	number, err := strconv.Atoi(strings.TrimSpace(value))
+	if err != nil {
+		return 0
+	}
+	return number
 }
 
 func parseShadowsocks(line string, names *nameRegistry) (Proxy, error) {

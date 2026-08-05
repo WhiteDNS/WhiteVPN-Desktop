@@ -288,7 +288,7 @@ hand.
 
 ## Divergences that are intentional
 
-Three places where copying Android exactly would be wrong:
+Places where copying Android exactly would be wrong:
 
 1. **TUN comes from config, not a file descriptor.** Android sets
    `tun.enable: false` and hands the core an fd from `VpnService`. The Windows
@@ -314,7 +314,18 @@ Three places where copying Android exactly would be wrong:
    Fronting leaves hysteria2 alone: it is QUIC with its own certificate and has
    no name to move.
 
-4. **Plain HTTP subscriptions are allowed, and marked.** The phone refuses them
+5. **WireGuard is offered here and not on the phone**, for the same reason and
+   found the same way: a user's subscription held five links and the app showed
+   four. The engine has a WireGuard outbound; nothing was converting the links,
+   so the node vanished with no error anywhere — the worst kind of gap, because
+   the count on the Subscriptions page agreed with the empty result. Verified
+   against that server on 2026-08-05: the node measures. There is no standard
+   for `wireguard://`, so the parser reads each field under the two or three
+   spellings clients actually emit, splits `address` by family into `ip` and
+   `ipv6`, and skips any link missing either half of the key pair rather than
+   producing a node that fails at the first packet.
+
+6. **Plain HTTP subscriptions are allowed, and marked.** The phone refuses them
    and its reason is good: a server list fetched in the clear can be read and
    replaced by anyone on the path, who on a network that blocks VPNs is the
    party the VPN exists to get past. But providers do serve subscriptions over
@@ -325,7 +336,7 @@ Three places where copying Android exactly would be wrong:
    rather than asked about once and forgotten. Anything that is not a web
    address is still refused.
 
-5. **The privacy notice describes this app, not the phone's.** Every line of it
+7. **The privacy notice describes this app, not the phone's.** Every line of it
    states something the code does and can be checked against it. The wording is
    the desktop's own; the published policy is linked rather than restated.
 
@@ -431,6 +442,16 @@ Measured 2026-08-04, from Windows:
   it; `countryCodeFromNodeName` reads the flag. A catalogue that stops shipping
   flags takes the location filter with it, and the dialog would show one country:
   none.
+- **A node can be dead in the subscription itself, and it looks exactly like a
+  bug here.** Measured 2026-08-05 on a user's own subscription: a REALITY node
+  failed every connection while the other four worked. The engine's own debug
+  log said `REALITY Authentication: false`, and the panel serving that
+  subscription was emitting a **random `sid` on every fetch** — `aa`, `ceb0`,
+  `bff1475e32`, `3810c9df3b744624`. Every variant failed: no short-id, each
+  advertised short-id, `support-x25519mlkem768`, and plain TCP with no xhttp at
+  all. Before rewriting a converter, put the node in front of the engine at
+  `log-level: debug` and read what it says; the conversion here matched
+  mihomo's own `common/convert` field for field.
 - **The mihomo session has no stored profile behind it.** `ActiveConnectionID`
   is empty and no `V2RayProfile` is selected, so anything written against the
   Xray path's idea of an active connection quietly does nothing. That is what
