@@ -55,8 +55,6 @@ type AppApi = {
   PingV2RayProfiles(): Promise<V2RayPingResult[]>;
   PingV2RayProfileIDs(ids: string[]): Promise<V2RayPingResult[]>;
   PingV2RayProfile(profile: V2RayProfile): Promise<V2RayPingResult>;
-  SpeedTestV2RayProfileIDs(ids: string[]): Promise<V2RayPingResult[]>;
-  RealDelayV2RayProfileIDs(ids: string[]): Promise<V2RayPingResult[]>;
   CancelV2RayProfileTests(): Promise<void>;
   DeleteDuplicateV2RayProfiles(): Promise<V2RayDuplicateRemovalResult>;
   SaveV2RaySettingsProfile(profile: V2RaySettingsProfile): Promise<AppState>;
@@ -67,7 +65,6 @@ type AppApi = {
   StartWhiteDNSVPNConnection(): Promise<AppState>;
   RefreshWhiteDNSVPNConnection(): Promise<AppState>;
   SaveWhiteDNSVPNFrontingIPs(rawText: string): Promise<AppState>;
-  StartV2RayConnection(): Promise<AppState>;
   StopConnection(): Promise<AppState>;
   ClearRuntimeLogs(): Promise<AppState>;
   ClearRuntimeLogsForType(runtimeType: RuntimeType): Promise<AppState>;
@@ -150,8 +147,6 @@ export const backend = {
   pingV2RayProfiles: () => app().PingV2RayProfiles(),
   pingV2RayProfileIds: (ids: string[]) => app().PingV2RayProfileIDs(ids),
   pingV2RayProfile: (profile: V2RayProfile) => app().PingV2RayProfile(profile),
-  speedTestV2RayProfileIds: (ids: string[]) => app().SpeedTestV2RayProfileIDs(ids),
-  realDelayV2RayProfileIds: (ids: string[]) => app().RealDelayV2RayProfileIDs(ids),
   cancelV2RayProfileTests: () => app().CancelV2RayProfileTests(),
   deleteDuplicateV2RayProfiles: () => app().DeleteDuplicateV2RayProfiles(),
   saveV2RaySettingsProfile: (profile: V2RaySettingsProfile) => app().SaveV2RaySettingsProfile(profile),
@@ -162,7 +157,6 @@ export const backend = {
   startWhiteDNSVPNConnection: () => app().StartWhiteDNSVPNConnection(),
   refreshWhiteDNSVPNConnection: () => app().RefreshWhiteDNSVPNConnection(),
   saveWhiteDNSVPNFrontingIps: (rawText: string) => app().SaveWhiteDNSVPNFrontingIPs(rawText),
-  startV2RayConnection: () => app().StartV2RayConnection(),
   stopConnection: () => app().StopConnection(),
   clearRuntimeLogs: (runtimeType: RuntimeType = "") => app().ClearRuntimeLogsForType(runtimeType),
   saveRuntimeLogs: (rawText: string) => app().SaveRuntimeLogs(rawText),

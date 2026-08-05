@@ -294,7 +294,7 @@ func TestHandleRuntimeLiveCallbacksIgnoredAfterTerminalState(t *testing.T) {
 	}
 }
 
-func TestBeginStoppingMarksRunningRuntimeAndRevertsOnFailure(t *testing.T) {
+func TestBeginStoppingMarksARunningRuntime(t *testing.T) {
 	for _, status := range []string{model.RuntimeConnecting, model.RuntimeConnected} {
 		t.Run(status, func(t *testing.T) {
 			app := &App{state: model.DefaultAppState()}
@@ -303,8 +303,7 @@ func TestBeginStoppingMarksRunningRuntimeAndRevertsOnFailure(t *testing.T) {
 			events := []string{}
 			app.emitHook = func(name string, _ any) { events = append(events, name) }
 
-			revert, stopping := app.beginStopping()
-			if !stopping {
+			if !app.beginStopping() {
 				t.Fatalf("expected a running runtime to be marked as stopping")
 			}
 			if got := app.GetAppState().Runtime.Status; got != model.RuntimeStopping {
@@ -312,15 +311,6 @@ func TestBeginStoppingMarksRunningRuntimeAndRevertsOnFailure(t *testing.T) {
 			}
 			if !reflect.DeepEqual(events, []string{"runtime:state"}) {
 				t.Fatalf("expected the interface to be told, got %#v", events)
-			}
-
-			revert()
-			runtimeState := app.GetAppState().Runtime
-			if runtimeState.Status != status {
-				t.Fatalf("expected %q to be restored, got %q", status, runtimeState.Status)
-			}
-			if runtimeState.Message != "Proxy listening on 127.0.0.1:7890" {
-				t.Fatalf("expected the previous message to be restored, got %q", runtimeState.Message)
 			}
 		})
 	}
@@ -334,7 +324,7 @@ func TestBeginStoppingLeavesIdleRuntimeAlone(t *testing.T) {
 			events := []string{}
 			app.emitHook = func(name string, _ any) { events = append(events, name) }
 
-			if _, stopping := app.beginStopping(); stopping {
+			if app.beginStopping() {
 				t.Fatalf("expected nothing to stop from %q", status)
 			}
 			if got := app.GetAppState().Runtime.Status; got != status {

@@ -1,17 +1,14 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"net/url"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
 	"whitevpn-desktop/internal/model"
 	"whitevpn-desktop/internal/profiles"
-	runtimemgr "whitevpn-desktop/internal/runtime"
 )
 
 func TestExportV2RayProfileLinkIncludesWebSocketEarlyData(t *testing.T) {
@@ -174,57 +171,6 @@ func TestV2RayPingResultJSONIncludesSpeedAndDelayFields(t *testing.T) {
 	}
 }
 
-func TestRunTemporaryV2RayProfileUsesFakeXrayRuntime(t *testing.T) {
-	profile := duplicateTestV2RayProfile("v2ray-runtime-test", "Runtime test")
-	var gotConfig runtimemgr.XrayLaunchConfig
-	started := false
-	stopped := false
-	callbackCalled := false
-	app := &App{
-		runtimeManagerFactory: func(_ string, _ runtimemgr.Callbacks) probeRuntimeManager {
-			return fakeProbeRuntimeManager{
-				startXray: func(_ context.Context, cfg runtimemgr.XrayLaunchConfig) error {
-					started = true
-					gotConfig = cfg
-					return nil
-				},
-				stop: func() error {
-					stopped = true
-					return nil
-				},
-			}
-		},
-	}
-
-	err := app.runTemporaryV2RayProfile(context.Background(), profile, "speed", func(proxyConfig runtimeProxyConfig) {
-		callbackCalled = true
-		if !strings.HasPrefix(proxyConfig.Address, "127.0.0.1:") {
-			t.Fatalf("expected localhost proxy address, got %q", proxyConfig.Address)
-		}
-		if proxyConfig.Protocol == "" {
-			t.Fatal("expected proxy protocol to be set")
-		}
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !started || !stopped || !callbackCalled {
-		t.Fatalf("expected temp Xray runtime to start, stop, and run callback; started=%t stopped=%t callback=%t", started, stopped, callbackCalled)
-	}
-	if gotConfig.ProfileID != profile.ID || gotConfig.Name != profile.Name {
-		t.Fatalf("unexpected launch profile metadata: %#v", gotConfig)
-	}
-	if gotConfig.SetSystemProxy {
-		t.Fatal("temporary V2Ray tests must not set system proxy")
-	}
-	if gotConfig.PublicListenIP != "127.0.0.1" || gotConfig.PublicListenPort == 0 {
-		t.Fatalf("unexpected temporary listen address: %#v", gotConfig)
-	}
-	if gotConfig.CoreProtocol == "" || !strings.Contains(gotConfig.XrayConfig, `"outbounds"`) {
-		t.Fatalf("expected Xray launch config with protocol and rendered config, got %#v", gotConfig)
-	}
-}
-
 func TestCancelV2RayProfileTestsCancelsActiveContext(t *testing.T) {
 	app := &App{}
 	ctx, done := app.beginV2RayProfileTestRun()
@@ -243,37 +189,6 @@ func TestCancelV2RayProfileTestsCancelsActiveContext(t *testing.T) {
 	app.v2rayTestMu.Unlock()
 	if active {
 		t.Fatal("expected active V2Ray profile test cancel function to be cleared")
-	}
-}
-
-func TestRunTemporaryV2RayProfileStopsRuntimeAfterCancellation(t *testing.T) {
-	profile := duplicateTestV2RayProfile("v2ray-runtime-cancel", "Runtime cancel")
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	stopped := false
-	app := &App{
-		runtimeManagerFactory: func(_ string, _ runtimemgr.Callbacks) probeRuntimeManager {
-			return fakeProbeRuntimeManager{
-				startXray: func(_ context.Context, _ runtimemgr.XrayLaunchConfig) error {
-					return nil
-				},
-				stop: func() error {
-					stopped = true
-					return nil
-				},
-			}
-		},
-	}
-
-	err := app.runTemporaryV2RayProfile(ctx, profile, "delay", func(runtimeProxyConfig) {
-		cancel()
-		<-ctx.Done()
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !stopped {
-		t.Fatal("expected temporary Xray runtime cleanup to stop the fake manager after cancellation")
 	}
 }
 
@@ -297,23 +212,4 @@ func containsV2RayProfile(items []model.V2RayProfile, id string) bool {
 		}
 	}
 	return false
-}
-
-type fakeProbeRuntimeManager struct {
-	startXray func(context.Context, runtimemgr.XrayLaunchConfig) error
-	stop      func() error
-}
-
-func (m fakeProbeRuntimeManager) StartXray(ctx context.Context, cfg runtimemgr.XrayLaunchConfig) error {
-	if m.startXray != nil {
-		return m.startXray(ctx, cfg)
-	}
-	return nil
-}
-
-func (m fakeProbeRuntimeManager) Stop() error {
-	if m.stop != nil {
-		return m.stop()
-	}
-	return nil
 }

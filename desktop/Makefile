@@ -209,31 +209,21 @@ package: validate-version
 		$(MAKE) package-assets; \
 	fi
 
+# The engine that travels inside the app. mihomo is the only one now, so this
+# makes sure it is built for the target rather than fetching a second core.
 prepare-embedded-core:
 	@if [ -z "$(TARGET_GOOS)" ] || [ -z "$(TARGET_GOARCH)" ]; then \
 		printf 'TARGET_GOOS and TARGET_GOARCH are required\n' >&2; \
 		exit 1; \
 	fi
-	$(MAKE) xray-core-target TARGET_GOOS="$(TARGET_GOOS)" TARGET_GOARCH="$(TARGET_GOARCH)"
 	@set -e; \
-	core="xray-$(TARGET_GOOS)-$(TARGET_GOARCH)"; \
+	core="mihomo-$(TARGET_GOOS)-$(TARGET_GOARCH)"; \
 	if [ "$(TARGET_GOOS)" = "windows" ]; then core="$$core.exe"; fi; \
-	rm -rf cores; \
-	mkdir -p cores; \
-	: > cores/.keep; \
-	cp "$(XRAY_CACHE_DIR)/$$core" "cores/$$core"; \
-	chmod 755 "cores/$$core"; \
-	cp "$(XRAY_CACHE_DIR)/geoip.dat" "cores/geoip.dat"; \
-	cp "$(XRAY_CACHE_DIR)/geosite.dat" "cores/geosite.dat"; \
-	if [ "$(TARGET_GOOS)" = "windows" ]; then \
-		if [ ! -f "$(XRAY_CACHE_DIR)/wintun.dll" ]; then \
-			printf 'Windows Xray TUN support requires %s\n' "$(XRAY_CACHE_DIR)/wintun.dll" >&2; \
-			exit 1; \
-		fi; \
-		cp "$(XRAY_CACHE_DIR)/wintun.dll" "cores/wintun.dll"; \
-		chmod 644 "cores/wintun.dll"; \
+	if [ ! -f "cores/$$core" ]; then \
+		$(MAKE) mihomo-core TARGET_GOOS="$(TARGET_GOOS)" TARGET_GOARCH="$(TARGET_GOARCH)"; \
 	fi; \
-	printf 'Prepared embedded Xray core %s\n' "cores/$$core"
+	chmod 755 "cores/$$core"; \
+	printf 'Embedding engine %s\n' "cores/$$core"
 
 prepare-embedded-platform:
 	@if [ -z "$(TARGET_GOOS)" ] || [ -z "$(TARGET_GOARCH)" ]; then \

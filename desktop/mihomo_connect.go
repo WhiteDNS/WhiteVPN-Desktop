@@ -330,13 +330,49 @@ func findMihomoCore() (string, error) {
 		}
 		return "", fmt.Errorf("WHITEVPN_MIHOMO_BIN points at %s, which is not there", override)
 	}
-	if dir := findXrayCoresDir(); dir != "" {
+	if dir := findCoresDir(); dir != "" {
 		candidate := filepath.Join(dir, name)
 		if _, err := os.Stat(candidate); err == nil {
 			return candidate, nil
 		}
 	}
-	return "", fmt.Errorf("the mihomo engine (%s) is not built; run `make mihomo-core`", name)
+	// Nothing beside the app: unpack the copy that travels inside it, so an
+	// install is one file rather than a file and a folder that has to stay with
+	// it.
+	return extractEmbeddedCore(name)
+}
+
+// extractEmbeddedCore writes the engine out beside the app's own data, once.
+func extractEmbeddedCore(name string) (string, error) {
+	raw, err := coreAssets.ReadFile("cores/" + name)
+	if err != nil {
+		return "", fmt.Errorf("the mihomo engine (%s) is not in this build; run `make mihomo-core`", name)
+	}
+	dir, err := appConfigDir()
+	if err != nil {
+		return "", err
+	}
+	dir = filepath.Join(dir, "cores")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", err
+	}
+	target := filepath.Join(dir, name)
+
+	// Rewrite only when it differs, so an upgraded app replaces the engine and
+	// an unchanged one does not pay to unpack 56 MB on every connect.
+	if existing, err := os.Stat(target); err == nil && existing.Size() == int64(len(raw)) {
+		return target, nil
+	}
+	if err := os.WriteFile(target, raw, 0o755); err != nil {
+		return "", fmt.Errorf("unpack the engine: %w", err)
+	}
+	if runtime.GOOS == "windows" {
+		if wintun, err := coreAssets.ReadFile("cores/wintun.dll"); err == nil {
+			// The tunnel driver has to sit beside the engine that loads it.
+			_ = os.WriteFile(filepath.Join(dir, "wintun.dll"), wintun, 0o644)
+		}
+	}
+	return target, nil
 }
 
 // dnsPrivacyMode maps the stored setting onto the engine's.

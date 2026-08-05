@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"crypto/tls"
 	"encoding/base64"
-	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -19,8 +18,6 @@ import (
 
 	"whitevpn-desktop/internal/model"
 	"whitevpn-desktop/internal/profiles"
-	runtimemgr "whitevpn-desktop/internal/runtime"
-	"whitevpn-desktop/internal/xray"
 )
 
 const (
@@ -444,26 +441,6 @@ func (a *App) PingV2RayProfile(profile model.V2RayProfile) (model.V2RayPingResul
 	return pingV2RayProfile(profiles.NormalizeV2RayProfile(profile)), nil
 }
 
-func (a *App) SpeedTestV2RayProfileIDs(ids []string) ([]model.V2RayPingResult, error) {
-	a.mu.Lock()
-	profilesSnapshot := a.v2rayProfilesByIDsLocked(ids)
-	a.mu.Unlock()
-
-	ctx, done := a.beginV2RayProfileTestRun()
-	defer done()
-	return a.testV2RayProfilesSnapshot(ctx, profilesSnapshot, a.speedTestV2RayProfile), nil
-}
-
-func (a *App) RealDelayV2RayProfileIDs(ids []string) ([]model.V2RayPingResult, error) {
-	a.mu.Lock()
-	profilesSnapshot := a.v2rayProfilesByIDsLocked(ids)
-	a.mu.Unlock()
-
-	ctx, done := a.beginV2RayProfileTestRun()
-	defer done()
-	return a.testV2RayProfilesSnapshot(ctx, profilesSnapshot, a.realDelayV2RayProfile), nil
-}
-
 func (a *App) CancelV2RayProfileTests() error {
 	a.cancelV2RayProfileTests()
 	return nil
@@ -622,103 +599,6 @@ func pingV2RayProfile(profile model.V2RayProfile) model.V2RayPingResult {
 	return result
 }
 
-func (a *App) speedTestV2RayProfile(ctx context.Context, profile model.V2RayProfile) model.V2RayPingResult {
-	result := newV2RayRuntimeTestResult(profile)
-	err := a.runTemporaryV2RayProfile(ctx, profile, "speed", func(proxyConfig runtimeProxyConfig) {
-		client, err := httpClientThroughProxy(proxyConfig)
-		if err != nil {
-			result.SpeedMessage = err.Error()
-			result.Message = result.SpeedMessage
-			return
-		}
-		defer closeHTTPClientIdleConnections(client)
-
-		var lastErr error
-		for _, endpoint := range speedTestURLs {
-			speedResult := downloadSpeedFromURL(ctx, client, endpoint, speedTestMaxBytes)
-			if speedResult.bytesPerSecond > 0 {
-				result.OK = true
-				result.SpeedOK = true
-				result.DownloadBytesPerSecond = speedResult.bytesPerSecond
-				result.SpeedTestBytes = speedResult.bytes
-				result.SpeedTestDurationMs = speedResult.duration.Milliseconds()
-				result.SpeedMessage = fmt.Sprintf("Speed %.2f Mbps", float64(speedResult.bytesPerSecond*8)/1_000_000)
-				result.Message = result.SpeedMessage
-				return
-			}
-			if speedResult.err != nil {
-				lastErr = speedResult.err
-			}
-			if ctx.Err() != nil {
-				lastErr = ctx.Err()
-				break
-			}
-		}
-		if lastErr == nil {
-			lastErr = errors.New("speed test returned no data")
-		}
-		result.SpeedMessage = lastErr.Error()
-		result.Message = result.SpeedMessage
-	})
-	if err != nil {
-		result.SpeedMessage = err.Error()
-		result.Message = result.SpeedMessage
-	}
-	return result
-}
-
-func (a *App) realDelayV2RayProfile(ctx context.Context, profile model.V2RayProfile) model.V2RayPingResult {
-	result := newV2RayRuntimeTestResult(profile)
-	err := a.runTemporaryV2RayProfile(ctx, profile, "delay", func(proxyConfig runtimeProxyConfig) {
-		client, err := httpClientThroughProxy(proxyConfig)
-		if err != nil {
-			result.DelayMessage = err.Error()
-			result.Message = result.DelayMessage
-			return
-		}
-		defer closeHTTPClientIdleConnections(client)
-
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, proxyPingTarget, nil)
-		if err != nil {
-			result.DelayMessage = err.Error()
-			result.Message = result.DelayMessage
-			return
-		}
-		req.Header.Set("User-Agent", "WhiteDNS-Desktop")
-		started := time.Now()
-		resp, err := client.Do(req)
-		elapsed := time.Since(started).Milliseconds()
-		if err != nil {
-			if resp != nil && resp.Body != nil {
-				_ = resp.Body.Close()
-			}
-			result.RealDelayMs = elapsed
-			result.LatencyMs = elapsed
-			result.DelayMessage = err.Error()
-			result.Message = result.DelayMessage
-			return
-		}
-		defer resp.Body.Close()
-		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1024))
-		result.RealDelayMs = elapsed
-		result.LatencyMs = elapsed
-		if resp.StatusCode != http.StatusNoContent {
-			result.DelayMessage = fmt.Sprintf("real delay returned HTTP %d", resp.StatusCode)
-			result.Message = result.DelayMessage
-			return
-		}
-		result.OK = true
-		result.DelayOK = true
-		result.DelayMessage = fmt.Sprintf("Real delay %d ms", elapsed)
-		result.Message = result.DelayMessage
-	})
-	if err != nil {
-		result.DelayMessage = err.Error()
-		result.Message = result.DelayMessage
-	}
-	return result
-}
-
 func newV2RayRuntimeTestResult(profile model.V2RayProfile) model.V2RayPingResult {
 	endpoint := strings.TrimSpace(profile.Server)
 	if endpoint != "" && profile.ServerPort > 0 {
@@ -729,61 +609,6 @@ func newV2RayRuntimeTestResult(profile model.V2RayProfile) model.V2RayPingResult
 		Endpoint:  endpoint,
 		Message:   "Not tested",
 	}
-}
-
-func (a *App) runTemporaryV2RayProfile(ctx context.Context, profile model.V2RayProfile, phase string, test func(runtimeProxyConfig)) error {
-	settings, err := temporaryV2RayTestSettings()
-	if err != nil {
-		return err
-	}
-	config, err := xray.RenderV2RayConfig(profile, settings)
-	if err != nil {
-		return err
-	}
-	manager, cleanup, err := a.newProbeRuntimeManager(profile.ID, "v2ray-"+phase, runtimemgr.Callbacks{})
-	if err != nil {
-		return err
-	}
-	defer cleanup()
-
-	protocol := xray.V2RayPublicProtocol(settings)
-	if err := manager.StartXray(ctx, runtimemgr.XrayLaunchConfig{
-		ProfileID:        profile.ID,
-		Name:             profile.Name,
-		XrayConfig:       config,
-		CoreProtocol:     protocol,
-		SetSystemProxy:   false,
-		PublicListenIP:   settings.ListenIP,
-		PublicListenPort: settings.ListenPort,
-		DebugLogs:        false,
-		TunEnabled:       false,
-	}); err != nil {
-		return err
-	}
-
-	test(runtimeProxyConfig{
-		Address:  net.JoinHostPort("127.0.0.1", strconv.Itoa(settings.ListenPort)),
-		Protocol: protocol,
-	})
-	return nil
-}
-
-func temporaryV2RayTestSettings() (model.V2RaySettingsProfile, error) {
-	port, err := freeLocalTCPPort()
-	if err != nil {
-		return model.V2RaySettingsProfile{}, err
-	}
-	settings := model.DefaultV2RaySettingsProfile()
-	settings.ID = "v2ray-test"
-	settings.Name = "V2Ray Test"
-	settings.ListenIP = "127.0.0.1"
-	settings.AllowLAN = false
-	settings.ListenPort = port
-	settings.InboundType = "mixed"
-	settings.SetSystemProxy = false
-	settings.IranRoutingEnabled = false
-	settings.LogLevel = "ERROR"
-	return profiles.NormalizeV2RaySettingsProfile(settings), nil
 }
 
 func duplicateV2RayProfileIndexes(items []model.V2RayProfile, selectedID string, activeID string) map[int]bool {
@@ -968,120 +793,6 @@ func (a *App) GetDefaultV2RaySettingsProfile() model.V2RaySettingsProfile {
 	return profiles.NormalizeV2RaySettingsProfile(model.DefaultV2RaySettingsProfile())
 }
 
-func (a *App) StartV2RayConnection() (model.AppState, error) {
-	return a.startV2RayConnection(context.Background())
-}
-
-func (a *App) startV2RayConnection(ctx context.Context) (model.AppState, error) {
-	return a.startV2RayConnectionWithProfile(ctx, nil, nil)
-}
-
-func (a *App) startV2RayConnectionWithProfile(ctx context.Context, runtimeProfile *model.V2RayProfile, startupLogs []string) (model.AppState, error) {
-	a.mu.Lock()
-	if a.state.Runtime.Status != model.RuntimeDisconnected && a.state.Runtime.Status != model.RuntimeFailed {
-		defer a.mu.Unlock()
-		return a.state, nil
-	}
-	state := profiles.NormalizeState(a.state)
-	profile, ok := selectedV2RayProfile(state)
-	if !ok {
-		a.mu.Unlock()
-		return a.GetAppState(), fmt.Errorf("V2Ray profile is missing")
-	}
-	storedProfile := profile
-	if runtimeProfile != nil {
-		profile = profiles.NormalizeV2RayProfile(*runtimeProfile)
-	}
-	settings, ok := selectedV2RaySettingsProfile(state)
-	if !ok {
-		a.mu.Unlock()
-		return a.GetAppState(), fmt.Errorf("V2Ray settings profile is missing")
-	}
-	config, err := xray.RenderV2RayConfig(profile, settings)
-	if err != nil {
-		a.state.Runtime.Status = model.RuntimeFailed
-		a.state.Runtime.RuntimeType = model.RuntimeTypeV2Ray
-		message := err.Error()
-		a.state.Runtime.Message = message
-		a.state.Runtime.ActiveConnectionID = ""
-		a.state.Runtime.ListenIP = ""
-		a.state.Runtime.ListenPort = 0
-		a.state.Runtime.ProxyProtocol = ""
-		a.state.Runtime.LocalProxyIP = ""
-		a.state.Runtime.PublicProxyIP = ""
-		a.state.Runtime.FrontingIP = ""
-		a.state.Runtime.ResolverMTUScanPaused = false
-		a.state.Runtime.AutoProfilePresetID = ""
-		a.state.Runtime.AutoProfileName = ""
-		a.state.Runtime.Progress = model.ConnectionProgress{Phase: "failed"}
-		a.state.Runtime.TrafficMonitorMessage = ""
-		next := a.state
-		a.mu.Unlock()
-		a.emit("runtime:error", message)
-		a.emit("runtime:state", next.Runtime)
-		return next, err
-	}
-	publicIP, publicPort := xray.V2RayPublicListen(settings)
-	startMessage := "Starting V2Ray"
-	if storedProfile.SubscriptionID == whiteDNSVPNSubscriptionID {
-		startMessage = "Starting WhiteDNS VPN"
-	}
-	state.Runtime.Status = model.RuntimeConnecting
-	state.Runtime.RuntimeType = model.RuntimeTypeV2Ray
-	state.Runtime.Message = startMessage
-	state.Runtime.ActiveConnectionID = profile.ID
-	state.Runtime.ListenIP = publicIP
-	state.Runtime.ListenPort = publicPort
-	state.Runtime.ProxyProtocol = xray.V2RayPublicProtocol(settings)
-	state.Runtime.LocalProxyIP, state.Runtime.PublicProxyIP = proxyShareIPs(publicIP, detectShareNetworkIPv4)
-	state.Runtime.FrontingIP = whiteDNSVPNRuntimeFrontingIP(storedProfile, profile)
-	state.Runtime.ResolverMTUScanPaused = false
-	state.Runtime.AutoProfilePresetID = ""
-	state.Runtime.AutoProfileName = ""
-	state.Runtime.Progress = model.ConnectionProgress{Phase: "preparing", Percent: 3}
-	state.Runtime.ResolverState = model.ResolverRuntimeState{}
-	state.Runtime.Stats = model.TrafficStats{}
-	state.Runtime.TrafficMonitorMessage = ""
-	initialLogs := sanitizeRuntimeLogLines(model.RuntimeTypeV2Ray, append([]string{startMessage}, startupLogs...))
-	state.Runtime.Logs = initialLogs
-	state.Runtime.V2RayLogs = appendRuntimeLog(initialLogs, state.Runtime.V2RayLogs...)
-	a.state = state
-	next := a.state
-	a.mu.Unlock()
-
-	a.clearProxyCountryCache()
-	a.emit("runtime:state", next.Runtime)
-	a.emit("runtime:progress", next.Runtime.Progress)
-	a.logV2RayStartDiagnostics(profile, settings, len(config))
-	a.startV2RayUpstreamWebSocketProbe(profile)
-	a.notifyFirewallIfEnabled(ctx)
-	if err := a.manager.StartXray(ctx, runtimemgr.XrayLaunchConfig{
-		ProfileID:        profile.ID,
-		Name:             profile.Name,
-		XrayConfig:       config,
-		CoreProtocol:     xray.V2RayPublicProtocol(settings),
-		SetSystemProxy:   settings.SetSystemProxy,
-		PublicListenIP:   publicIP,
-		PublicListenPort: publicPort,
-		DebugLogs:        strings.EqualFold(strings.TrimSpace(settings.LogLevel), "DEBUG"),
-		TunEnabled:       settings.TunEnabled,
-		TunInterfaceName: settings.TunInterfaceName,
-		TunMTU:           settings.TunMTU,
-		TunIPv6:          settings.TunIPv6,
-		TunServerHost:    profile.Server,
-	}); err != nil {
-		if errors.Is(err, context.Canceled) {
-			a.handleRuntimeState(model.RuntimeDisconnected, "Disconnected")
-			return a.GetAppState(), nil
-		}
-		a.handleRuntimeError(err.Error())
-		a.handleRuntimeState(model.RuntimeFailed, err.Error())
-		return a.GetAppState(), err
-	}
-	a.startV2RayHealthProbe(profile.ID, publicIP, publicPort, xray.V2RayPublicProtocol(settings))
-	return a.GetAppState(), nil
-}
-
 func (a *App) logV2RayStartDiagnostics(profile model.V2RayProfile, settings model.V2RaySettingsProfile, configBytes int) {
 	profile = profiles.NormalizeV2RayProfile(profile)
 	settings = profiles.NormalizeV2RaySettingsProfile(settings)
@@ -1211,8 +922,10 @@ func v2rayWebSocketHostHeader(profile model.V2RayProfile) string {
 	return strings.TrimSpace(profile.TransportHost)
 }
 
+// v2rayTLSServerName is the name a TLS handshake should ask for: whichever of
+// the fields that can hold one does, in the order a server reads them.
 func v2rayTLSServerName(profile model.V2RayProfile) string {
-	return xray.V2RayTransportServerName(profile)
+	return whiteDNSVPNProfileHost(profiles.NormalizeV2RayProfile(profile))
 }
 
 func randomWebSocketKey() string {
@@ -1221,51 +934,6 @@ func randomWebSocketKey() string {
 		return "dGhlIHNhbXBsZSBub25jZQ=="
 	}
 	return base64.StdEncoding.EncodeToString(key)
-}
-
-func (a *App) startV2RayHealthProbe(profileID string, listenIP string, listenPort int, proxyProtocol string) {
-	proxyAddress := net.JoinHostPort(proxyHealthHost(listenIP), strconv.Itoa(listenPort))
-	go func() {
-		proxyConfig := runtimeProxyConfig{
-			Address:  proxyAddress,
-			Protocol: normalizeRuntimeProxyProtocol(proxyProtocol),
-		}
-		if proxyConfig.Protocol == "" {
-			proxyConfig.Protocol = "socks"
-		}
-		a.handleLogForActiveRuntime(model.RuntimeTypeV2Ray, profileID, "V2Ray health check: probing "+proxyPingTarget+" through "+strings.ToUpper(proxyConfig.Protocol)+" "+proxyAddress)
-		client, err := httpClientThroughProxy(proxyConfig)
-		if err != nil {
-			a.handleLogForActiveRuntime(model.RuntimeTypeV2Ray, profileID, "V2Ray health check failed before request: "+err.Error())
-			return
-		}
-		defer closeHTTPClientIdleConnections(client)
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, proxyPingTarget, nil)
-		if err != nil {
-			a.handleLogForActiveRuntime(model.RuntimeTypeV2Ray, profileID, "V2Ray health check request build failed: "+err.Error())
-			return
-		}
-		req.Header.Set("User-Agent", "WhiteDNS-Desktop")
-		started := time.Now()
-		resp, err := client.Do(req)
-		elapsed := time.Since(started).Milliseconds()
-		if err != nil {
-			if resp != nil && resp.Body != nil {
-				_ = resp.Body.Close()
-			}
-			a.handleLogForActiveRuntime(model.RuntimeTypeV2Ray, profileID, fmt.Sprintf("V2Ray health check failed after %d ms: %v", elapsed, err))
-			return
-		}
-		defer resp.Body.Close()
-		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1024))
-		if resp.StatusCode < 200 || resp.StatusCode >= 400 {
-			a.handleLogForActiveRuntime(model.RuntimeTypeV2Ray, profileID, fmt.Sprintf("V2Ray health check returned HTTP %d after %d ms", resp.StatusCode, elapsed))
-			return
-		}
-		a.handleLogForActiveRuntime(model.RuntimeTypeV2Ray, profileID, fmt.Sprintf("V2Ray health check succeeded: HTTP %d in %d ms", resp.StatusCode, elapsed))
-	}()
 }
 
 func proxyHealthHost(listenIP string) string {

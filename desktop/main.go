@@ -11,6 +11,10 @@ import (
 //go:embed all:frontend/dist
 var assets embed.FS
 
+// The engine travels inside the app, so an install is one file. cores/ holds
+// only what this app runs now: mihomo, and on Windows the tunnel driver it
+// needs to create an adapter.
+//
 //go:embed all:cores
 var coreAssets embed.FS
 

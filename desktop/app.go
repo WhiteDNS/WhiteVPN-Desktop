@@ -17,11 +17,9 @@ import (
 	"whitevpn-desktop/internal/firewall"
 	"whitevpn-desktop/internal/model"
 	"whitevpn-desktop/internal/profiles"
-	runtimemgr "whitevpn-desktop/internal/runtime"
 )
 
 type firewallChecker func(context.Context) model.FirewallStatus
-type runtimeManagerFactory func(runtimeDir string, callbacks runtimemgr.Callbacks) probeRuntimeManager
 
 const runtimeLogLimit = 2000
 
@@ -41,7 +39,6 @@ var (
 type App struct {
 	ctx       context.Context
 	store     *profiles.Store
-	manager   *runtimemgr.Manager
 	configDir string
 
 	mu                         sync.Mutex
@@ -75,7 +72,6 @@ type App struct {
 	nodesAt time.Time
 
 	firewallChecker       firewallChecker
-	runtimeManagerFactory runtimeManagerFactory
 	lastFirewallStatusKey string
 	emitHook              func(name string, payload any)
 
@@ -92,7 +88,6 @@ func NewApp() (*App, error) {
 	if err := ensureAppDataWritable(context.Background(), configDir); err != nil {
 		return nil, err
 	}
-	runtimeDir := filepath.Join(configDir, "runtime")
 	statePath := filepath.Join(configDir, "state.json")
 	// Look for a WhiteDNS Desktop install to inherit from, but only before this
 	// app has a state file of its own - after that the user has made their own
@@ -110,17 +105,6 @@ func NewApp() (*App, error) {
 		firewallChecker:     firewall.Detect,
 		proxyCountryCache:   map[string]proxyCountryCacheEntry{},
 	}
-	app.manager = runtimemgr.NewManager(
-		runtimeManagerOptions(runtimeDir),
-		runtimemgr.Callbacks{
-			OnLog:           app.handleLog,
-			OnState:         app.handleRuntimeState,
-			OnProgress:      app.handleProgress,
-			OnStats:         app.handleStats,
-			OnTrafficStatus: app.handleTrafficMonitorStatus,
-			OnError:         app.handleRuntimeError,
-		},
-	)
 	state, err := store.Load()
 	if err != nil {
 		return nil, err
@@ -172,14 +156,6 @@ func (a *App) DismissLegacyImportOffer() {
 	a.legacyImport = profiles.LegacyImport{}
 }
 
-func runtimeManagerOptions(runtimeDir string) runtimemgr.Options {
-	return runtimemgr.Options{
-		RuntimeDir:      runtimeDir,
-		XrayCoresDir:    findXrayCoresDir(),
-		EmbeddedCoresFS: coreAssets,
-	}
-}
-
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	a.startTray()
@@ -190,7 +166,6 @@ func (a *App) startup(ctx context.Context) {
 func (a *App) shutdown(ctx context.Context) {
 	systray.Quit()
 	a.stopMihomo()
-	_ = a.manager.Stop()
 	_ = a.CancelV2RayProfileTests()
 	_, _ = a.CancelValidatorScan()
 	a.waitValidatorStopped(5 * time.Second)
@@ -225,60 +200,33 @@ func (a *App) StopConnection() (model.AppState, error) {
 	// waiting for it to finish and then tearing down what it built. It unwinds
 	// on its own and reports itself disconnected.
 	a.cancelConnect()
-	revert, stopping := a.beginStopping()
+	a.beginStopping()
 
-	// A mihomo session and an Xray one are never both running, so stopping the
-	// one that exists is the whole job.
-	if a.stopMihomo() {
-		return a.GetAppState(), nil
-	}
-	err := a.manager.Stop()
-	if err == nil {
+	if !a.stopMihomo() {
+		// Nothing was running; there is still a status to settle, because a
+		// cancelled connect leaves one behind.
 		a.handleRuntimeState(model.RuntimeDisconnected, "Disconnected")
-		return a.GetAppState(), nil
 	}
-	// A stop that failed leaves the runtime where it was; saying "Disconnecting"
-	// for the rest of the session would be a lie the user cannot clear.
-	if stopping {
-		revert()
-	}
-	return a.GetAppState(), err
+	return a.GetAppState(), nil
 }
 
-// beginStopping marks a running runtime as on its way down, and returns the
-// function that puts the previous status back if the stop does not happen.
-//
-// It reports whether there was anything to stop: stopping what is already
-// stopped must not flash a state the user was never in.
-func (a *App) beginStopping() (revert func(), stopping bool) {
+// beginStopping marks a running runtime as on its way down, and reports whether
+// there was anything to stop: stopping what is already stopped must not flash a
+// state the user was never in.
+func (a *App) beginStopping() bool {
 	a.mu.Lock()
-	previousStatus := a.state.Runtime.Status
-	previousMessage := a.state.Runtime.Message
-	switch previousStatus {
+	switch a.state.Runtime.Status {
 	case model.RuntimeConnecting, model.RuntimeConnected:
 	default:
 		a.mu.Unlock()
-		return func() {}, false
+		return false
 	}
 	a.state.Runtime.Status = model.RuntimeStopping
 	a.state.Runtime.Message = "Disconnecting"
 	runtimeState := a.state.Runtime
 	a.mu.Unlock()
 	a.emit("runtime:state", runtimeState)
-
-	return func() {
-		a.mu.Lock()
-		if a.state.Runtime.Status != model.RuntimeStopping {
-			// Something else has moved on since; it knows better than we do.
-			a.mu.Unlock()
-			return
-		}
-		a.state.Runtime.Status = previousStatus
-		a.state.Runtime.Message = previousMessage
-		reverted := a.state.Runtime
-		a.mu.Unlock()
-		a.emit("runtime:state", reverted)
-	}, true
+	return true
 }
 
 func (a *App) ClearRuntimeLogs() model.AppState {
@@ -672,7 +620,7 @@ func appConfigDir() (string, error) {
 	return filepath.Join(base, "WhiteVPN Desktop"), nil
 }
 
-func findXrayCoresDir() string {
+func findCoresDir() string {
 	for _, candidate := range appRelativeDirs("cores") {
 		if info, err := os.Stat(candidate); err == nil && info.IsDir() {
 			abs, _ := filepath.Abs(candidate)

@@ -232,6 +232,7 @@ hand.
 
 | Item | Why |
 |---|---|
+| The Xray path | `[—]` Removed 2026-08-04. mihomo is the engine; keeping a second one meant features written against it — IP fronting was one — were invisible in the app that ships, and the Servers page quietly started a different engine from the VPN page. Took 66 MB of the binary with it |
 | DPI bypass (ByeDPI) | `[—]` Dead on Android too: `isEnabled()` returns `false` unconditionally and the store deletes its own key. No UI exists there either |
 | Quick Settings tile | `[—]` No Windows equivalent |
 | `VpnService`, uid→package resolution | `[—]` Android platform APIs; replaced by process-based split tunnel |
@@ -280,7 +281,9 @@ Everything below is what someone needs to resume without reading the history.
 ### Where things stand
 
 The engine is mihomo, the one WhiteVPN for Android runs, built from the same
-pinned sources. Connecting works end to end and is verified against the live
+pinned sources, and now the only one: the Xray path was removed on 2026-08-04.
+It travels inside the app and unpacks itself beside the app's data on first
+connect, so an install is one file. Connecting works end to end and is verified against the live
 catalogue: the share links in, proxies out, a node selected explicitly, and a
 real HTTP request through the proxy before anything is reported connected. The
 catalogue is not a fixed size — 845 proxies measured early on 2026-08-04, 585
@@ -323,8 +326,10 @@ but only the navigation, the connect button and those dialogs are keyed so far.
 - **IPv6 containment rests on route metric, not on removing routes.** The
   physical v6 defaults remain and are merely outranked, so containment has to be
   verified after connecting, never assumed.
-- **A control that writes to `V2RaySettingsProfile` does nothing.** Only the Xray
-  path reads it. Two rounds of dead switches came from this.
+- **A control that writes to `V2RaySettingsProfile` does nothing.** Nothing
+  reads it any more: it belonged to the Xray path. Three rounds of dead switches
+  came from that path before it was removed — the settings profile ones, the
+  Servers page's, and IP fronting.
 - **A node's country is in its name, and only there.** No geoip call resolves
   it; `countryCodeFromNodeName` reads the flag. A catalogue that stops shipping
   flags takes the location filter with it, and the dialog would show one country:

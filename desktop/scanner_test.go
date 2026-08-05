@@ -714,4 +714,3 @@ func readValidatorMeta(t *testing.T, path string) validatorResultFileMeta {
 	}
 	return meta
 }
-

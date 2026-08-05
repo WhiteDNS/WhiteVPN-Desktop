@@ -220,7 +220,6 @@ const defaultValidatorWorkers = 128;
 const maxValidatorWorkers = 2048;
 const errorToastTTLMS = 6000;
 const v2rayPingBatchSize = 128;
-const v2rayRuntimeTestBatchSize = 4;
 const v2rayProfileVirtualRowHeight = 40;
 const v2rayProfileVirtualOverscan = 12;
 const v2rayProfileTableColumnStorageKey = "whitedns.v2ray.profileTable.columnWidths.v2";
@@ -1195,42 +1194,10 @@ function App() {
     await runV2RayProfileTests(profiles, backend.pingV2RayProfileIds, { clearExisting: true, kind: "ping" });
   }
 
-  async function realDelayV2RayProfiles(profiles: V2RayProfile[]) {
-    const requested = Array.from(new Map(profiles.filter((profile) => profile.id).map((profile) => [profile.id, profile])).values());
-    if (!requested.length) {
-      return;
-    }
-    const freshSpeedOK = new Set<string>();
-
-    const speedRun = await runV2RayProfileTests(requested, backend.speedTestV2RayProfileIds, {
-      batchSize: v2rayRuntimeTestBatchSize,
-      clearExisting: true,
-      kind: "speed",
-    });
-    if (!speedRun.completed) {
-      return;
-    }
-    speedRun.results.forEach((result) => {
-      if (result.speedOk) {
-        freshSpeedOK.add(result.profileId);
-      }
-    });
-
-    const delayProfiles = requested.filter((profile) => freshSpeedOK.has(profile.id));
-    const skippedCount = requested.length - delayProfiles.length;
-    if (!delayProfiles.length) {
-      showError("No V2Ray profiles passed the speed test; real delay was not run.");
-      return;
-    }
-    if (skippedCount > 0) {
-      showSuccess(`Skipped ${skippedCount} V2Ray profile${skippedCount === 1 ? "" : "s"} whose speed test failed.`);
-    }
-    await runV2RayProfileTests(delayProfiles, backend.realDelayV2RayProfileIds, {
-      batchSize: v2rayRuntimeTestBatchSize,
-      kind: "delay",
-    });
-  }
-
+  // Real delay and speed used to be measured by starting a temporary Xray for
+  // each profile. That engine is gone; the connection dialog measures delay
+  // through the running one instead. What is left here is the reachability
+  // ping, which needs no engine at all.
   async function cancelV2RayProfileTests() {
     v2rayPingRunRef.current += 1;
     setV2RayPingRunning(false);
@@ -1310,7 +1277,6 @@ function App() {
                   state={state}
                   ping={v2rayPing}
                   onPingProfiles={pingV2RayProfiles}
-                  onRealDelayProfiles={realDelayV2RayProfiles}
                   onCancelProfileTests={cancelV2RayProfileTests}
                   onForgetPingProfiles={forgetV2RayPingProfiles}
                   onState={applyState}
@@ -2587,7 +2553,6 @@ function V2RayProfilesPage({
   state,
   ping,
   onPingProfiles,
-  onRealDelayProfiles,
   onCancelProfileTests,
   onForgetPingProfiles,
   onState,
@@ -2597,7 +2562,6 @@ function V2RayProfilesPage({
   state: AppState;
   ping: V2RayPingState;
   onPingProfiles: (profiles: V2RayProfile[]) => Promise<void>;
-  onRealDelayProfiles: (profiles: V2RayProfile[]) => Promise<void>;
   onCancelProfileTests: () => Promise<void>;
   onForgetPingProfiles: (ids: string[]) => void;
   onState: (state: AppState) => void;
@@ -2638,7 +2602,6 @@ function V2RayProfilesPage({
   const v2rayRuntimeActiveForSetup = v2RayRuntimeActive(state);
   const pingRunning = ping.running;
   const pingTestRunning = ping.running && ping.activeKind === "ping";
-  const latencySpeedTestRunning = ping.running && (ping.activeKind === "speed" || ping.activeKind === "delay");
   const pingResults = ping.results;
   const pingScanningIds = ping.scanningIds;
   const runtimeBusy = runtime.status !== "disconnected" && runtime.status !== "failed";
@@ -3108,14 +3071,6 @@ function V2RayProfilesPage({
     await onPingProfiles(selectedV2RayProfiles);
   }
 
-  async function realDelayProfiles() {
-    await onRealDelayProfiles(state.v2rayProfiles);
-  }
-
-  async function realDelaySelectedProfiles() {
-    await onRealDelayProfiles(selectedV2RayProfiles);
-  }
-
   function toggleMetricSort(column: Exclude<V2RayProfileSortColumn, "none">) {
     setProfileSort((current) => {
       if (current.column !== column) {
@@ -3180,9 +3135,6 @@ function V2RayProfilesPage({
         onState(await backend.stopConnection());
       }
       onState(await change());
-      if (shouldRestart) {
-        onState(await backend.startV2RayConnection());
-      }
     } catch (err) {
       onError(messageFromError(err));
     } finally {
@@ -3212,7 +3164,6 @@ function V2RayProfilesPage({
       if (state.selectedV2RayProfileId !== profile.id) {
         onState(await backend.selectV2RayProfile(profile.id));
       }
-      onState(await backend.startV2RayConnection());
     } catch (err) {
       onError(messageFromError(err));
     }
@@ -3408,21 +3359,6 @@ function V2RayProfilesPage({
                 </TooltipTrigger>
                 <TooltipContent>{pingTestRunning ? "Stop ping test" : "Ping only"}</TooltipContent>
               </Tooltip>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    type="button"
-                    variant={latencySpeedTestRunning ? "destructive" : "outline"}
-                    disabled={!latencySpeedTestRunning && (!state.v2rayProfiles.length || pingRunning)}
-                    onClick={latencySpeedTestRunning ? onCancelProfileTests : realDelayProfiles}
-                    aria-label={latencySpeedTestRunning ? "Stop V2Ray latency and speed test" : "Test latency and speed for V2Ray servers"}
-                  >
-                    {latencySpeedTestRunning ? <Square /> : <Gauge className={cn(pingRunning && ping.activeKind === "delay" && "animate-pulse")} />}
-                    {latencySpeedTestRunning ? "Stop" : "Latency + speed"}
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>{latencySpeedTestRunning ? "Stop latency and speed test" : "Test speed first, then real delay"}</TooltipContent>
-              </Tooltip>
               <Button
                 type="button"
                 variant="outline"
@@ -3468,10 +3404,6 @@ function V2RayProfilesPage({
                 <Wifi className={cn(pingRunning && ping.activeKind === "ping" && "animate-pulse")} />
                 Ping selected
               </BulkActionMenuItem>
-              <BulkActionMenuItem disabled={!selectedProfileCount || pingRunning} onClick={() => runBulkAction(realDelaySelectedProfiles)}>
-                <Gauge className={cn(pingRunning && "animate-pulse")} />
-                Latency + speed selected
-              </BulkActionMenuItem>
               <BulkActionMenuItem disabled={!selectedFastestProfile || isProfileLocked || settingsSaving} onClick={() => runBulkAction(useFastestSelectedProfile)}>
                 <Gauge />
                 Use fastest selected
@@ -3496,10 +3428,6 @@ function V2RayProfilesPage({
               <BulkActionMenuItem disabled={!state.v2rayProfiles.length || pingRunning} onClick={() => runBulkAction(pingProfiles)}>
                 <Wifi className={cn(pingRunning && ping.activeKind === "ping" && "animate-pulse")} />
                 Ping all
-              </BulkActionMenuItem>
-              <BulkActionMenuItem disabled={!state.v2rayProfiles.length || pingRunning} onClick={() => runBulkAction(realDelayProfiles)}>
-                <Gauge className={cn(pingRunning && "animate-pulse")} />
-                Latency + speed all
               </BulkActionMenuItem>
               <BulkActionMenuItem disabled={!fastestProfile || isProfileLocked || settingsSaving} onClick={() => runBulkAction(useFastestProfile)}>
                 <Gauge />
@@ -3554,13 +3482,6 @@ function V2RayProfilesPage({
               >
                 <Wifi className={cn((pingRunning || pingScanningIds[profileContextMenu.profile.id]) && "animate-pulse")} />
                 Ping
-              </BulkActionMenuItem>
-              <BulkActionMenuItem
-                disabled={pingRunning || Boolean(pingScanningIds[profileContextMenu.profile.id])}
-                onClick={() => runProfileContextAction(() => onRealDelayProfiles([profileContextMenu.profile]))}
-              >
-                <Gauge className={cn((pingRunning || pingScanningIds[profileContextMenu.profile.id]) && "animate-pulse")} />
-                Latency + speed
               </BulkActionMenuItem>
               <BulkActionMenuItem
                 disabled={!isExportableV2RayProfile(profileContextMenu.profile)}
