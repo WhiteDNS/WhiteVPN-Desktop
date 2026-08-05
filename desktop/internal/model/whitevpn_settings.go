@@ -54,6 +54,25 @@ type DNSPrivacySettings struct {
 	DoTEndpoint string `json:"dotEndpoint"`
 }
 
+// ConnectionSelection is the dashboard's node choice: which node to connect
+// through, of which protocols, and how the list is ordered while choosing.
+//
+// The phone keys each of these by subscription — `profile:<subId>`,
+// `types:<subId>`, `delay-sort:<subId>`. There is one subscription here, the
+// built-in catalogue, so they are stored flat; they become per-subscription
+// when user subscriptions arrive.
+type ConnectionSelection struct {
+	// Node is the exact proxy name to connect through. Empty means automatic:
+	// whichever node passes the filters first, in catalogue order.
+	Node string `json:"node"`
+	// Types restricts the choice to these protocols. Empty means all of them.
+	Types []string `json:"types"`
+	// DelaySort orders the connection dialog by measured delay. It is a view
+	// setting and nothing more: the connect path never waits on a measurement,
+	// because a node that fails a delay probe can still carry traffic.
+	DelaySort bool `json:"delaySort"`
+}
+
 // SplitTunnelSettings routes some programs around the tunnel, or only some
 // through it.
 type SplitTunnelSettings struct {
@@ -81,6 +100,7 @@ type KillSwitchSettings struct {
 type WhiteVPNSettings struct {
 	// Dashboard rows.
 	CountryCode string              `json:"countryCode"`
+	Connection  ConnectionSelection `json:"connection"`
 	SplitTunnel SplitTunnelSettings `json:"splitTunnel"`
 
 	// Settings sections, in the order the phone shows them.
@@ -107,6 +127,7 @@ type WhiteVPNSettings struct {
 func DefaultWhiteVPNSettings() WhiteVPNSettings {
 	return WhiteVPNSettings{
 		CountryCode:         "", // unset means automatic
+		Connection:          ConnectionSelection{Node: "", Types: []string{}, DelaySort: false},
 		SplitTunnel:         SplitTunnelSettings{Mode: SplitTunnelOff, Processes: []string{}},
 		TLSIntegrityEnabled: false,
 		AmneziaNoise: AmneziaNoiseSettings{
@@ -181,9 +202,36 @@ func NormalizeWhiteVPNSettings(settings WhiteVPNSettings) WhiteVPNSettings {
 		settings.DNSPrivacy.DoTEndpoint = trimmed
 	}
 
-	settings.CountryCode = strings.TrimSpace(settings.CountryCode)
+	settings.CountryCode = NormalizeCountryCode(settings.CountryCode)
+	settings.Connection.Node = strings.TrimSpace(settings.Connection.Node)
+	settings.Connection.Types = nonEmptyStrings(lowered(settings.Connection.Types))
 	settings.Language = strings.TrimSpace(settings.Language)
 	return settings
+}
+
+// NormalizeCountryCode settles on the shape the catalogue's own names yield:
+// two upper-case letters, or empty for anywhere. Anything else is a value no
+// node can match, and a filter that matches nothing looks exactly like an
+// empty catalogue.
+func NormalizeCountryCode(value string) string {
+	code := strings.ToUpper(strings.TrimSpace(value))
+	if len(code) != 2 {
+		return ""
+	}
+	for _, r := range code {
+		if r < 'A' || r > 'Z' {
+			return ""
+		}
+	}
+	return code
+}
+
+func lowered(values []string) []string {
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		out = append(out, strings.ToLower(strings.TrimSpace(value)))
+	}
+	return out
 }
 
 func nonEmptyStrings(values []string) []string {

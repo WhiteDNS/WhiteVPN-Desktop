@@ -30,10 +30,52 @@ about the visual language changes; only the content is ported.
 
 | # | Setting | Store / key | Default | Desktop | Status |
 |---|---|---|---|---|---|
-| 1.1 | Location filter | `white_dns_connection_location` / `country_code` | unset = Automatic | VPN page row → country dialog. Reuse `country.go` | `[ ]` |
-| 1.2 | Connection (node pick) | `white_dns_connection_selection` / `profile:<subId>` | unset = Automatic | VPN page row → connection dialog | `[ ]` |
-| 1.3 | Connection type filter | `white_dns_connection_selection` / `types:<subId>` | empty = all types | Inside the connection dialog | `[ ]` |
-| 1.4 | Sort by delay | `white_dns_connection_selection` / `delay-sort:<subId>` | `false` | Toggle in the connection dialog | `[ ]` |
+| 1.1 | Location filter | `white_dns_connection_location` / `country_code` | unset = Automatic | VPN page row → country dialog | `[x]` |
+| 1.2 | Connection (node pick) | `white_dns_connection_selection` / `profile:<subId>` | unset = Automatic | VPN page row → connection dialog | `[x]` |
+| 1.3 | Connection type filter | `white_dns_connection_selection` / `types:<subId>` | empty = all types | Inside the connection dialog | `[x]` |
+| 1.4 | Sort by delay | `white_dns_connection_selection` / `delay-sort:<subId>` | `false` | Toggle in the connection dialog | `[x]` |
+
+**Where a node's country comes from.** The catalogue puts it in the name, as a
+flag: `🇩🇪 | @WhiteDNS | DE1|36.8MB/s|DNSOK|…`. A flag is a pair of regional
+indicator symbols, and those are letters — 🇩🇪 is D then E — so the location
+filter reads the code straight off the name. No geoip lookup, nothing to ask the
+network for, and no database that can disagree with the catalogue about where a
+node is. Measured 2026-08-04: 585 nodes, 29 countries, 5 nodes the catalogue
+marks ❓ and leaves without one. Those are reachable only with the filter off.
+
+The four choices are stored flat rather than per subscription, because there is
+one subscription; they take the `<subId>` shape when §4 lands.
+
+**What the choices do on the connect path.** They narrow and order the candidate
+list, nothing more — every node stays in the configuration, so a later choice
+needs no reconnect. A choice nothing matches is refused at the point it is made
+and again at connect, rather than falling back to the whole catalogue: a user who
+asked for Germany and was quietly given Japan has been lied to about where their
+traffic leaves from.
+
+**Changing a choice while connected** moves the live connection onto a node that
+satisfies it, through the engine's own `ChangeProxy`, and holds that node to the
+same health check connecting uses. A node that carries no traffic leaves the
+previous one in place. Nothing is done when the node already in use satisfies
+the new choice.
+
+Delay is a view setting only. It is measured through the running engine, so the
+dialog says plainly that it needs a connection rather than showing zeroes; the
+connect path still never waits on a measurement.
+
+**Where a connection says it leaves from.** The status card carries the country
+once connected, from two sources kept deliberately apart. `NodeCountryCode` is
+the flag in the node's name — the node's *claim*, free and right immediately.
+`ExitCountryCode` is a *measurement*: the country of the egress IP, resolved
+through the proxy itself with the cloudflare trace `country.go` already used.
+The claim is shown while the measurement is in flight and replaced by it, and
+when the two disagree the measured one wins and the tooltip says so. Fronting and
+proxy chains make disagreement a real outcome, not a bug.
+
+`ExitChecked` exists so an attempt that found nothing can be told from one still
+running; without it a failed lookup leaves a spinner turning over work that
+stopped. The measurement is cached per *local* proxy address, which does not
+change when the node behind it does, so switching node clears that cache.
 | 1.5 | Split tunnel mode | `white_dns_split_tunnel` / `mode` | `off` | VPN page row → split-tunnel dialog | `[x]` |
 | 1.6 | Split tunnel selection | `white_dns_split_tunnel` / `packages` | empty | **Adapted**: Windows processes/`.exe` instead of Android packages | `[x]` |
 
@@ -138,8 +180,24 @@ keys here, not copied literals.
 | Delay probes | Metrics only — a failed probe must **not** block connecting | `[x]` satisfied by construction: `internal/session` never probes delay, so nothing on the connect path can be blocked by one. Keep it that way when the connection dialog adds per-row delay |
 | Startup IP selection | Cached endpoint first; on failure fall through to a fresh scan | `[ ]` |
 | Clean-IP scan | Encrypted IP list, concurrency 200, 4 probes for loss, budgets 3 s / 12 s / 60 s, cache 10 per port | `[ ]` |
-| Connect button states | Connect · Connecting… · Disconnect · Disconnecting… · Retry. Disabled only while Stopping | `[ ]` |
+| Connect button states | Connect · Connecting… · Disconnect · Disconnecting… · Retry. Disabled only while Stopping | `[x]` |
 | Privacy policy gate | Versioned acceptance on first run (`white_dns_privacy_policy` / `accepted_policy_version`) | `[ ]` |
+
+One button, five states, as the phone has it: the same control stops what it
+started. Two things had to become true for that to be honest rather than
+decorative.
+
+`stopping` is a real runtime status (`model.RuntimeStopping`), not a flag the
+interface keeps to itself. Killing the engine and removing its tunnel adapter
+takes long enough to be seen, and a stop that fails puts the previous status
+back rather than leaving "Disconnecting" on screen forever.
+
+Clicking while connecting **cancels** it. Connecting can take a minute — a
+subscription fetch, then up to five nodes each given a health budget — so the
+connect runs under a context the stop cancels, `session.Connect` unwinds and
+stops any engine it had already spawned, and a session that finishes in the gap
+is closed rather than adopted. A cancelled connect ends `disconnected`, not
+`failed`: the user asked for this one.
 
 ## 6. Deliberately dropped
 
@@ -184,24 +242,27 @@ Everything below is what someone needs to resume without reading the history.
 
 The engine is mihomo, the one WhiteVPN for Android runs, built from the same
 pinned sources. Connecting works end to end and is verified against the live
-catalogue: 864 links in, 845 proxies out, a node selected explicitly, and a real
-HTTP request through the proxy before anything is reported connected. The tunnel
-works too, with only the engine elevated. The interface has the phone's shape and
-the phone's settings, and Persian with right-to-left is wired but only the
-navigation is keyed so far.
+catalogue: the share links in, proxies out, a node selected explicitly, and a
+real HTTP request through the proxy before anything is reported connected. The
+catalogue is not a fixed size — 845 proxies measured early on 2026-08-04, 585
+later the same day — so treat any count in this file as a reading, not a
+constant. The tunnel works too, with only the engine elevated.
+
+The interface has the phone's shape, the phone's settings and now the phone's
+dashboard: a connect button with its five states, and rows for location and
+connection with the dialogs behind them. Persian with right-to-left is wired,
+but only the navigation, the connect button and those dialogs are keyed so far.
 
 ### Suggested order
 
-1. **Connect button states** — small, and the most visible remaining gap.
-2. **The four dashboard rows** (location, node pick, type filter, delay sort) —
-   they are one dialog between them, and together they are what makes the app
-   feel like the phone. `desktop/country.go` already resolves countries.
-3. **Finish the translation** — mechanical: add a key to `frontend/src/i18n.ts`,
+1. **Finish the translation** — mechanical: add a key to `frontend/src/i18n.ts`,
    swap the literal for `t(...)`. Android's `values-fa/strings.xml` has 202
    strings already translated; take the wording from there rather than inventing
-   it, so both apps say the same thing.
-4. **Subscriptions** — selection, user-added entries, import formats.
-5. **Clean-IP scan** and **the kill switch** — each is its own session.
+   it, so both apps say the same thing. The VPN page takes `t` as a prop now;
+   its connect button, status badge and the two dashboard dialogs are keyed;
+   the status card's prose is not.
+2. **Subscriptions** — selection, user-added entries, import formats.
+3. **Clean-IP scan** and **the kill switch** — each is its own session.
 
 ### Things that will bite
 
@@ -220,6 +281,14 @@ navigation is keyed so far.
   verified after connecting, never assumed.
 - **A control that writes to `V2RaySettingsProfile` does nothing.** Only the Xray
   path reads it. Two rounds of dead switches came from this.
+- **A node's country is in its name, and only there.** No geoip call resolves
+  it; `countryCodeFromNodeName` reads the flag. A catalogue that stops shipping
+  flags takes the location filter with it, and the dialog would show one country:
+  none.
+- **The mihomo session has no stored profile behind it.** `ActiveConnectionID`
+  is empty and no `V2RayProfile` is selected, so anything written against the
+  Xray path's idea of an active connection quietly does nothing. That is what
+  made Refresh a dead button until it was pointed at stop-then-start.
 
 ### Verifying a change
 

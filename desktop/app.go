@@ -63,6 +63,15 @@ type App struct {
 
 	mihomo mihomoState
 
+	connectMu     sync.Mutex
+	connectCancel context.CancelFunc
+
+	// The catalogue the dashboard chooses from, parsed once and kept for as long
+	// as the subscription behind it is fresh.
+	nodesMu sync.Mutex
+	nodes   []model.WhiteVPNNode
+	nodesAt time.Time
+
 	firewallChecker       firewallChecker
 	runtimeManagerFactory runtimeManagerFactory
 	lastFirewallStatusKey string
@@ -208,6 +217,12 @@ func validatorEndpointDisplay(host string, port int) string {
 }
 
 func (a *App) StopConnection() (model.AppState, error) {
+	// A connect that is still running is stopped by cancelling it, not by
+	// waiting for it to finish and then tearing down what it built. It unwinds
+	// on its own and reports itself disconnected.
+	a.cancelConnect()
+	revert, stopping := a.beginStopping()
+
 	// A mihomo session and an Xray one are never both running, so stopping the
 	// one that exists is the whole job.
 	if a.stopMihomo() {
@@ -216,8 +231,50 @@ func (a *App) StopConnection() (model.AppState, error) {
 	err := a.manager.Stop()
 	if err == nil {
 		a.handleRuntimeState(model.RuntimeDisconnected, "Disconnected")
+		return a.GetAppState(), nil
+	}
+	// A stop that failed leaves the runtime where it was; saying "Disconnecting"
+	// for the rest of the session would be a lie the user cannot clear.
+	if stopping {
+		revert()
 	}
 	return a.GetAppState(), err
+}
+
+// beginStopping marks a running runtime as on its way down, and returns the
+// function that puts the previous status back if the stop does not happen.
+//
+// It reports whether there was anything to stop: stopping what is already
+// stopped must not flash a state the user was never in.
+func (a *App) beginStopping() (revert func(), stopping bool) {
+	a.mu.Lock()
+	previousStatus := a.state.Runtime.Status
+	previousMessage := a.state.Runtime.Message
+	switch previousStatus {
+	case model.RuntimeConnecting, model.RuntimeConnected:
+	default:
+		a.mu.Unlock()
+		return func() {}, false
+	}
+	a.state.Runtime.Status = model.RuntimeStopping
+	a.state.Runtime.Message = "Disconnecting"
+	runtimeState := a.state.Runtime
+	a.mu.Unlock()
+	a.emit("runtime:state", runtimeState)
+
+	return func() {
+		a.mu.Lock()
+		if a.state.Runtime.Status != model.RuntimeStopping {
+			// Something else has moved on since; it knows better than we do.
+			a.mu.Unlock()
+			return
+		}
+		a.state.Runtime.Status = previousStatus
+		a.state.Runtime.Message = previousMessage
+		reverted := a.state.Runtime
+		a.mu.Unlock()
+		a.emit("runtime:state", reverted)
+	}, true
 }
 
 func (a *App) ClearRuntimeLogs() model.AppState {
@@ -368,6 +425,10 @@ func (a *App) handleRuntimeState(status, message string) {
 		a.state.Runtime.ProxyProtocol = ""
 		a.state.Runtime.LocalProxyIP = ""
 		a.state.Runtime.PublicProxyIP = ""
+		a.state.Runtime.NodeName = ""
+		a.state.Runtime.NodeCountryCode = ""
+		a.state.Runtime.ExitCountryCode = ""
+		a.state.Runtime.ExitChecked = false
 		a.state.Runtime.ResolverMTUScanPaused = false
 		a.state.Runtime.AutoProfilePresetID = ""
 		a.state.Runtime.AutoProfileName = ""

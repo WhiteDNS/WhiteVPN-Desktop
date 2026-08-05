@@ -34,8 +34,82 @@ const strings = {
   "status.connected": { en: "Connected", fa: "متصل" },
   "status.connecting": { en: "Connecting", fa: "در حال اتصال" },
   "status.disconnected": { en: "Disconnected", fa: "قطع" },
+  "status.stopping": { en: "Disconnecting", fa: "در حال قطع اتصال" },
   "status.failed": { en: "Failed", fa: "ناموفق" },
   "status.noActiveProxy": { en: "No active proxy", fa: "پراکسی فعالی نیست" },
+
+  // The connect button. One control, five states, as the phone has it.
+  "connect.connect": { en: "Connect", fa: "اتصال" },
+  "connect.connecting": { en: "Connecting…", fa: "در حال اتصال…" },
+  "connect.disconnect": { en: "Disconnect", fa: "قطع اتصال" },
+  "connect.disconnecting": { en: "Disconnecting…", fa: "در حال قطع اتصال…" },
+  "connect.retry": { en: "Retry", fa: "تلاش دوباره" },
+  // Stopping mid-connect is a click on the same button, so what that click does
+  // has to be said somewhere.
+  "connect.cancelHint": { en: "Stop connecting", fa: "توقف اتصال" },
+  "connect.refresh": { en: "Refresh", fa: "تازه‌سازی" },
+  "connect.busy": { en: "Busy", fa: "مشغول" },
+
+  // The dashboard's two rows, and the dialogs behind them.
+  "vpn.rows.title": { en: "Connection", fa: "اتصال" },
+  "vpn.rows.description": {
+    en: "Where traffic leaves from, and which node carries it.",
+    fa: "اینکه ترافیک از کجا خارج شود و کدام سرور آن را حمل کند.",
+  },
+  "vpn.location": { en: "Location", fa: "موقعیت" },
+  "vpn.location.title": { en: "Choose a location", fa: "انتخاب موقعیت" },
+  "vpn.location.description": {
+    en: "Only nodes in this country will be used.",
+    fa: "فقط سرورهای این کشور استفاده می‌شوند.",
+  },
+  "vpn.connection": { en: "Connection", fa: "سرور" },
+  "vpn.connection.title": { en: "Choose a connection", fa: "انتخاب سرور" },
+  "vpn.connection.description": {
+    en: "Pick one node, or leave it automatic and let any working one be used.",
+    fa: "یک سرور را انتخاب کنید، یا خودکار بگذارید تا هر سرور سالمی استفاده شود.",
+  },
+  "vpn.automatic": { en: "Automatic", fa: "خودکار" },
+  "vpn.search": { en: "Search", fa: "جست‌وجو" },
+  "vpn.types": { en: "Protocol", fa: "نوع اتصال" },
+  "vpn.types.all": { en: "All", fa: "همه" },
+  "vpn.delaySort": { en: "Sort by delay", fa: "مرتب‌سازی بر اساس تأخیر" },
+  "vpn.measure": { en: "Measure delay", fa: "اندازه‌گیری تأخیر" },
+  "vpn.measuring": { en: "Measuring…", fa: "در حال اندازه‌گیری…" },
+  "vpn.measure.needsConnection": {
+    en: "Delay is measured through the engine, so it needs a connection first.",
+    fa: "تأخیر از طریق موتور اندازه‌گیری می‌شود، پس اول باید متصل شوید.",
+  },
+  "vpn.nodes.none": { en: "No node matches this.", fa: "سروری با این شرایط نیست." },
+  "vpn.nodes.count": { en: "nodes", fa: "سرور" },
+  "vpn.nodes.unknownCountry": { en: "Unknown", fa: "نامشخص" },
+  "vpn.nodes.reload": { en: "Reload catalogue", fa: "بارگیری دوبارهٔ فهرست" },
+  "vpn.nodes.loading": { en: "Loading…", fa: "در حال بارگیری…" },
+  // Where traffic leaves from: the node's own claim until it is measured, the
+  // measurement afterwards.
+  "vpn.exit.ip": { en: "Exit IP", fa: "آی‌پی خروجی" },
+  "vpn.exit.measured": {
+    en: "Measured through the connection itself.",
+    fa: "از طریق خود اتصال اندازه‌گیری شده.",
+  },
+  "vpn.exit.claimed": {
+    en: "What the node's name says. Measuring where traffic actually leaves from…",
+    fa: "طبق نام سرور. در حال اندازه‌گیری محل واقعی خروج ترافیک…",
+  },
+  "vpn.exit.unmeasured": {
+    en: "What the node's name says. Where traffic leaves from could not be measured.",
+    fa: "طبق نام سرور. محل واقعی خروج ترافیک قابل اندازه‌گیری نبود.",
+  },
+  "vpn.exit.mismatch": {
+    en: "Traffic leaves from here, not from where the node's name says.",
+    fa: "ترافیک از اینجا خارج می‌شود، نه از جایی که نام سرور می‌گوید.",
+  },
+
+  "vpn.moreSettings": {
+    en: "The tunnel, DNS privacy, split tunnel and the rest are on the Settings page.",
+    fa: "تونل، حریم خصوصی DNS، تقسیم تونل و بقیه در صفحهٔ تنظیمات هستند.",
+  },
+
+  "common.close": { en: "Close", fa: "بستن" },
 
   // Settings page
   "settings.title": { en: "Settings", fa: "تنظیمات" },

@@ -24,7 +24,9 @@ const (
 	DefaultControlPort = 9090
 	controllerHost     = "127.0.0.1"
 
-	autoTestURL   = "https://connectivitycheck.gstatic.com/generate_204"
+	// DelayTestURL is what a delay measurement asks for, here and in the
+	// url-test group, so the dialog and the engine agree on what "delay" means.
+	DelayTestURL  = "https://connectivitycheck.gstatic.com/generate_204"
 	autoInterval  = 300
 	autoTolerance = 100
 
@@ -161,7 +163,7 @@ func BuildProxiesYAML(proxies []Proxy) (string, error) {
 			map[string]any{
 				"name":      AutoGroup,
 				"type":      "url-test",
-				"url":       autoTestURL,
+				"url":       DelayTestURL,
 				"interval":  autoInterval,
 				"tolerance": autoTolerance,
 				"proxies":   names,

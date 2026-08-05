@@ -40,6 +40,18 @@ type Options struct {
 	// all of them would keep a user waiting for an outcome that is not coming.
 	MaxAttempts int
 
+	// Prefer restricts and orders the nodes this session may try, by name. Empty
+	// means the whole subscription in its own order, which is what the dashboard
+	// calls Automatic.
+	//
+	// The nodes not named here stay in the configuration — the group still holds
+	// everything, so a later selection needs no reconnect — they are simply not
+	// what this attempt reaches for. Names that no longer exist are dropped, and
+	// a Prefer that leaves nothing is an error rather than a silent fallback to
+	// the whole list: a user who asked for one country must not be connected to
+	// another without being told.
+	Prefer []string
+
 	// CoreStdout and CoreStderr receive the engine's own output. Some startup
 	// failures are only ever printed there.
 	CoreStdout io.Writer
@@ -198,6 +210,49 @@ func (s *Session) start(ctx context.Context, opts Options) error {
 	return fmt.Errorf("session: no node carried traffic after %d attempts: %w", attempts, lastErr)
 }
 
+// Select moves a running session onto another node.
+//
+// It holds the new node to the same standard connecting is held to — a real
+// request has to complete through it — and puts the previous node back when it
+// does not, because a dashboard row that changed is not worth a connection that
+// stopped working.
+func (s *Session) Select(ctx context.Context, node string) error {
+	if s.process == nil {
+		return fmt.Errorf("session: nothing is running")
+	}
+	if len(s.candidates) == 0 {
+		return fmt.Errorf("session: this subscription selects its own node")
+	}
+
+	previous := s.selected
+	if err := s.changeProxy(ctx, node); err != nil {
+		return err
+	}
+
+	code, err := waitForHealthy(ctx, func(probeCtx context.Context) int { return probeStatus(probeCtx, s.mixedPort) })
+	if err != nil {
+		if previous != "" && previous != node {
+			if restoreErr := s.changeProxy(ctx, previous); restoreErr == nil {
+				return fmt.Errorf("session: %q carried no traffic, so %q is still in use: %w", node, previous, err)
+			}
+		}
+		return fmt.Errorf("session: %q carried no traffic: %w", node, err)
+	}
+
+	s.healthCode = code
+	s.selected = node
+	return nil
+}
+
+func (s *Session) changeProxy(ctx context.Context, node string) error {
+	selectCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	if err := s.process.ChangeProxy(selectCtx, mihomoconf.SelectGroup, node); err != nil {
+		return fmt.Errorf("session: select %q: %w", node, err)
+	}
+	return nil
+}
+
 // Close stops the engine.
 func (s *Session) Close() error {
 	if s.process == nil {
@@ -239,6 +294,13 @@ func PrepareConfig(opts Options) (string, []string, error) {
 		for _, proxy := range proxies {
 			candidates = append(candidates, proxy.Name())
 		}
+		if len(opts.Prefer) > 0 {
+			preferred := intersect(candidates, opts.Prefer)
+			if len(preferred) == 0 {
+				return "", nil, fmt.Errorf("session: none of the chosen nodes are in the subscription")
+			}
+			candidates = preferred
+		}
 		group = mihomoconf.SelectGroup
 	} else if looksLikeMihomoYAML(body) {
 		// Already a mihomo document: pass it through and let its own groups and
@@ -265,6 +327,25 @@ func PrepareConfig(opts Options) (string, []string, error) {
 		Tun:         opts.Tun,
 	})
 	return document, candidates, nil
+}
+
+// intersect keeps the wanted names that the subscription actually yielded, in
+// the order they were wanted.
+func intersect(available []string, wanted []string) []string {
+	present := make(map[string]bool, len(available))
+	for _, name := range available {
+		present[name] = true
+	}
+	kept := make([]string, 0, len(wanted))
+	seen := make(map[string]bool, len(wanted))
+	for _, name := range wanted {
+		if !present[name] || seen[name] {
+			continue
+		}
+		seen[name] = true
+		kept = append(kept, name)
+	}
+	return kept
 }
 
 func looksLikeMihomoYAML(body string) bool {

@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -113,6 +114,39 @@ func (c *Client) TestDelay(ctx context.Context, proxy, testURL string, timeoutMS
 		return nil, err
 	}
 	return c.invoke(ctx, "asyncTestDelay", string(params))
+}
+
+// ErrNoDelay means the core measured nothing: the proxy is not in its set, or
+// it did not answer within the timeout. The core says so with -1, and that must
+// not reach a caller as if it were a delay.
+var ErrNoDelay = errors.New("engine: no delay measurement")
+
+// TestDelayMS is TestDelay with the reply read: milliseconds through the proxy.
+//
+// The reply is a JSON string holding {"name","url","value"}, which is two
+// layers of encoding for one number; doing that unwrapping here means no caller
+// has to know it happens.
+func (c *Client) TestDelayMS(ctx context.Context, proxy, testURL string, timeoutMS int) (int, error) {
+	raw, err := c.TestDelay(ctx, proxy, testURL, timeoutMS)
+	if err != nil {
+		return 0, err
+	}
+	body := decodeString(raw)
+	if strings.TrimSpace(body) == "" {
+		return 0, ErrNoDelay
+	}
+	var measurement struct {
+		Name  string `json:"name"`
+		URL   string `json:"url"`
+		Value int32  `json:"value"`
+	}
+	if err := json.Unmarshal([]byte(body), &measurement); err != nil {
+		return 0, fmt.Errorf("engine: unreadable delay reply: %w", err)
+	}
+	if measurement.Value <= 0 {
+		return 0, ErrNoDelay
+	}
+	return int(measurement.Value), nil
 }
 
 // Traffic is the current rate; TotalTraffic is the session total.

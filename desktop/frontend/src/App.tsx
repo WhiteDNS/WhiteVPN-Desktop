@@ -1,9 +1,11 @@
 import {
   Activity,
   AlertCircle,
+  Check,
   ChevronDown,
   ChevronRight,
   CheckCircle2,
+  Globe,
   Copy,
   Cpu,
   Download,
@@ -134,6 +136,9 @@ import type {
   ImportType,
   RuntimeLogEntry,
   RuntimeStatus,
+  RuntimeStatusName,
+  ConnectionSelection,
+  WhiteVPNNode,
   RuntimeType,
   ValidatorEndpointInput,
   ValidatorOptions,
@@ -319,6 +324,10 @@ function normalizeRuntime(runtime: RuntimeStatus): RuntimeStatus {
     localProxyIp: runtime.localProxyIp || "",
     publicProxyIp: runtime.publicProxyIp || "",
     frontingIp: runtime.frontingIp || "",
+    nodeName: runtime.nodeName || "",
+    nodeCountryCode: runtime.nodeCountryCode || "",
+    exitCountryCode: runtime.exitCountryCode || "",
+    exitChecked: Boolean(runtime.exitChecked),
     autoProfilePresetId: runtime.autoProfilePresetId || "",
     autoProfileName: runtime.autoProfileName || "",
     resolverState: {
@@ -904,7 +913,7 @@ function useLanguage(state: AppState | null): { language: Language; t: (key: Str
 
 function App() {
   const [state, setState] = useState<AppState | null>(null);
-  const { t } = useLanguage(state);
+  const { language, t } = useLanguage(state);
   const [legacyOffer, setLegacyOffer] = useState<LegacyImportOffer | null>(null);
   const [page, setPage] = useState<Page>("vpn");
   const [errorToast, setErrorToast] = useState<AppErrorToast | null>(null);
@@ -1272,7 +1281,7 @@ function App() {
               <SuccessToast toast={successToast} onDismiss={clearSuccessToast} />
 
               {activePage === "vpn" && (
-                <WhiteDNSVPNPage state={state} onState={applyState} onError={showError} onNavigate={setPage} />
+                <WhiteDNSVPNPage state={state} onState={applyState} onError={showError} onNavigate={setPage} language={language} t={t} />
               )}
 
               {activePage === "servers" && (
@@ -1654,105 +1663,677 @@ function LoadingView() {
   );
 }
 
+// The connect button's five states, as WhiteVPN for Android has them. It is one
+// control throughout — the same button stops a connection it started, and stops
+// one still being made — so its state is the page's state, and the card above it
+// follows from this rather than deciding for itself.
+type ConnectButtonState = "connect" | "connecting" | "disconnect" | "disconnecting" | "retry";
+
+// pendingAction bridges the gap between a click and the backend's answer. The
+// backend reports "stopping" and "connecting" itself, so this only covers the
+// moment before the first of those arrives.
+type PendingAction = "start" | "stop" | null;
+
+function connectButtonState(status: RuntimeStatusName, pending: PendingAction): ConnectButtonState {
+  switch (status) {
+    case "stopping":
+      return "disconnecting";
+    // A stop is answered by a status change, but not in the same frame. Until
+    // it arrives the button says what was asked of it.
+    case "connecting":
+      return pending === "stop" ? "disconnecting" : "connecting";
+    case "connected":
+      return pending === "stop" ? "disconnecting" : "disconnect";
+    case "failed":
+      return pending === "start" ? "connecting" : "retry";
+    default:
+      return pending === "start" ? "connecting" : "connect";
+  }
+}
+
+// The card's state is the button's state. Anything else and the two can
+// disagree, which is how a card once said connected next to a Connect button.
+function connectCardStatus(connectState: ConnectButtonState): RuntimeStatusName {
+  switch (connectState) {
+    case "connecting":
+      return "connecting";
+    case "disconnecting":
+      return "stopping";
+    case "disconnect":
+      return "connected";
+    case "retry":
+      return "failed";
+    default:
+      return "disconnected";
+  }
+}
+
+// A flag from a country code: the same two letters, moved into the regional
+// indicator block. Building it from the code rather than keeping the one the
+// node name carried means every row shows one, including the country list,
+// which has codes and no names to take a flag from.
+function flagFromCountryCode(code: string): string {
+  if (code.length !== 2) {
+    return "";
+  }
+  const base = 0x1f1e6;
+  return String.fromCodePoint(base + (code.charCodeAt(0) - 65), base + (code.charCodeAt(1) - 65));
+}
+
+// Country names come from the platform, in the app's own language, so there is
+// no table of two hundred and fifty countries here to fall out of step with the
+// catalogue.
+function countryName(code: string, language: Language, unknown: string): string {
+  if (!code) {
+    return unknown;
+  }
+  try {
+    return new Intl.DisplayNames([language], { type: "region" }).of(code) || code;
+  } catch {
+    return code;
+  }
+}
+
+type CountryOption = { code: string; count: number; name: string };
+
+function countryOptions(nodes: WhiteVPNNode[], language: Language, unknown: string): CountryOption[] {
+  const counts = new Map<string, number>();
+  for (const node of nodes) {
+    if (!node.countryCode) {
+      continue;
+    }
+    counts.set(node.countryCode, (counts.get(node.countryCode) || 0) + 1);
+  }
+  return [...counts.entries()]
+    .map(([code, count]) => ({ code, count, name: countryName(code, language, unknown) }))
+    .sort((a, b) => a.name.localeCompare(b.name, language));
+}
+
+// A dashboard row: a label, what it is currently set to, and a dialog behind it.
+function DashboardRow({
+  icon,
+  label,
+  value,
+  disabled,
+  onClick,
+}: {
+  icon: ReactNode;
+  label: string;
+  value: string;
+  disabled?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className="flex w-full items-center justify-between gap-3 rounded-md border bg-background/70 px-3 py-2.5 text-start transition-colors hover:bg-muted/60 disabled:cursor-not-allowed disabled:opacity-60"
+    >
+      <span className="flex shrink-0 items-center gap-2 text-muted-foreground">
+        {icon}
+        <span className="text-sm font-medium text-foreground">{label}</span>
+      </span>
+      <span className="flex min-w-0 items-center gap-2">
+        <span className="min-w-0 truncate text-sm text-muted-foreground">{value}</span>
+        <ChevronRight className="size-4 shrink-0 text-muted-foreground rtl:rotate-180" />
+      </span>
+    </button>
+  );
+}
+
+function SelectableRow({
+  selected,
+  onClick,
+  children,
+}: {
+  selected: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "flex w-full items-center justify-between gap-3 rounded-md border px-3 py-2 text-start transition-colors hover:bg-muted/60",
+        selected ? "border-emerald-500/60 bg-emerald-500/10" : "bg-background/60"
+      )}
+    >
+      <span className="flex min-w-0 flex-1 items-center gap-2">{children}</span>
+      {selected && <Check className="size-4 shrink-0 text-emerald-600" />}
+    </button>
+  );
+}
+
+function LocationDialog({
+  open,
+  nodes,
+  selected,
+  busy,
+  loading,
+  language,
+  t,
+  onOpenChange,
+  onSelect,
+}: {
+  open: boolean;
+  nodes: WhiteVPNNode[];
+  selected: string;
+  busy: boolean;
+  loading: boolean;
+  language: Language;
+  t: (key: StringKey) => string;
+  onOpenChange: (open: boolean) => void;
+  onSelect: (countryCode: string) => void;
+}) {
+  const unknown = t("vpn.nodes.unknownCountry");
+  const countries = useMemo(() => countryOptions(nodes, language, unknown), [nodes, language, unknown]);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[calc(100svh-4rem)] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{t("vpn.location.title")}</DialogTitle>
+          <DialogDescription>{t("vpn.location.description")}</DialogDescription>
+        </DialogHeader>
+        <ScrollArea className="min-h-0">
+          <div className="grid gap-1.5 pe-3">
+            <SelectableRow selected={!selected} onClick={() => onSelect("")}>
+              <span className="text-sm font-medium">{t("vpn.automatic")}</span>
+              <span className="text-xs text-muted-foreground">
+                {nodes.length} {t("vpn.nodes.count")}
+              </span>
+            </SelectableRow>
+            {countries.map((country) => (
+              <SelectableRow key={country.code} selected={selected === country.code} onClick={() => onSelect(country.code)}>
+                <span className="text-base leading-none">{flagFromCountryCode(country.code)}</span>
+                <span className="min-w-0 flex-1 truncate text-sm">{country.name}</span>
+                <span className="text-xs text-muted-foreground">
+                  {country.count} {t("vpn.nodes.count")}
+                </span>
+              </SelectableRow>
+            ))}
+            {!countries.length && (
+              <p className="px-1 py-6 text-center text-sm text-muted-foreground">
+                {loading ? t("vpn.nodes.loading") : t("vpn.nodes.none")}
+              </p>
+            )}
+          </div>
+          <ScrollBar orientation="vertical" />
+        </ScrollArea>
+        <DialogFooter>
+          {busy && <span className="me-auto text-xs text-muted-foreground">{t("vpn.nodes.loading")}</span>}
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            {t("common.close")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ConnectionDialog({
+  open,
+  nodes,
+  selection,
+  connected,
+  busy,
+  loading,
+  measuring,
+  language,
+  t,
+  onOpenChange,
+  onSelectNode,
+  onChangeTypes,
+  onToggleDelaySort,
+  onMeasure,
+  onReload,
+}: {
+  open: boolean;
+  nodes: WhiteVPNNode[];
+  selection: ConnectionSelection;
+  connected: boolean;
+  busy: boolean;
+  loading: boolean;
+  measuring: boolean;
+  language: Language;
+  t: (key: StringKey) => string;
+  onOpenChange: (open: boolean) => void;
+  onSelectNode: (name: string) => void;
+  onChangeTypes: (types: string[]) => void;
+  onToggleDelaySort: (delaySort: boolean) => void;
+  onMeasure: (names: string[]) => void;
+  onReload: () => void;
+}) {
+  const [search, setSearch] = useState("");
+  const unknown = t("vpn.nodes.unknownCountry");
+
+  const availableTypes = useMemo(() => {
+    const seen = new Set<string>();
+    for (const node of nodes) {
+      if (node.type) {
+        seen.add(node.type);
+      }
+    }
+    return [...seen].sort();
+  }, [nodes]);
+
+  const visible = useMemo(() => {
+    const needle = search.trim().toLowerCase();
+    const filtered = nodes.filter((node) => {
+      if (selection.types.length && !selection.types.includes(node.type)) {
+        return false;
+      }
+      if (!needle) {
+        return true;
+      }
+      return (
+        node.label.toLowerCase().includes(needle) ||
+        node.type.includes(needle) ||
+        node.countryCode.toLowerCase().includes(needle) ||
+        countryName(node.countryCode, language, unknown).toLowerCase().includes(needle)
+      );
+    });
+    if (!selection.delaySort) {
+      return filtered;
+    }
+    // Nodes without a measurement sink to the bottom rather than sorting as if
+    // they answered instantly.
+    return [...filtered].sort((a, b) => {
+      const left = a.delayOk ? a.delayMs : Number.MAX_SAFE_INTEGER;
+      const right = b.delayOk ? b.delayMs : Number.MAX_SAFE_INTEGER;
+      return left - right;
+    });
+  }, [nodes, selection.types, selection.delaySort, search, language, unknown]);
+
+  function toggleType(type: string) {
+    const next = selection.types.includes(type)
+      ? selection.types.filter((value: string) => value !== type)
+      : [...selection.types, type];
+    onChangeTypes(next);
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[calc(100svh-4rem)] grid-rows-[auto_auto_minmax(0,1fr)_auto] overflow-hidden sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>{t("vpn.connection.title")}</DialogTitle>
+          <DialogDescription>{t("vpn.connection.description")}</DialogDescription>
+        </DialogHeader>
+
+        <div className="grid gap-3">
+          <div className="relative">
+            <Search className="pointer-events-none absolute start-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder={t("vpn.search")}
+              className="ps-8"
+            />
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-medium text-muted-foreground">{t("vpn.types")}</span>
+            <Button
+              type="button"
+              size="sm"
+              variant={selection.types.length ? "outline" : "secondary"}
+              className="h-7 px-2.5 text-xs"
+              onClick={() => onChangeTypes([])}
+            >
+              {t("vpn.types.all")}
+            </Button>
+            {availableTypes.map((type) => (
+              <Button
+                key={type}
+                type="button"
+                size="sm"
+                variant={selection.types.includes(type) ? "secondary" : "outline"}
+                className="h-7 px-2.5 text-xs"
+                onClick={() => toggleType(type)}
+              >
+                {type}
+              </Button>
+            ))}
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <label className="flex items-center gap-2 text-sm">
+              <Switch checked={selection.delaySort} onCheckedChange={onToggleDelaySort} />
+              {t("vpn.delaySort")}
+            </label>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-7 px-2.5 text-xs"
+                disabled={loading}
+                onClick={onReload}
+              >
+                <RotateCcw className={cn("size-3.5", loading && "animate-spin")} />
+                {t("vpn.nodes.reload")}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-7 px-2.5 text-xs"
+                disabled={!connected || measuring}
+                title={connected ? undefined : t("vpn.measure.needsConnection")}
+                onClick={() => onMeasure(visible.map((node) => node.name))}
+              >
+                <Gauge className={cn("size-3.5", measuring && "animate-pulse")} />
+                {measuring ? t("vpn.measuring") : t("vpn.measure")}
+              </Button>
+            </div>
+          </div>
+          {!connected && <p className="text-xs text-muted-foreground">{t("vpn.measure.needsConnection")}</p>}
+        </div>
+
+        <ScrollArea className="min-h-0">
+          <div className="grid gap-1.5 pe-3">
+            <SelectableRow selected={!selection.node} onClick={() => onSelectNode("")}>
+              <span className="text-sm font-medium">{t("vpn.automatic")}</span>
+              <span className="text-xs text-muted-foreground">
+                {visible.length} {t("vpn.nodes.count")}
+              </span>
+            </SelectableRow>
+            {visible.map((node) => (
+              <SelectableRow key={node.name} selected={selection.node === node.name} onClick={() => onSelectNode(node.name)}>
+                <span className="text-base leading-none">{flagFromCountryCode(node.countryCode) || "🏳️"}</span>
+                <span className="min-w-0 flex-1 truncate text-sm" title={node.name}>
+                  {node.label}
+                </span>
+                <Badge variant="outline" className="h-5 shrink-0 px-1.5 text-[10px] uppercase">
+                  {node.type}
+                </Badge>
+                {node.delayOk && <span className="shrink-0 font-mono text-xs text-muted-foreground">{node.delayMs} ms</span>}
+              </SelectableRow>
+            ))}
+            {!visible.length && (
+              <p className="px-1 py-6 text-center text-sm text-muted-foreground">
+                {loading ? t("vpn.nodes.loading") : t("vpn.nodes.none")}
+              </p>
+            )}
+          </div>
+          <ScrollBar orientation="vertical" />
+        </ScrollArea>
+
+        <DialogFooter>
+          {busy && <span className="me-auto text-xs text-muted-foreground">{t("vpn.nodes.loading")}</span>}
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            {t("common.close")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function connectButtonLabelKey(connectState: ConnectButtonState): StringKey {
+  switch (connectState) {
+    case "connecting":
+      return "connect.connecting";
+    case "disconnect":
+      return "connect.disconnect";
+    case "disconnecting":
+      return "connect.disconnecting";
+    case "retry":
+      return "connect.retry";
+    default:
+      return "connect.connect";
+  }
+}
+
+function ConnectButtonIcon({ state }: { state: ConnectButtonState }) {
+  if (state === "connecting" || state === "disconnecting") {
+    return <RotateCcw className="size-5 animate-spin" />;
+  }
+  if (state === "retry") {
+    return <RotateCcw className="size-5" />;
+  }
+  if (state === "disconnect") {
+    return <Square className="size-5" />;
+  }
+  return <Play className="size-5" />;
+}
+
 function WhiteDNSVPNPage({
   state,
   onState,
   onError,
   onNavigate,
+  language,
+  t,
 }: {
   state: AppState;
   onState: (state: AppState) => void;
   onError: (message: string) => void;
   onNavigate: (page: Page) => void;
+  language: Language;
+  t: (key: StringKey) => string;
 }) {
   const runtime = state.runtime;
   const selectedSettings = effectiveV2RaySettingsProfile(state);
   const active = whiteDNSVPNRuntimeActive(state);
   const runtimeBusy = runtime.status !== "disconnected" && runtime.status !== "failed";
-  const canStart = runtime.status === "disconnected" || runtime.status === "failed";
-  const [settingsSaving, setSettingsSaving] = useState(false);
-  const localConnectPending = settingsSaving && !active && canStart;
-  const setupStatus = localConnectPending ? "connecting" : active ? runtime.status : runtimeBusy ? "connecting" : "disconnected";
-  const setupStatusLabel = localConnectPending || (active && runtime.status === "connecting") ? "Connecting VPN" : active ? statusLabel(runtime.status) : runtimeBusy ? "Busy" : "Disconnected";
+  const [pending, setPending] = useState<PendingAction>(null);
+  const [nodes, setNodes] = useState<WhiteVPNNode[]>([]);
+  const [nodesLoading, setNodesLoading] = useState(false);
+  const [nodeDialog, setNodeDialog] = useState<"location" | "connection" | null>(null);
+  const [selectionSaving, setSelectionSaving] = useState(false);
+  const [measuring, setMeasuring] = useState(false);
+  const selection = state.whiteVpn.connection;
+  // A node is stored by name; the shorter label the row shows comes from the
+  // catalogue, so a picked node means the catalogue is worth having loaded. It
+  // is cached behind this call, so after the first time it costs nothing.
+  useEffect(() => {
+    if (selection.node && !nodes.length && !nodesLoading) {
+      void loadNodes(false);
+    }
+  }, [selection.node]);
+  const selectedNodeLabel = useMemo(() => {
+    if (!selection.node) {
+      return t("vpn.automatic");
+    }
+    return nodes.find((node) => node.name === selection.node)?.label || selection.node;
+  }, [selection.node, nodes, t]);
+  // Another runtime holding the machine is not this page's connection, so its
+  // status must not drive this page's button.
+  const otherRuntimeActive = runtimeBusy && !active;
+  const connectState = otherRuntimeActive ? "connect" : connectButtonState(runtime.status, pending);
+  const startsConnection = connectState === "connect" || connectState === "retry";
+  const setupStatus = otherRuntimeActive ? "connecting" : connectCardStatus(connectState);
+  const setupStatusLabel = otherRuntimeActive ? t("connect.busy") : translatedStatusLabel(t, setupStatus);
   const localProxyEndpoint = runtimeProxyDisplayEndpoint(runtime) || (selectedSettings ? proxyEndpoint(selectedSettings.listenIp, selectedSettings.listenPort) : "-");
   const selectedSettingsMissing = !selectedSettings || !selectedSettings.listenIp.trim() || selectedSettings.listenPort <= 0;
-  const connectDisabled = !canStart || settingsSaving || selectedSettingsMissing || (runtimeBusy && !active);
+  // Disabled only while stopping, as on the phone: every other state has
+  // something for a click to do, including connecting, which it stops.
+  const connectDisabled =
+    connectState === "disconnecting" ||
+    otherRuntimeActive ||
+    (startsConnection && (selectedSettingsMissing || pending !== null));
   const connectedFrontingIP = active ? runtime.frontingIp : "";
-  const dashboardTitle = localConnectPending
-    ? "Connecting WhiteVPN"
-    : active
-      ? runtime.status === "connecting"
-        ? "Connecting WhiteVPN"
-        : runtime.status === "connected"
+  const dashboardTitle = otherRuntimeActive
+    ? "Another runtime is active"
+    : connectState === "connecting"
+      ? "Connecting WhiteVPN"
+      : connectState === "disconnecting"
+        ? "Disconnecting WhiteVPN"
+        : connectState === "disconnect"
           ? "WhiteVPN connected"
-          : runtime.message || "WhiteVPN"
-      : runtimeBusy
-        ? "Another runtime is active"
-        : "WhiteVPN ready";
-  const dashboardDescription = localConnectPending
-    ? "Testing available connections before starting VPN."
-    : active
-      ? runtime.status === "connected"
-        ? `Proxy listening on ${localProxyEndpoint}`
-        : runtime.status === "connecting"
-          ? runtime.progress.phase
-            ? progressLabel(runtime.progress.phase, runtime.progress.percent)
-            : "Starting secure connection."
-          : runtime.message || "WhiteVPN runtime"
-      : runtimeBusy
-        ? "Disconnect the active runtime before starting WhiteVPN."
-        : "Runtime idle";
+          : connectState === "retry"
+            ? "WhiteVPN could not connect"
+            : "WhiteVPN ready";
+  const dashboardDescription = otherRuntimeActive
+    ? "Disconnect the active runtime before starting WhiteVPN."
+    : connectState === "connecting"
+      ? runtime.status === "connecting" && runtime.progress.phase
+        ? progressLabel(runtime.progress.phase, runtime.progress.percent)
+        : "Testing available connections before starting VPN."
+      : connectState === "disconnecting"
+        ? "Stopping the engine and removing what it created."
+        : connectState === "disconnect"
+          ? `Proxy listening on ${localProxyEndpoint}`
+          : connectState === "retry"
+            ? runtime.message || "The connection did not come up."
+            : "Runtime idle";
+  // Where traffic leaves from. The node's name carries a claim, and the app
+  // measures the truth through the connection itself; the claim is shown at once
+  // so the badge is not empty for the second the measurement takes, and is
+  // replaced the moment there is something better than a claim.
+  const exitCountry = useMemo(() => {
+    if (connectState !== "disconnect") {
+      return null;
+    }
+    const measured = Boolean(runtime.exitCountryCode);
+    const code = runtime.exitCountryCode || runtime.nodeCountryCode;
+    if (!code) {
+      return null;
+    }
+    const claimed = runtime.nodeCountryCode;
+    const title = measured
+      ? [
+          runtime.publicProxyIp ? `${t("vpn.exit.ip")}: ${runtime.publicProxyIp}` : "",
+          claimed && claimed !== code ? t("vpn.exit.mismatch") : t("vpn.exit.measured"),
+        ]
+          .filter(Boolean)
+          .join(" — ")
+      : runtime.exitChecked
+        ? t("vpn.exit.unmeasured")
+        : t("vpn.exit.claimed");
+    return {
+      code,
+      name: countryName(code, language, t("vpn.nodes.unknownCountry")),
+      measured,
+      // Spinning stops when the attempt does, whether or not it found anything.
+      pending: !measured && !runtime.exitChecked,
+      title,
+    };
+  }, [
+    connectState,
+    runtime.exitCountryCode,
+    runtime.exitChecked,
+    runtime.nodeCountryCode,
+    runtime.publicProxyIp,
+    language,
+    t,
+  ]);
+
   const statusMetrics = [
     { label: "Local proxy", value: localProxyEndpoint, icon: Monitor },
+    ...(exitCountry?.measured && runtime.publicProxyIp
+      ? [{ label: t("vpn.exit.ip"), value: `${flagFromCountryCode(exitCountry.code)} ${runtime.publicProxyIp}`, icon: Globe }]
+      : []),
     ...(connectedFrontingIP ? [{ label: "Fronting IP", value: connectedFrontingIP, icon: Shield }] : []),
     { label: "Download", value: formatSpeed(runtime.stats.downloadSpeedBytesPerSecond), icon: Download },
     { label: "Upload", value: formatSpeed(runtime.stats.uploadSpeedBytesPerSecond), icon: Upload },
   ];
 
-  async function startWhiteDNSVPN() {
+  // One button, so one handler: what a click means is whatever the button
+  // currently says.
+  async function toggleConnection() {
     if (connectDisabled) {
       return;
     }
+    if (startsConnection) {
+      await startWhiteDNSVPN();
+      return;
+    }
+    await stopRuntime();
+  }
+
+  async function startWhiteDNSVPN() {
     onError("");
-    setSettingsSaving(true);
+    setPending("start");
     try {
       onState(await backend.startWhiteDNSVPNConnection());
     } catch (err) {
       onError(messageFromError(err));
     } finally {
-      setSettingsSaving(false);
+      setPending(null);
     }
   }
 
   async function stopRuntime() {
     onError("");
-    setSettingsSaving(true);
+    setPending("stop");
     try {
       onState(await backend.stopConnection());
     } catch (err) {
       onError(messageFromError(err));
     } finally {
-      setSettingsSaving(false);
+      setPending(null);
+    }
+  }
+
+  // The catalogue is loaded when a dialog first needs it, not on every visit to
+  // the page: it is a network fetch, and most visits are to press Connect.
+  async function loadNodes(refresh: boolean) {
+    setNodesLoading(true);
+    try {
+      const list = await backend.listWhiteVpnNodes(refresh);
+      setNodes(list.nodes || []);
+    } catch (err) {
+      onError(messageFromError(err));
+    } finally {
+      setNodesLoading(false);
+    }
+  }
+
+  function openNodeDialog(dialog: "location" | "connection") {
+    setNodeDialog(dialog);
+    if (!nodes.length && !nodesLoading) {
+      void loadNodes(false);
+    }
+  }
+
+  // Every change to the four dashboard choices goes through here, so the one
+  // that has to reach a running connection cannot be forgotten by one caller.
+  async function saveSelection(countryCode: string, next: ConnectionSelection) {
+    setSelectionSaving(true);
+    onError("");
+    try {
+      onState(await backend.saveWhiteVpnSelection(countryCode, next));
+    } catch (err) {
+      onError(messageFromError(err));
+    } finally {
+      setSelectionSaving(false);
+    }
+  }
+
+  async function measureDelays(names: string[]) {
+    if (!names.length) {
+      return;
+    }
+    setMeasuring(true);
+    onError("");
+    try {
+      const list = await backend.measureWhiteVpnNodeDelays(names);
+      setNodes(list.nodes || []);
+    } catch (err) {
+      onError(messageFromError(err));
+    } finally {
+      setMeasuring(false);
     }
   }
 
   async function refreshWhiteDNSVPN() {
-    if (!active || runtime.status !== "connected" || settingsSaving) {
+    if (connectState !== "disconnect" || pending !== null) {
       return;
     }
     onError("");
-    setSettingsSaving(true);
+    setPending("start");
     try {
       onState(await backend.refreshWhiteDNSVPNConnection());
     } catch (err) {
       onError(messageFromError(err));
     } finally {
-      setSettingsSaving(false);
+      setPending(null);
     }
   }
-
-
-
 
 
 
@@ -1782,6 +2363,14 @@ function WhiteDNSVPNPage({
                     <Badge variant={statusBadgeVariant(setupStatus)} className="h-6 px-3 font-medium">
                       {setupStatusLabel}
                     </Badge>
+                    {exitCountry && (
+                      <Badge variant="outline" className="h-6 gap-1.5 px-3" title={exitCountry.title}>
+                        <span className="text-sm leading-none">{flagFromCountryCode(exitCountry.code)}</span>
+                        <span className="font-medium">{exitCountry.code}</span>
+                        <span className="max-w-40 truncate text-muted-foreground">{exitCountry.name}</span>
+                        {exitCountry.pending && <RotateCcw className="size-3 animate-spin text-muted-foreground" />}
+                      </Badge>
+                    )}
                     <Badge variant="outline" className="h-6 gap-1 px-3">
                       <Monitor className="size-3" />
                       <span className="max-w-48 truncate font-mono">{localProxyEndpoint}</span>
@@ -1796,47 +2385,37 @@ function WhiteDNSVPNPage({
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-2 md:shrink-0 md:justify-end">
-                {active && runtime.status === "connecting" ? (
-                  <>
-                    <Button type="button" variant="secondary" size="lg" className="h-11 min-w-36 px-6 font-semibold text-muted-foreground" disabled>
-                      <RotateCcw className="size-5 animate-spin" />
-                      Connecting...
-                    </Button>
-                    <Button type="button" variant="outline" size="lg" className="h-11 min-w-36 px-6 font-semibold" disabled={settingsSaving} onClick={stopRuntime}>
-                      <Square className="size-5" />
-                      Cancel
-                    </Button>
-                  </>
-                ) : active && runtime.status !== "disconnected" && runtime.status !== "failed" ? (
-                  <>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="lg"
-                      className="h-11 min-w-36 px-6 font-semibold"
-                      disabled={settingsSaving || runtime.status !== "connected"}
-                      onClick={refreshWhiteDNSVPN}
-                    >
-                      <RotateCcw className="size-5" />
-                      Refresh
-                    </Button>
-                    <Button type="button" variant="outline" size="lg" className="h-11 min-w-36 px-6 font-semibold" disabled={settingsSaving} onClick={stopRuntime}>
-                      <Square className="size-5" />
-                      Disconnect
-                    </Button>
-                  </>
-                ) : (
+                {connectState === "disconnect" && (
                   <Button
                     type="button"
+                    variant="outline"
                     size="lg"
-                    className={cn("h-11 min-w-36 px-6 font-semibold", !connectDisabled && "bg-emerald-600 hover:bg-emerald-700")}
-                    disabled={connectDisabled}
-                    onClick={startWhiteDNSVPN}
+                    className="h-11 min-w-36 px-6 font-semibold"
+                    disabled={pending !== null}
+                    onClick={refreshWhiteDNSVPN}
                   >
-                    {localConnectPending ? <RotateCcw className="size-5 animate-spin" /> : <Play className="size-5" />}
-                    {localConnectPending ? "Connecting..." : "Connect VPN"}
+                    <RotateCcw className="size-5" />
+                    {t("connect.refresh")}
                   </Button>
                 )}
+                <Button
+                  type="button"
+                  variant={startsConnection ? "default" : "outline"}
+                  size="lg"
+                  className={cn(
+                    "h-11 min-w-36 px-6 font-semibold",
+                    startsConnection && !connectDisabled && "bg-emerald-600 hover:bg-emerald-700"
+                  )}
+                  disabled={connectDisabled}
+                  // While connecting the label is a state and the click is an
+                  // action, so the accessible name has to be the action.
+                  title={connectState === "connecting" ? t("connect.cancelHint") : undefined}
+                  aria-label={connectState === "connecting" ? t("connect.cancelHint") : undefined}
+                  onClick={toggleConnection}
+                >
+                  <ConnectButtonIcon state={connectState} />
+                  {t(connectButtonLabelKey(connectState))}
+                </Button>
               </div>
             </div>
 
@@ -1871,27 +2450,82 @@ function WhiteDNSVPNPage({
         <Card>
           <CardHeader className="p-3 pb-2">
             <CardTitle className="flex items-center gap-2 text-sm">
-              <Settings className="size-4" />
-              Controls
+              <Globe className="size-4" />
+              {t("vpn.rows.title")}
             </CardTitle>
+            <CardDescription className="text-xs">{t("vpn.rows.description")}</CardDescription>
           </CardHeader>
-          <CardContent className="p-3 pt-0">
-            {/* These controls used to live here and wrote to the V2Ray settings
-                profile, which only the Xray path reads. Under the engine this
-                app now runs they changed nothing, and the tunnel switch in
-                particular contradicted the one on the Settings page that does
-                work. One place to change a setting is worth more than two. */}
-            <p className="text-xs text-muted-foreground">
-              The tunnel, DNS privacy, split tunnel and the rest are on the Settings page.
-            </p>
-            <Button variant="outline" size="sm" className="mt-2" onClick={() => onNavigate("settings")}>
-              <Settings />
-              Open settings
+          <CardContent className="grid gap-2 p-3 pt-0">
+            <DashboardRow
+              icon={<Globe className="size-4" />}
+              label={t("vpn.location")}
+              value={
+                state.whiteVpn.countryCode
+                  ? `${flagFromCountryCode(state.whiteVpn.countryCode)} ${countryName(state.whiteVpn.countryCode, language, t("vpn.nodes.unknownCountry"))}`
+                  : t("vpn.automatic")
+              }
+              disabled={selectionSaving}
+              onClick={() => openNodeDialog("location")}
+            />
+            <DashboardRow
+              icon={<Wifi className="size-4" />}
+              label={t("vpn.connection")}
+              value={selectedNodeLabel}
+              disabled={selectionSaving}
+              onClick={() => openNodeDialog("connection")}
+            />
+
+            {/* The tunnel, DNS privacy and split tunnel used to sit here and
+                wrote to the V2Ray settings profile, which only the Xray path
+                reads. Under the engine this app now runs they changed nothing.
+                One place to change a setting is worth more than two. */}
+            <p className="pt-1 text-xs text-muted-foreground">{t("vpn.moreSettings")}</p>
+            <Button variant="outline" size="sm" className="justify-self-start" onClick={() => onNavigate("settings")}>
+              <Settings className="size-3.5" />
+              {t("settings.title")}
             </Button>
           </CardContent>
         </Card>
 
       </div>
+
+      <LocationDialog
+        open={nodeDialog === "location"}
+        nodes={nodes}
+        selected={state.whiteVpn.countryCode}
+        busy={selectionSaving}
+        loading={nodesLoading}
+        language={language}
+        t={t}
+        onOpenChange={(open) => !open && setNodeDialog(null)}
+        onSelect={(countryCode) => {
+          // Choosing a country abandons a node picked by hand: the two can
+          // contradict each other, and the row the user just touched wins.
+          void saveSelection(countryCode, { ...selection, node: "" });
+          setNodeDialog(null);
+        }}
+      />
+
+      <ConnectionDialog
+        open={nodeDialog === "connection"}
+        nodes={nodes}
+        selection={selection}
+        connected={connectState === "disconnect"}
+        busy={selectionSaving}
+        loading={nodesLoading}
+        measuring={measuring}
+        language={language}
+        t={t}
+        onOpenChange={(open) => !open && setNodeDialog(null)}
+        onSelectNode={(name) => {
+          void saveSelection(state.whiteVpn.countryCode, { ...selection, node: name });
+          setNodeDialog(null);
+        }}
+        onChangeTypes={(types) => void saveSelection(state.whiteVpn.countryCode, { ...selection, types, node: "" })}
+        onToggleDelaySort={(delaySort) => void saveSelection(state.whiteVpn.countryCode, { ...selection, delaySort })}
+        onMeasure={(names) => void measureDelays(names)}
+        onReload={() => void loadNodes(true)}
+      />
 
       {selectedSettingsMissing && (
         <Alert className="border-amber-200 bg-amber-50 text-amber-950">
@@ -1900,7 +2534,7 @@ function WhiteDNSVPNPage({
           <AlertDescription>Choose a valid V2Ray local settings profile before connecting WhiteVPN.</AlertDescription>
         </Alert>
       )}
-      {runtimeBusy && !active && (
+      {otherRuntimeActive && (
         <Alert>
           <AlertCircle />
           <AlertTitle>Another runtime is active</AlertTitle>
@@ -6188,7 +6822,7 @@ function StatusDot({ status, className }: { status: string; className?: string }
       className={cn(
         "inline-block rounded-full ring-4 shrink-0",
         status === "connected" && "bg-emerald-500 ring-emerald-100",
-        (status === "connecting" || status === "parallel-testing") && "bg-emerald-300 ring-emerald-50",
+        (status === "connecting" || status === "stopping" || status === "parallel-testing") && "bg-emerald-300 ring-emerald-50",
         status === "failed" && "bg-red-300 ring-red-50",
         (status === "disconnected" || !status) && "bg-muted-foreground ring-muted",
         className || "size-2.5"
@@ -6202,6 +6836,7 @@ function statusCardTone(status: string): string {
     case "connected":
       return "border-[var(--connected-card-border)] bg-[var(--connected-card-bg)]";
     case "connecting":
+    case "stopping":
     case "parallel-testing":
       return "border-[var(--connecting-card-border)] bg-[var(--connecting-card-bg)]";
     case "failed":
@@ -6218,7 +6853,7 @@ function statusBadgeVariant(status: string): "default" | "secondary" | "destruct
   if (status === "connected") {
     return "default";
   }
-  if (status === "connecting" || status === "parallel-testing") {
+  if (status === "connecting" || status === "stopping" || status === "parallel-testing") {
     return "outline";
   }
   return "secondary";
@@ -6230,12 +6865,33 @@ function statusLabel(status: string): string {
       return "Connected";
     case "connecting":
       return "Connecting";
+    case "stopping":
+      return "Disconnecting";
     case "parallel-testing":
       return "Parallel Testing";
     case "failed":
       return "Failed";
     default:
       return "Disconnected";
+  }
+}
+
+// translatedStatusLabel is statusLabel for the screens that have been keyed.
+// Anything without a key falls back to the English label rather than to the key.
+function translatedStatusLabel(t: (key: StringKey) => string, status: string): string {
+  switch (status) {
+    case "connected":
+      return t("status.connected");
+    case "connecting":
+      return t("status.connecting");
+    case "stopping":
+      return t("status.stopping");
+    case "failed":
+      return t("status.failed");
+    case "disconnected":
+      return t("status.disconnected");
+    default:
+      return statusLabel(status);
   }
 }
 

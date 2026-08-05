@@ -88,6 +88,48 @@ func TestPrepareConfigRejectsUnusableInput(t *testing.T) {
 	}
 }
 
+// The dashboard's location and connection choices arrive as Prefer. They narrow
+// what an attempt reaches for; they never narrow the configuration itself, so a
+// later choice needs no reconnect.
+func TestPrepareConfigHonoursPreferredNodes(t *testing.T) {
+	document, candidates, err := PrepareConfig(Options{
+		Subscription: sampleLinks,
+		Prefer:       []string{"Beta"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(candidates) != 1 || candidates[0] != "Beta" {
+		t.Fatalf("expected only the preferred node to be tried, got %v", candidates)
+	}
+	if !strings.Contains(document, "Alpha") {
+		t.Fatal("the node not preferred should still be in the config, only not reached for")
+	}
+}
+
+func TestPrepareConfigKeepsThePreferredOrder(t *testing.T) {
+	_, candidates, err := PrepareConfig(Options{
+		Subscription: sampleLinks,
+		// Reversed, and naming one node the subscription does not have.
+		Prefer: []string{"Beta", "Gone", "Alpha"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(candidates) != 2 || candidates[0] != "Beta" || candidates[1] != "Alpha" {
+		t.Fatalf("expected the preferred order minus what is missing, got %v", candidates)
+	}
+}
+
+// Silently connecting elsewhere would tell a user their traffic leaves from a
+// country it does not.
+func TestPrepareConfigRefusesAPreferenceNothingMatches(t *testing.T) {
+	_, _, err := PrepareConfig(Options{Subscription: sampleLinks, Prefer: []string{"Gone"}})
+	if err == nil {
+		t.Fatal("expected a preference matching nothing to be refused")
+	}
+}
+
 // Each run gets its own control secret; a fixed one would let any local process
 // that knows it drive the engine.
 func TestEachConfigGetsItsOwnSecret(t *testing.T) {

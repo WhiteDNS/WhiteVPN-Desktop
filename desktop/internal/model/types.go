@@ -9,7 +9,12 @@ const (
 	RuntimeDisconnected = "disconnected"
 	RuntimeConnecting   = "connecting"
 	RuntimeConnected    = "connected"
-	RuntimeFailed       = "failed"
+	// RuntimeStopping is the time between asking to disconnect and being
+	// disconnected. Killing the engine and removing its tunnel adapter takes
+	// long enough to be seen, and without a status of its own the interface has
+	// nothing to show for it but a button that appears not to have worked.
+	RuntimeStopping = "stopping"
+	RuntimeFailed   = "failed"
 
 	RuntimeTypeMasterDNS = "masterdns"
 	RuntimeTypeV2Ray     = "v2ray"
@@ -280,6 +285,21 @@ type RuntimeStatus struct {
 	LocalProxyIP          string               `json:"localProxyIp"`
 	PublicProxyIP         string               `json:"publicProxyIp"`
 	FrontingIP            string               `json:"frontingIp"`
+
+	// The node carrying traffic, and where it says it is: the name the catalogue
+	// gave it, and the country from the flag in that name.
+	NodeName        string `json:"nodeName"`
+	NodeCountryCode string `json:"nodeCountryCode"`
+	// ExitCountryCode is where traffic is measured to actually leave from — the
+	// country of PublicProxyIP, resolved through the proxy itself. It is kept
+	// apart from NodeCountryCode deliberately: the two can disagree, and when
+	// they do, the measured one is the one that is true.
+	ExitCountryCode string `json:"exitCountryCode"`
+	// ExitChecked says the measurement has been attempted, so an attempt that
+	// found nothing can be told from one still running. Without it a failed
+	// lookup leaves a spinner turning over work that stopped.
+	ExitChecked bool `json:"exitChecked"`
+
 	ResolverMTUScanPaused bool                 `json:"resolverMtuScanPaused"`
 	AutoProfilePresetID   string               `json:"autoProfilePresetId"`
 	AutoProfileName       string               `json:"autoProfileName"`
@@ -463,6 +483,29 @@ type ProxyCountryLookupResult struct {
 	CountryCode string `json:"countryCode"`
 	Proxy       string `json:"proxy"`
 	Message     string `json:"message"`
+}
+
+// WhiteVPNNode is one node of the catalogue, as the connection dialog shows it.
+type WhiteVPNNode struct {
+	// Name is the exact proxy name. It is the node's identity: what the engine
+	// selects by, and what the stored choice records.
+	Name string `json:"name"`
+	// Label is the same name with the flag and the channel marker taken off,
+	// because neither says anything the row does not already show.
+	Label string `json:"label"`
+	Type  string `json:"type"`
+	// CountryCode is empty when the catalogue does not say where a node is.
+	CountryCode string `json:"countryCode"`
+	// DelayMs is a measurement, present only once one has been made. Zero with
+	// DelayOK false means "not measured", not "instant".
+	DelayMs int  `json:"delayMs"`
+	DelayOK bool `json:"delayOk"`
+}
+
+// WhiteVPNNodeList is the catalogue the dashboard chooses from.
+type WhiteVPNNodeList struct {
+	Nodes     []WhiteVPNNode `json:"nodes"`
+	UpdatedAt string         `json:"updatedAt"`
 }
 
 type ValidatorEndpointInput struct {

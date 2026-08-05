@@ -59,7 +59,7 @@ func TestBuildProxiesYAMLProducesGroupsAndACatchAllRule(t *testing.T) {
 	}
 
 	autoGroup := groups[1].(map[string]any)
-	if autoGroup["type"] != "url-test" || autoGroup["url"] != autoTestURL {
+	if autoGroup["type"] != "url-test" || autoGroup["url"] != DelayTestURL {
 		t.Fatalf("unexpected auto group: %#v", autoGroup)
 	}
 

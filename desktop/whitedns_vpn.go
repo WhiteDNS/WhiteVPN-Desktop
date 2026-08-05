@@ -98,6 +98,17 @@ func (a *App) StartWhiteDNSVPNConnection() (model.AppState, error) {
 }
 
 func (a *App) RefreshWhiteDNSVPNConnection() (model.AppState, error) {
+	if mihomoEngineSelected() {
+		// Reconnecting is what refreshing means for a mihomo session: it holds
+		// no stored profile to exclude, and picks its node when it connects.
+		// Without this the button did nothing at all — the exclusion below
+		// never matches a session with no profile behind it, and starting over
+		// a connection that is already up is refused.
+		if _, err := a.StopConnection(); err != nil {
+			return a.GetAppState(), err
+		}
+		return a.StartWhiteDNSVPNConnection()
+	}
 
 	exclude, ok := a.activeWhiteDNSVPNStartupExclusion()
 	if !ok {

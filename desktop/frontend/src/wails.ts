@@ -21,6 +21,8 @@ import type {
   ValidatorState,
   LegacyImportOffer,
   WhiteVPNSettings,
+  WhiteVPNNodeList,
+  ConnectionSelection,
 } from "./types";
 
 type WailsNotificationOptions = {
@@ -84,6 +86,9 @@ type AppApi = {
   DeleteValidatorResultFile(name: string): Promise<ValidatorResultFile[]>;
   GetWhiteVPNSettings(): Promise<WhiteVPNSettings>;
   SaveWhiteVPNSettings(settings: WhiteVPNSettings): Promise<AppState>;
+  ListWhiteVPNNodes(refresh: boolean): Promise<WhiteVPNNodeList>;
+  MeasureWhiteVPNNodeDelays(names: string[]): Promise<WhiteVPNNodeList>;
+  SaveWhiteVPNSelection(countryCode: string, selection: ConnectionSelection): Promise<AppState>;
   GetLegacyImportOffer(): Promise<LegacyImportOffer>;
   ImportLegacyProfiles(): Promise<AppState>;
   DismissLegacyImportOffer(): Promise<void>;
@@ -172,6 +177,9 @@ export const backend = {
   deleteValidatorResultFile: (name: string) => app().DeleteValidatorResultFile(name),
   getWhiteVpnSettings: () => app().GetWhiteVPNSettings(),
   saveWhiteVpnSettings: (settings: WhiteVPNSettings) => app().SaveWhiteVPNSettings(settings),
+  listWhiteVpnNodes: (refresh: boolean) => app().ListWhiteVPNNodes(refresh),
+  measureWhiteVpnNodeDelays: (names: string[]) => app().MeasureWhiteVPNNodeDelays(names),
+  saveWhiteVpnSelection: (countryCode: string, selection: ConnectionSelection) => app().SaveWhiteVPNSelection(countryCode, selection),
   getLegacyImportOffer: () => app().GetLegacyImportOffer(),
   importLegacyProfiles: () => app().ImportLegacyProfiles(),
   dismissLegacyImportOffer: () => app().DismissLegacyImportOffer(),

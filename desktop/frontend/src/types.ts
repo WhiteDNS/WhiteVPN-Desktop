@@ -1,4 +1,4 @@
-export type RuntimeStatusName = "disconnected" | "connecting" | "connected" | "failed";
+export type RuntimeStatusName = "disconnected" | "connecting" | "connected" | "stopping" | "failed";
 export type RuntimeType = "" | "masterdns" | "v2ray";
 
 export interface ConnectionProfile {
@@ -301,6 +301,15 @@ export interface RuntimeStatus {
   localProxyIp: string;
   publicProxyIp: string;
   frontingIp: string;
+  // The node carrying traffic, and where its own name says it is.
+  nodeName: string;
+  nodeCountryCode: string;
+  // Where traffic is measured to actually leave from. It can disagree with
+  // nodeCountryCode, and when it does this one is the true one.
+  exitCountryCode: string;
+  // Whether the measurement has been attempted, so one that found nothing can
+  // be told from one still running.
+  exitChecked: boolean;
   resolverMtuScanPaused: boolean;
   autoProfilePresetId: string;
   autoProfileName: string;
@@ -626,10 +635,36 @@ export type KillSwitchSettings = {
   enabled: boolean;
 };
 
+// The dashboard's node choice. An empty node means Automatic, and empty types
+// means every protocol.
+export type ConnectionSelection = {
+  node: string;
+  types: string[];
+  delaySort: boolean;
+};
+
+// One node of the catalogue. `name` is its identity — what the engine selects
+// by — and `label` is the same name with the flag and channel marker removed.
+export type WhiteVPNNode = {
+  name: string;
+  label: string;
+  type: string;
+  countryCode: string;
+  // Zero with delayOk false means "not measured", not "instant".
+  delayMs: number;
+  delayOk: boolean;
+};
+
+export type WhiteVPNNodeList = {
+  nodes: WhiteVPNNode[];
+  updatedAt: string;
+};
+
 // Mirrors model.WhiteVPNSettings. Every field here is a setting WhiteVPN for
 // Android exposes, so that someone moving from the phone finds the same options.
 export type WhiteVPNSettings = {
   countryCode: string;
+  connection: ConnectionSelection;
   splitTunnel: SplitTunnelSettings;
   tlsIntegrityEnabled: boolean;
   amneziaNoise: AmneziaNoiseSettings;

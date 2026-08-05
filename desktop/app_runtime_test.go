@@ -294,6 +294,105 @@ func TestHandleRuntimeLiveCallbacksIgnoredAfterTerminalState(t *testing.T) {
 	}
 }
 
+func TestBeginStoppingMarksRunningRuntimeAndRevertsOnFailure(t *testing.T) {
+	for _, status := range []string{model.RuntimeConnecting, model.RuntimeConnected} {
+		t.Run(status, func(t *testing.T) {
+			app := &App{state: model.DefaultAppState()}
+			app.state.Runtime.Status = status
+			app.state.Runtime.Message = "Proxy listening on 127.0.0.1:7890"
+			events := []string{}
+			app.emitHook = func(name string, _ any) { events = append(events, name) }
+
+			revert, stopping := app.beginStopping()
+			if !stopping {
+				t.Fatalf("expected a running runtime to be marked as stopping")
+			}
+			if got := app.GetAppState().Runtime.Status; got != model.RuntimeStopping {
+				t.Fatalf("expected stopping status, got %q", got)
+			}
+			if !reflect.DeepEqual(events, []string{"runtime:state"}) {
+				t.Fatalf("expected the interface to be told, got %#v", events)
+			}
+
+			revert()
+			runtimeState := app.GetAppState().Runtime
+			if runtimeState.Status != status {
+				t.Fatalf("expected %q to be restored, got %q", status, runtimeState.Status)
+			}
+			if runtimeState.Message != "Proxy listening on 127.0.0.1:7890" {
+				t.Fatalf("expected the previous message to be restored, got %q", runtimeState.Message)
+			}
+		})
+	}
+}
+
+func TestBeginStoppingLeavesIdleRuntimeAlone(t *testing.T) {
+	for _, status := range []string{model.RuntimeDisconnected, model.RuntimeFailed} {
+		t.Run(status, func(t *testing.T) {
+			app := &App{state: model.DefaultAppState()}
+			app.state.Runtime.Status = status
+			events := []string{}
+			app.emitHook = func(name string, _ any) { events = append(events, name) }
+
+			if _, stopping := app.beginStopping(); stopping {
+				t.Fatalf("expected nothing to stop from %q", status)
+			}
+			if got := app.GetAppState().Runtime.Status; got != status {
+				t.Fatalf("expected %q to be left alone, got %q", status, got)
+			}
+			if len(events) != 0 {
+				t.Fatalf("expected no state a user was never in, got %#v", events)
+			}
+		})
+	}
+}
+
+func TestCancelConnectStopsAnAttemptAndIsReportedAsDisconnected(t *testing.T) {
+	app := &App{state: model.DefaultAppState()}
+	app.state.Runtime.Status = model.RuntimeConnecting
+
+	ctx, cancel := app.beginConnect()
+	defer cancel()
+
+	if !app.cancelConnect() {
+		t.Fatal("expected the in-flight attempt to be cancelled")
+	}
+	if ctx.Err() == nil {
+		t.Fatal("expected the attempt's context to be done")
+	}
+	if app.cancelConnect() {
+		t.Fatal("expected nothing left to cancel")
+	}
+
+	// A session that finishes connecting after that must not be adopted, or the
+	// engine would go on running behind a disconnected interface.
+	if app.adoptSession(ctx, nil) {
+		t.Fatal("expected a cancelled attempt to refuse its session")
+	}
+
+	app.reportConnectFailure(ctx, "context canceled")
+	if got := app.GetAppState().Runtime.Status; got != model.RuntimeDisconnected {
+		t.Fatalf("expected a stopped connect to end disconnected, got %q", got)
+	}
+}
+
+func TestReportConnectFailureKeepsRealFailures(t *testing.T) {
+	app := &App{state: model.DefaultAppState()}
+	app.state.Runtime.Status = model.RuntimeConnecting
+
+	ctx, cancel := app.beginConnect()
+	defer cancel()
+
+	app.reportConnectFailure(ctx, "no node carried traffic")
+	runtimeState := app.GetAppState().Runtime
+	if runtimeState.Status != model.RuntimeFailed {
+		t.Fatalf("expected failed status, got %q", runtimeState.Status)
+	}
+	if runtimeState.Message != "no node carried traffic" {
+		t.Fatalf("expected the reason to be kept, got %q", runtimeState.Message)
+	}
+}
+
 func TestClearRuntimeLogsReturnsEmptyLogArray(t *testing.T) {
 	app := &App{state: model.DefaultAppState()}
 	app.state.Runtime.Logs = []string{"first log"}
