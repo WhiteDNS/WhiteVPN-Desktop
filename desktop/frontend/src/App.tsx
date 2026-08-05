@@ -1979,8 +1979,19 @@ function WhiteDNSVPNPage({
 
   const statusMetrics = [
     { label: t("vpn.metric.localProxy"), value: localProxyEndpoint, icon: Monitor },
-    ...(exitCountry?.measured && runtime.exitIp
-      ? [{ label: t("vpn.exit.ip"), value: `${flagFromCountryCode(exitCountry.code)} ${runtime.exitIp}`, icon: Globe }]
+    ...(connectState === "disconnect"
+      ? [
+          {
+            label: t("vpn.exit.ip"),
+            value:
+              exitCountry?.measured && runtime.exitIp
+                ? `${flagFromCountryCode(exitCountry.code)} ${runtime.exitIp}`
+                : runtime.exitChecked
+                  ? t("vpn.exit.notMeasured")
+                  : `${t("vpn.exit.checking")}…`,
+            icon: Globe,
+          },
+        ]
       : []),
     ...(connectedFrontingIP ? [{ label: t("vpn.metric.frontingIp"), value: connectedFrontingIP, icon: Shield }] : []),
     { label: t("vpn.metric.download"), value: formatSpeed(runtime.stats.downloadSpeedBytesPerSecond), icon: Download },
