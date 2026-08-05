@@ -304,6 +304,9 @@ export interface RuntimeStatus {
   // The node carrying traffic, and where its own name says it is.
   nodeName: string;
   nodeCountryCode: string;
+  // The address the internet sees traffic coming from. Not publicProxyIp,
+  // which is where this machine's own proxy can be reached on the LAN.
+  exitIp: string;
   // Where traffic is measured to actually leave from. It can disagree with
   // nodeCountryCode, and when it does this one is the true one.
   exitCountryCode: string;

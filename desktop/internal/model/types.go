@@ -290,8 +290,13 @@ type RuntimeStatus struct {
 	// gave it, and the country from the flag in that name.
 	NodeName        string `json:"nodeName"`
 	NodeCountryCode string `json:"nodeCountryCode"`
+	// ExitIP is the address the internet sees traffic coming from, measured
+	// through the proxy. It is not PublicProxyIP, which is where this machine's
+	// own proxy can be reached on the LAN — writing one into the other makes the
+	// app claim its local proxy listens on a remote address.
+	ExitIP string `json:"exitIp"`
 	// ExitCountryCode is where traffic is measured to actually leave from — the
-	// country of PublicProxyIP, resolved through the proxy itself. It is kept
+	// country of ExitIP, resolved through the proxy itself. It is kept
 	// apart from NodeCountryCode deliberately: the two can disagree, and when
 	// they do, the measured one is the one that is true.
 	ExitCountryCode string `json:"exitCountryCode"`

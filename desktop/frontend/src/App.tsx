@@ -121,7 +121,7 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useTheme, type Theme } from "@/components/theme-provider";
-import { translate, normalizeLanguage, isRightToLeft, languages, type Language, type StringKey } from "./i18n";
+import { translate, normalizeLanguage, isRightToLeft, languages, type Language, type StringKey, type TranslateFn } from "./i18n";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
@@ -324,6 +324,7 @@ function normalizeRuntime(runtime: RuntimeStatus): RuntimeStatus {
     localProxyIp: runtime.localProxyIp || "",
     publicProxyIp: runtime.publicProxyIp || "",
     frontingIp: runtime.frontingIp || "",
+    exitIp: runtime.exitIp || "",
     nodeName: runtime.nodeName || "",
     nodeCountryCode: runtime.nodeCountryCode || "",
     exitCountryCode: runtime.exitCountryCode || "",
@@ -896,7 +897,7 @@ const navGroups: NavGroup[] = [
 
 // useLanguage resolves the stored setting and keeps the document's direction in
 // step with it.
-function useLanguage(state: AppState | null): { language: Language; t: (key: StringKey) => string } {
+function useLanguage(state: AppState | null): { language: Language; t: TranslateFn } {
   const language = normalizeLanguage(state?.whiteVpn?.language ?? "");
 
   useEffect(() => {
@@ -907,7 +908,7 @@ function useLanguage(state: AppState | null): { language: Language; t: (key: Str
     root.dir = isRightToLeft(language) ? "rtl" : "ltr";
   }, [language]);
 
-  const t = useMemo(() => (key: StringKey) => translate(language, key), [language]);
+  const t = useMemo<TranslateFn>(() => (key, params) => translate(language, key, params), [language]);
   return { language, t };
 }
 
@@ -1245,7 +1246,7 @@ function App() {
   if (!state) {
     return (
       <>
-        <LoadingView />
+        <LoadingView t={t} />
         <ErrorToast toast={errorToast} onDismiss={clearErrorToast} />
         <SuccessToast toast={successToast} onDismiss={clearSuccessToast} />
       </>
@@ -1316,6 +1317,7 @@ function App() {
                   onError={showError}
                   onSuccess={showSuccess}
                   onNavigate={setPage}
+                  t={t}
                 />
               )}
 
@@ -1519,7 +1521,7 @@ function AppSidebar({
   page: Page;
   runtime: RuntimeStatus;
   onPage: (page: Page) => void;
-  t: (key: StringKey) => string;
+  t: TranslateFn;
 }) {
   const sidebarEndpoint = runtimeProxyDisplayEndpoint(runtime);
   const [openGroups, setOpenGroups] = useState<Record<NavGroup["id"], boolean>>({
@@ -1563,7 +1565,7 @@ function AppSidebar({
           }}
           className="mx-2 flex h-8 items-center justify-between gap-2 rounded-md px-2 text-xs font-medium text-sidebar-foreground/70 ring-sidebar-ring transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:outline-hidden group-data-[collapsible=icon]:hidden"
         >
-          <span className="truncate">Source: WhiteDNS Telegram</span>
+          <span className="truncate">{t("nav.source")}</span>
           <ExternalLink className="size-3.5 shrink-0" aria-hidden="true" />
         </a>
       </SidebarHeader>
@@ -1621,10 +1623,10 @@ function AppSidebar({
             <StatusDot status={runtime.status} />
           </ItemMedia>
           <ItemContent>
-            <ItemTitle>{statusLabel(runtime.status)}</ItemTitle>
+            <ItemTitle>{translatedStatusLabel(t, runtime.status)}</ItemTitle>
             <ItemDescription className="line-clamp-none">
               <span className="block">
-                {sidebarEndpoint || "No active proxy"}
+                {sidebarEndpoint || t("status.noActiveProxy")}
               </span>
             </ItemDescription>
           </ItemContent>
@@ -1645,13 +1647,14 @@ function AppIcon({ className }: { className?: string }) {
   );
 }
 
-function LoadingView() {
+// Shown before there is any state, so the language is the one the system says.
+function LoadingView({ t }: { t: TranslateFn }) {
   return (
     <main className="grid min-h-svh place-items-center bg-background p-6">
       <Card className="w-full max-w-sm">
         <CardHeader>
           <CardTitle>WhiteVPN Desktop</CardTitle>
-          <CardDescription>Loading command center</CardDescription>
+          <CardDescription>{t("nav.loading")}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           <Skeleton className="h-8 w-full" />
@@ -1823,7 +1826,7 @@ function LocationDialog({
   busy: boolean;
   loading: boolean;
   language: Language;
-  t: (key: StringKey) => string;
+  t: TranslateFn;
   onOpenChange: (open: boolean) => void;
   onSelect: (countryCode: string) => void;
 }) {
@@ -1898,7 +1901,7 @@ function ConnectionDialog({
   loading: boolean;
   measuring: boolean;
   language: Language;
-  t: (key: StringKey) => string;
+  t: TranslateFn;
   onOpenChange: (open: boolean) => void;
   onSelectNode: (name: string) => void;
   onChangeTypes: (types: string[]) => void;
@@ -2113,7 +2116,7 @@ function WhiteDNSVPNPage({
   onError: (message: string) => void;
   onNavigate: (page: Page) => void;
   language: Language;
-  t: (key: StringKey) => string;
+  t: TranslateFn;
 }) {
   const runtime = state.runtime;
   const selectedSettings = effectiveV2RaySettingsProfile(state);
@@ -2157,29 +2160,31 @@ function WhiteDNSVPNPage({
     (startsConnection && (selectedSettingsMissing || pending !== null));
   const connectedFrontingIP = active ? runtime.frontingIp : "";
   const dashboardTitle = otherRuntimeActive
-    ? "Another runtime is active"
+    ? t("vpn.card.otherRuntime")
     : connectState === "connecting"
-      ? "Connecting WhiteVPN"
+      ? t("vpn.card.connecting")
       : connectState === "disconnecting"
-        ? "Disconnecting WhiteVPN"
+        ? t("vpn.card.disconnecting")
         : connectState === "disconnect"
-          ? "WhiteVPN connected"
+          ? t("vpn.card.connected")
           : connectState === "retry"
-            ? "WhiteVPN could not connect"
-            : "WhiteVPN ready";
+            ? t("vpn.card.failed")
+            : t("vpn.card.ready");
   const dashboardDescription = otherRuntimeActive
-    ? "Disconnect the active runtime before starting WhiteVPN."
+    ? t("vpn.card.otherRuntime.description")
     : connectState === "connecting"
       ? runtime.status === "connecting" && runtime.progress.phase
         ? progressLabel(runtime.progress.phase, runtime.progress.percent)
-        : "Testing available connections before starting VPN."
+        : t("vpn.card.connecting.description")
       : connectState === "disconnecting"
-        ? "Stopping the engine and removing what it created."
+        ? t("vpn.card.disconnecting.description")
         : connectState === "disconnect"
-          ? `Proxy listening on ${localProxyEndpoint}`
+          ? t("vpn.card.connected.description", { endpoint: localProxyEndpoint })
           : connectState === "retry"
-            ? runtime.message || "The connection did not come up."
-            : "Runtime idle";
+            ? // The engine's own words when it has any: they say more about why
+              // than any sentence written in advance can.
+              runtime.message || t("vpn.card.failed.description")
+            : t("vpn.card.ready.description");
   // Where traffic leaves from. The node's name carries a claim, and the app
   // measures the truth through the connection itself; the claim is shown at once
   // so the badge is not empty for the second the measurement takes, and is
@@ -2196,7 +2201,7 @@ function WhiteDNSVPNPage({
     const claimed = runtime.nodeCountryCode;
     const title = measured
       ? [
-          runtime.publicProxyIp ? `${t("vpn.exit.ip")}: ${runtime.publicProxyIp}` : "",
+          runtime.exitIp ? `${t("vpn.exit.ip")}: ${runtime.exitIp}` : "",
           claimed && claimed !== code ? t("vpn.exit.mismatch") : t("vpn.exit.measured"),
         ]
           .filter(Boolean)
@@ -2217,19 +2222,19 @@ function WhiteDNSVPNPage({
     runtime.exitCountryCode,
     runtime.exitChecked,
     runtime.nodeCountryCode,
-    runtime.publicProxyIp,
+    runtime.exitIp,
     language,
     t,
   ]);
 
   const statusMetrics = [
-    { label: "Local proxy", value: localProxyEndpoint, icon: Monitor },
-    ...(exitCountry?.measured && runtime.publicProxyIp
-      ? [{ label: t("vpn.exit.ip"), value: `${flagFromCountryCode(exitCountry.code)} ${runtime.publicProxyIp}`, icon: Globe }]
+    { label: t("vpn.metric.localProxy"), value: localProxyEndpoint, icon: Monitor },
+    ...(exitCountry?.measured && runtime.exitIp
+      ? [{ label: t("vpn.exit.ip"), value: `${flagFromCountryCode(exitCountry.code)} ${runtime.exitIp}`, icon: Globe }]
       : []),
-    ...(connectedFrontingIP ? [{ label: "Fronting IP", value: connectedFrontingIP, icon: Shield }] : []),
-    { label: "Download", value: formatSpeed(runtime.stats.downloadSpeedBytesPerSecond), icon: Download },
-    { label: "Upload", value: formatSpeed(runtime.stats.uploadSpeedBytesPerSecond), icon: Upload },
+    ...(connectedFrontingIP ? [{ label: t("vpn.metric.frontingIp"), value: connectedFrontingIP, icon: Shield }] : []),
+    { label: t("vpn.metric.download"), value: formatSpeed(runtime.stats.downloadSpeedBytesPerSecond), icon: Download },
+    { label: t("vpn.metric.upload"), value: formatSpeed(runtime.stats.uploadSpeedBytesPerSecond), icon: Upload },
   ];
 
   // One button, so one handler: what a click means is whatever the button
@@ -2341,7 +2346,7 @@ function WhiteDNSVPNPage({
 
 
   return (
-    <PageShell eyebrow="WhiteVPN" title="VPN">
+    <PageShell eyebrow="WhiteVPN" title={t("nav.vpn")}>
       <div className="grid gap-3">
         <Card className={cn("relative overflow-hidden transition-all duration-500", statusCardTone(setupStatus))}>
           {setupStatus === "connected" && (
@@ -2377,7 +2382,7 @@ function WhiteDNSVPNPage({
                     </Badge>
                     <Badge variant="outline" className="h-6 gap-1 px-3">
                       <Shield className="size-3" />
-                      <span className="font-mono">{connectedFrontingIP || "IP fronting auto"}</span>
+                      <span className="font-mono">{connectedFrontingIP || t("vpn.frontingAuto")}</span>
                     </Badge>
                   </div>
                   <h2 className="text-2xl font-bold tracking-tight">{dashboardTitle}</h2>
@@ -2437,7 +2442,7 @@ function WhiteDNSVPNPage({
                   <div className="flex min-w-0 items-center gap-3 rounded-md border bg-background/70 px-3 py-2">
                     <Gauge className="size-3.5 shrink-0 text-muted-foreground" />
                     <div className="min-w-0">
-                      <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Traffic</p>
+                      <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{t("vpn.metric.traffic")}</p>
                       <p className="truncate text-sm font-semibold">{runtime.trafficMonitorMessage}</p>
                     </div>
                   </div>
@@ -2530,15 +2535,15 @@ function WhiteDNSVPNPage({
       {selectedSettingsMissing && (
         <Alert className="border-amber-200 bg-amber-50 text-amber-950">
           <AlertCircle />
-          <AlertTitle>V2Ray settings required</AlertTitle>
-          <AlertDescription>Choose a valid V2Ray local settings profile before connecting WhiteVPN.</AlertDescription>
+          <AlertTitle>{t("vpn.alert.settingsRequired")}</AlertTitle>
+          <AlertDescription>{t("vpn.alert.settingsRequired.description")}</AlertDescription>
         </Alert>
       )}
       {otherRuntimeActive && (
         <Alert>
           <AlertCircle />
-          <AlertTitle>Another runtime is active</AlertTitle>
-          <AlertDescription>Disconnect the active runtime before starting WhiteVPN.</AlertDescription>
+          <AlertTitle>{t("vpn.card.otherRuntime")}</AlertTitle>
+          <AlertDescription>{t("vpn.card.otherRuntime.description")}</AlertDescription>
         </Alert>
       )}
     </PageShell>
@@ -6878,7 +6883,7 @@ function statusLabel(status: string): string {
 
 // translatedStatusLabel is statusLabel for the screens that have been keyed.
 // Anything without a key falls back to the English label rather than to the key.
-function translatedStatusLabel(t: (key: StringKey) => string, status: string): string {
+function translatedStatusLabel(t: TranslateFn, status: string): string {
   switch (status) {
     case "connected":
       return t("status.connected");
@@ -7142,12 +7147,14 @@ function WhiteVPNSettingsPage({
   onError,
   onSuccess,
   onNavigate,
+  t,
 }: {
   state: AppState;
   onState: (state: AppState) => void;
   onError: (message: string) => void;
   onSuccess: (message: string) => void;
   onNavigate: (page: Page) => void;
+  t: TranslateFn;
 }) {
   const stored = state.whiteVpn;
   const [draft, setDraft] = useState<WhiteVPNSettings>(stored);
@@ -7167,7 +7174,7 @@ function WhiteVPNSettingsPage({
     setSaving(true);
     try {
       onState(await backend.saveWhiteVpnSettings(next));
-      onSuccess("Settings saved.");
+      onSuccess(t("settings.saved"));
     } catch (err) {
       onError(messageFromError(err));
     } finally {
@@ -7189,7 +7196,7 @@ function WhiteVPNSettingsPage({
       return;
     }
     if (draft.frontingIps.length >= maxFrontingIPs) {
-      onError("Up to " + maxFrontingIPs + " fronting addresses can be used.");
+      onError(t("settings.fronting.tooMany", { max: maxFrontingIPs }));
       return;
     }
     patch({ frontingIps: [...draft.frontingIps, value] });
@@ -7214,62 +7221,52 @@ function WhiteVPNSettingsPage({
   return (
     <PageShell
       eyebrow="WhiteVPN"
-      title="Settings"
+      title={t("settings.title")}
       actions={
         <>
           <Button variant="outline" onClick={() => setDraft(stored)} disabled={!dirty || saving}>
-            Discard
+            {t("settings.discard")}
           </Button>
           <Button onClick={() => void save(draft)} disabled={!dirty || saving}>
             <Save />
-            Save changes
+            {t("settings.save")}
           </Button>
         </>
       }
     >
-      <SettingsSection title="Connection" description="How traffic reaches your machine.">
+      <SettingsSection title={t("settings.connection.title")} description={t("settings.connection.description")}>
         <div className="grid gap-2 sm:grid-cols-2">
           <SettingSwitchRow
-            label="Tunnel (TUN)"
+            label={t("settings.tunnel")}
             checked={draft.tunEnabled}
             onCheckedChange={(checked) => patch({ tunEnabled: checked })}
           />
           <SettingSwitchRow
-            label="Kill switch"
+            label={t("settings.killSwitch")}
             checked={draft.killSwitch.enabled}
             disabled
             onCheckedChange={(checked) => patch({ killSwitch: { enabled: checked } })}
           />
         </div>
-        <FieldDescription>
-          The tunnel carries every program on the machine. Turning it on asks for Administrator when
-          connecting, because creating the network adapter needs it. Left off, only programs pointed
-          at the local proxy are carried.
-        </FieldDescription>
-        <FieldDescription>
-          The kill switch is not built yet, so it stays off. Enforcing it means a firewall rule that
-          has to be removed again on exit, after a crash and on uninstall — a rule that outlives the
-          app would leave you with no internet and no visible cause.
-        </FieldDescription>
+        <FieldDescription>{t("settings.tunnel.description")}</FieldDescription>
+        <FieldDescription>{t("settings.killSwitch.description")}</FieldDescription>
       </SettingsSection>
 
-      <SettingsSection title="Security" description="Checks applied to a server before it is trusted with traffic.">
+      <SettingsSection title={t("settings.security.title")} description={t("settings.security.description")}>
         <div className="grid gap-2 sm:grid-cols-2">
           <SettingSwitchRow
-            label="TLS integrity"
+            label={t("settings.tlsIntegrity")}
             checked={draft.tlsIntegrityEnabled}
             onCheckedChange={(checked) => patch({ tlsIntegrityEnabled: checked })}
           />
         </div>
-        <FieldDescription>
-          Verifies a server&apos;s certificate before connecting, and sets aside any that fail for a day.
-        </FieldDescription>
+        <FieldDescription>{t("settings.tlsIntegrity.description")}</FieldDescription>
       </SettingsSection>
 
-      <SettingsSection title="DNS privacy" description="Where name lookups go, and over what.">
+      <SettingsSection title={t("settings.dns.title")} description={t("settings.dns.description")}>
         <FieldGroup className="grid gap-4 md:grid-cols-3">
           <Field>
-            <FieldLabel>Mode</FieldLabel>
+            <FieldLabel>{t("settings.dns.mode")}</FieldLabel>
             <Select
               value={dnsMode}
               onValueChange={(value) =>
@@ -7280,22 +7277,22 @@ function WhiteVPNSettingsPage({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent position="popper">
-                <SelectItem value="automatic">Automatic</SelectItem>
-                <SelectItem value="doh">DNS over HTTPS</SelectItem>
-                <SelectItem value="dot">DNS over TLS</SelectItem>
+                <SelectItem value="automatic">{t("settings.dns.automatic")}</SelectItem>
+                <SelectItem value="doh">{t("settings.dns.doh")}</SelectItem>
+                <SelectItem value="dot">{t("settings.dns.dot")}</SelectItem>
               </SelectContent>
             </Select>
-            <FieldDescription>Automatic offers both, encrypted either way.</FieldDescription>
+            <FieldDescription>{t("settings.dns.hint")}</FieldDescription>
           </Field>
           <TextField
-            label="DoH server"
+            label={t("settings.dns.dohServer")}
             value={draft.dnsPrivacy.dohUrl}
             placeholder="https://1.1.1.1/dns-query"
             disabled={dnsMode !== "doh"}
             onChange={(value) => patch({ dnsPrivacy: { ...draft.dnsPrivacy, dohUrl: value } })}
           />
           <TextField
-            label="DoT server"
+            label={t("settings.dns.dotServer")}
             value={draft.dnsPrivacy.dotEndpoint}
             placeholder="tls://1.1.1.1:853"
             disabled={dnsMode !== "dot"}
@@ -7305,8 +7302,8 @@ function WhiteVPNSettingsPage({
       </SettingsSection>
 
       <SettingsSection
-        title="IP fronting"
-        description={"Reach a server through a different address while keeping its name. Up to " + maxFrontingIPs + "."}
+        title={t("settings.fronting.title")}
+        description={t("settings.fronting.description", { max: maxFrontingIPs })}
       >
         <div className="flex flex-wrap gap-2">
           <Input
@@ -7322,20 +7319,20 @@ function WhiteVPNSettingsPage({
             }}
           />
           <Button variant="outline" onClick={addFrontingIP} disabled={draft.frontingIps.length >= maxFrontingIPs}>
-            Add
+            {t("common.add")}
           </Button>
         </div>
         <RemovableBadges
           values={draft.frontingIps}
-          emptyLabel="No fronting addresses. Servers are reached directly."
+          emptyLabel={t("settings.fronting.empty")}
           onRemove={(value) => patch({ frontingIps: draft.frontingIps.filter((entry) => entry !== value) })}
         />
       </SettingsSection>
 
-      <SettingsSection title="Split tunnel" description="Choose which programs the tunnel carries.">
+      <SettingsSection title={t("settings.splitTunnel.title")} description={t("settings.splitTunnel.description")}>
         <FieldGroup className="grid gap-4 md:grid-cols-2">
           <Field>
-            <FieldLabel>Mode</FieldLabel>
+            <FieldLabel>{t("settings.splitTunnel.mode")}</FieldLabel>
             <Select
               value={draft.splitTunnel.mode}
               onValueChange={(value) =>
@@ -7346,14 +7343,14 @@ function WhiteVPNSettingsPage({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent position="popper">
-                <SelectItem value="off">Off — carry everything</SelectItem>
-                <SelectItem value="bypass_selected">Bypass selected programs</SelectItem>
-                <SelectItem value="vpn_only_selected">Only selected programs</SelectItem>
+                <SelectItem value="off">{t("settings.splitTunnel.off")}</SelectItem>
+                <SelectItem value="bypass_selected">{t("settings.splitTunnel.bypass")}</SelectItem>
+                <SelectItem value="vpn_only_selected">{t("settings.splitTunnel.vpnOnly")}</SelectItem>
               </SelectContent>
             </Select>
           </Field>
           <Field>
-            <FieldLabel>Program</FieldLabel>
+            <FieldLabel>{t("settings.splitTunnel.program")}</FieldLabel>
             <div className="flex gap-2">
               <Input
                 value={processDraft}
@@ -7368,18 +7365,15 @@ function WhiteVPNSettingsPage({
                 }}
               />
               <Button variant="outline" onClick={addProcess} disabled={draft.splitTunnel.mode === "off"}>
-                Add
+                {t("common.add")}
               </Button>
             </div>
-            <FieldDescription>
-              Matched on the executable&apos;s file name, so two programs installed under the same name
-              cannot be told apart.
-            </FieldDescription>
+            <FieldDescription>{t("settings.splitTunnel.programHint")}</FieldDescription>
           </Field>
         </FieldGroup>
         <RemovableBadges
           values={draft.splitTunnel.processes}
-          emptyLabel="No programs selected."
+          emptyLabel={t("settings.splitTunnel.empty")}
           onRemove={(value) =>
             patch({
               splitTunnel: {
@@ -7391,17 +7385,17 @@ function WhiteVPNSettingsPage({
         />
       </SettingsSection>
 
-      <SettingsSection title="Obfuscation" description="Pad the connection with noise so its shape is less recognisable.">
+      <SettingsSection title={t("settings.noise.title")} description={t("settings.noise.description")}>
         <div className="grid gap-2 sm:grid-cols-2">
           <SettingSwitchRow
-            label="Amnezia noise"
+            label={t("settings.noise.enable")}
             checked={draft.amneziaNoise.enabled}
             onCheckedChange={(checked) => patch({ amneziaNoise: { ...draft.amneziaNoise, enabled: checked } })}
           />
         </div>
         <FieldGroup className="grid gap-4 md:grid-cols-3">
           <NumberField
-            label="Packets"
+            label={t("settings.noise.count")}
             value={draft.amneziaNoise.count}
             min={minNoiseCount}
             max={maxNoiseCount}
@@ -7409,7 +7403,7 @@ function WhiteVPNSettingsPage({
             onChange={(value) => patch({ amneziaNoise: { ...draft.amneziaNoise, count: value } })}
           />
           <NumberField
-            label="Smallest (bytes)"
+            label={t("settings.noise.minSize")}
             value={draft.amneziaNoise.minSize}
             min={minNoiseSize}
             max={maxNoiseSize}
@@ -7417,7 +7411,7 @@ function WhiteVPNSettingsPage({
             onChange={(value) => patch({ amneziaNoise: { ...draft.amneziaNoise, minSize: value } })}
           />
           <NumberField
-            label="Largest (bytes)"
+            label={t("settings.noise.maxSize")}
             value={draft.amneziaNoise.maxSize}
             min={minNoiseSize}
             max={maxNoiseSize}
@@ -7428,12 +7422,12 @@ function WhiteVPNSettingsPage({
       </SettingsSection>
 
       <SettingsSection
-        title="Appearance"
-        description="How the app looks and what language it speaks."
+        title={t("settings.appearance.title")}
+        description={t("settings.appearance.description")}
       >
         <FieldGroup className="grid gap-4 md:grid-cols-2">
           <Field>
-            <FieldLabel>App language</FieldLabel>
+            <FieldLabel>{t("settings.language")}</FieldLabel>
             <Select
               value={normalizeLanguage(draft.language)}
               onValueChange={(value) => patch({ language: value })}
@@ -7449,25 +7443,20 @@ function WhiteVPNSettingsPage({
                 ))}
               </SelectContent>
             </Select>
-            <FieldDescription>
-              Persian lays the interface out right to left. The theme is on the button beside the
-              app name.
-            </FieldDescription>
+            <FieldDescription>{t("settings.language.hint")}</FieldDescription>
           </Field>
         </FieldGroup>
       </SettingsSection>
 
       <Card>
         <CardHeader>
-          <CardTitle>Engine settings</CardTitle>
-          <CardDescription>
-            Listen port, inbound type and the rest of the engine plumbing, which the phone does not expose.
-          </CardDescription>
+          <CardTitle>{t("settings.engine.title")}</CardTitle>
+          <CardDescription>{t("settings.engine.description")}</CardDescription>
         </CardHeader>
         <CardContent>
           <Button variant="outline" onClick={() => onNavigate("engine-settings")}>
             <Settings />
-            Open engine settings
+            {t("settings.engine.open")}
           </Button>
         </CardContent>
       </Card>

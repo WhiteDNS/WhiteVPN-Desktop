@@ -164,7 +164,7 @@ func TestRecordConnectedNodeReadsTheFlagAndDropsTheOldMeasurement(t *testing.T) 
 	app := &App{state: model.DefaultAppState(), proxyCountryCache: map[string]proxyCountryCacheEntry{}}
 	app.state.Runtime.Status = model.RuntimeConnected
 	// A measurement belonging to the node about to be left.
-	app.state.Runtime.PublicProxyIP = "203.0.113.7"
+	app.state.Runtime.ExitIP = "203.0.113.7"
 	app.state.Runtime.ExitCountryCode = "JP"
 	app.state.Runtime.ExitChecked = true
 	app.proxyCountryCache["socks://127.0.0.1:2080"] = proxyCountryCacheEntry{}
@@ -180,7 +180,7 @@ func TestRecordConnectedNodeReadsTheFlagAndDropsTheOldMeasurement(t *testing.T) 
 	if runtimeState.NodeCountryCode != "DE" {
 		t.Fatalf("expected the flag to give DE, got %q", runtimeState.NodeCountryCode)
 	}
-	if runtimeState.PublicProxyIP != "" || runtimeState.ExitCountryCode != "" || runtimeState.ExitChecked {
+	if runtimeState.ExitIP != "" || runtimeState.ExitCountryCode != "" || runtimeState.ExitChecked {
 		t.Fatalf("the previous node's measurement must not carry over, got %#v", runtimeState)
 	}
 	if len(app.proxyCountryCache) != 0 {

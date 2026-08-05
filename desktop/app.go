@@ -425,6 +425,7 @@ func (a *App) handleRuntimeState(status, message string) {
 		a.state.Runtime.ProxyProtocol = ""
 		a.state.Runtime.LocalProxyIP = ""
 		a.state.Runtime.PublicProxyIP = ""
+		a.state.Runtime.ExitIP = ""
 		a.state.Runtime.NodeName = ""
 		a.state.Runtime.NodeCountryCode = ""
 		a.state.Runtime.ExitCountryCode = ""

@@ -29,6 +29,8 @@ const strings = {
   "nav.whiteIps": { en: "White IP Generator", fa: "سازندهٔ آی‌پی سفید" },
   "nav.validator": { en: "Validator", fa: "اعتبارسنج" },
   "nav.backup": { en: "Full Backup", fa: "پشتیبان کامل" },
+  "nav.source": { en: "Source: WhiteDNS Telegram", fa: "منبع: تلگرام وایت‌دی‌ان‌اس" },
+  "nav.loading": { en: "Loading command center", fa: "در حال بارگذاری" },
 
   // Connection status
   "status.connected": { en: "Connected", fa: "متصل" },
@@ -49,6 +51,46 @@ const strings = {
   "connect.cancelHint": { en: "Stop connecting", fa: "توقف اتصال" },
   "connect.refresh": { en: "Refresh", fa: "تازه‌سازی" },
   "connect.busy": { en: "Busy", fa: "مشغول" },
+
+  // The status card.
+  "vpn.card.ready": { en: "WhiteVPN ready", fa: "وایت‌وی‌پی‌ان آماده است" },
+  "vpn.card.ready.description": { en: "Runtime idle", fa: "موتور بی‌کار است" },
+  "vpn.card.connecting": { en: "Connecting WhiteVPN", fa: "در حال اتصال وایت‌وی‌پی‌ان" },
+  "vpn.card.connecting.description": {
+    en: "Testing available connections before starting VPN.",
+    fa: "آزمودن سرورهای در دسترس پیش از برپا کردن وی‌پی‌ان.",
+  },
+  "vpn.card.connected": { en: "WhiteVPN connected", fa: "وایت‌وی‌پی‌ان متصل است" },
+  "vpn.card.connected.description": {
+    en: "Proxy listening on {endpoint}",
+    fa: "پراکسی روی {endpoint} در حال شنود است",
+  },
+  "vpn.card.disconnecting": { en: "Disconnecting WhiteVPN", fa: "در حال قطع وایت‌وی‌پی‌ان" },
+  "vpn.card.disconnecting.description": {
+    en: "Stopping the engine and removing what it created.",
+    fa: "متوقف کردن موتور و برداشتن آنچه ساخته است.",
+  },
+  "vpn.card.failed": { en: "WhiteVPN could not connect", fa: "وایت‌وی‌پی‌ان نتوانست وصل شود" },
+  "vpn.card.failed.description": {
+    en: "The connection did not come up.",
+    fa: "اتصال برقرار نشد.",
+  },
+  "vpn.card.otherRuntime": { en: "Another runtime is active", fa: "موتور دیگری فعال است" },
+  "vpn.card.otherRuntime.description": {
+    en: "Disconnect the active runtime before starting WhiteVPN.",
+    fa: "پیش از راه‌اندازی وایت‌وی‌پی‌ان، موتور فعال را قطع کنید.",
+  },
+  "vpn.metric.localProxy": { en: "Local proxy", fa: "پراکسی محلی" },
+  "vpn.metric.frontingIp": { en: "Fronting IP", fa: "آی‌پی جایگزین" },
+  "vpn.metric.download": { en: "Download", fa: "دریافت" },
+  "vpn.metric.upload": { en: "Upload", fa: "ارسال" },
+  "vpn.metric.traffic": { en: "Traffic", fa: "ترافیک" },
+  "vpn.frontingAuto": { en: "IP fronting auto", fa: "آی‌پی جایگزین خودکار" },
+  "vpn.alert.settingsRequired": { en: "Engine settings required", fa: "تنظیمات موتور لازم است" },
+  "vpn.alert.settingsRequired.description": {
+    en: "Choose a valid local proxy port on the engine settings page before connecting.",
+    fa: "پیش از اتصال، در صفحهٔ تنظیمات موتور یک پورت پراکسی محلی معتبر انتخاب کنید.",
+  },
 
   // The dashboard's two rows, and the dialogs behind them.
   "vpn.rows.title": { en: "Connection", fa: "اتصال" },
@@ -123,7 +165,15 @@ const strings = {
     fa: "اینکه ترافیک چطور به دستگاه شما می‌رسد.",
   },
   "settings.tunnel": { en: "Tunnel (TUN)", fa: "تونل (TUN)" },
+  "settings.tunnel.description": {
+    en: "The tunnel carries every program on the machine. Turning it on asks for Administrator when connecting, because creating the network adapter needs it. Left off, only programs pointed at the local proxy are carried.",
+    fa: "تونل ترافیک همهٔ برنامه‌های دستگاه را حمل می‌کند. روشن کردنش هنگام اتصال دسترسی Administrator می‌خواهد، چون ساختن آداپتور شبکه به آن نیاز دارد. اگر خاموش باشد، فقط برنامه‌هایی که به پراکسی محلی وصل شده‌اند حمل می‌شوند.",
+  },
   "settings.killSwitch": { en: "Kill switch", fa: "قطع‌کنندهٔ اضطراری" },
+  "settings.killSwitch.description": {
+    en: "The kill switch is not built yet, so it stays off. Enforcing it means a firewall rule that has to be removed again on exit, after a crash and on uninstall — a rule that outlives the app would leave you with no internet and no visible cause.",
+    fa: "قطع‌کنندهٔ اضطراری هنوز ساخته نشده، پس خاموش می‌ماند. اعمال آن یعنی یک قانون فایروال که باید هنگام خروج، پس از کرش و هنگام حذف برنامه دوباره برداشته شود — قانونی که از خود برنامه عمر بیشتری کند شما را بدون اینترنت و بدون دلیل آشکار رها می‌کند.",
+  },
 
   "settings.security.title": { en: "Security", fa: "امنیت اتصال" },
   "settings.security.description": {
@@ -153,6 +203,14 @@ const strings = {
   },
 
   "settings.fronting.title": { en: "IP fronting", fa: "آی‌پی جایگزین" },
+  "settings.fronting.description": {
+    en: "Reach a server through a different address while keeping its name. Up to {max}.",
+    fa: "رسیدن به سرور از راه آدرسی دیگر، بدون تغییر نامش. حداکثر {max} مورد.",
+  },
+  "settings.fronting.tooMany": {
+    en: "Up to {max} fronting addresses can be used.",
+    fa: "حداکثر {max} آدرس جایگزین می‌توان استفاده کرد.",
+  },
   "settings.fronting.empty": {
     en: "No fronting addresses. Servers are reached directly.",
     fa: "آدرس جایگزینی تنظیم نشده. سرورها مستقیم در دسترس‌اند.",
@@ -172,7 +230,12 @@ const strings = {
     en: "Only selected programs",
     fa: "فقط برنامه‌های انتخاب‌شده داخل VPN",
   },
+  "settings.splitTunnel.mode": { en: "Mode", fa: "حالت" },
   "settings.splitTunnel.program": { en: "Program", fa: "برنامه" },
+  "settings.splitTunnel.programHint": {
+    en: "Matched on the executable's file name, so two programs installed under the same name cannot be told apart.",
+    fa: "تطبیق بر اساس نام فایل اجرایی است، پس دو برنامه‌ای که با یک نام نصب شده باشند از هم قابل تشخیص نیستند.",
+  },
   "settings.splitTunnel.empty": { en: "No programs selected.", fa: "برنامه‌ای انتخاب نشده." },
 
   "settings.noise.title": { en: "Obfuscation", fa: "Amnezia Noise" },
@@ -191,8 +254,16 @@ const strings = {
     fa: "اینکه برنامه چه شکلی باشد و به چه زبانی صحبت کند.",
   },
   "settings.language": { en: "App language", fa: "زبان برنامه" },
+  "settings.language.hint": {
+    en: "Persian lays the interface out right to left. The theme is on the button beside the app name.",
+    fa: "فارسی چیدمان را راست‌به‌چپ می‌کند. پوستهٔ برنامه روی دکمهٔ کنار نام برنامه است.",
+  },
 
   "settings.engine.title": { en: "Engine settings", fa: "تنظیمات موتور" },
+  "settings.engine.description": {
+    en: "Listen port, inbound type and the rest of the engine plumbing, which the phone does not expose.",
+    fa: "پورت شنود، نوع ورودی و بقیهٔ جزئیات موتور، که نسخهٔ گوشی آن‌ها را نشان نمی‌دهد.",
+  },
   "settings.engine.open": { en: "Open engine settings", fa: "باز کردن تنظیمات موتور" },
 
   "common.add": { en: "Add", fa: "افزودن" },
@@ -201,14 +272,28 @@ const strings = {
 
 export type StringKey = keyof typeof strings;
 
-export function translate(language: Language, key: StringKey): string {
+// What a screen is handed. Named so that adding a parameter to a string does
+// not mean widening a signature written out in every page's props.
+export type TranslateFn = (key: StringKey, params?: Record<string, string | number>) => string;
+
+export function translate(language: Language, key: StringKey, params?: Record<string, string | number>): string {
   const entry = strings[key];
   if (!entry) {
     return key;
   }
   // Persian falls back to English rather than to the key: a screen part-way
   // through translation should read as mixed language, not as identifiers.
-  return language === "fa" ? entry.fa || entry.en : entry.en;
+  const text = language === "fa" ? entry.fa || entry.en : entry.en;
+  if (!params) {
+    return text;
+  }
+  // `{name}` rather than concatenation at the call site: a sentence with a
+  // number in it does not put that number in the same place in both languages,
+  // and only the translator can say where it goes.
+  return text.replace(/\{(\w+)\}/g, (whole, name: string) => {
+    const value = params[name];
+    return value === undefined ? whole : String(value);
+  });
 }
 
 // normalizeLanguage decides what an unset or unknown setting means.

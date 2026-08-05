@@ -151,7 +151,7 @@ that outlives the app leaves the user with no internet and no obvious cause.
 | Setting | Store / key | Default | Options | Status |
 |---|---|---|---|---|
 | Theme | `white_dns_theme` / `theme` | `system` | System, Light, Dark | `[x]` |
-| Language | `white_dns_language` / `language` | `fa` | Persian, English | `[~]` layer, RTL and switcher done; most screen strings not keyed yet |
+| Language | `white_dns_language` / `language` | `fa` | Persian, English | `[~]` the parity surfaces are keyed — navigation, VPN page, both dashboard dialogs, Settings. The desktop-only tools are not |
 
 Android ships 202 strings in each of `values/strings.xml` and
 `values-fa/strings.xml`; both catalogues can be lifted directly. Persian also
@@ -258,9 +258,14 @@ but only the navigation, the connect button and those dialogs are keyed so far.
 1. **Finish the translation** — mechanical: add a key to `frontend/src/i18n.ts`,
    swap the literal for `t(...)`. Android's `values-fa/strings.xml` has 202
    strings already translated; take the wording from there rather than inventing
-   it, so both apps say the same thing. The VPN page takes `t` as a prop now;
-   its connect button, status badge and the two dashboard dialogs are keyed;
-   the status card's prose is not.
+   it, so both apps say the same thing.
+
+   Everything the phone has is keyed: navigation, the VPN page including both
+   dashboard dialogs, and the whole Settings page. What is left is the screens
+   the phone does not have — Servers, Subscriptions, Logs, Validator, White IP
+   Generator, Full Backup — plus the toasts they raise. Strings take `{name}`
+   parameters, because a sentence with a number in it does not put that number
+   in the same place in both languages.
 2. **Subscriptions** — selection, user-added entries, import formats.
 3. **Clean-IP scan** and **the kill switch** — each is its own session.
 

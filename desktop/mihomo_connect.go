@@ -154,7 +154,7 @@ func (a *App) recordConnectedNode(name string) {
 	a.state.Runtime.NodeName = name
 	a.state.Runtime.NodeCountryCode = countryCodeFromNodeName(name)
 	// The measurement belongs to the node that has just been left.
-	a.state.Runtime.PublicProxyIP = ""
+	a.state.Runtime.ExitIP = ""
 	a.state.Runtime.ExitCountryCode = ""
 	a.state.Runtime.ExitChecked = false
 	runtimeState := a.state.Runtime
@@ -186,7 +186,7 @@ func (a *App) resolveExitCountry() {
 		}
 		a.state.Runtime.ExitChecked = true
 		if err == nil && result.OK {
-			a.state.Runtime.PublicProxyIP = result.IP
+			a.state.Runtime.ExitIP = result.IP
 			a.state.Runtime.ExitCountryCode = strings.ToUpper(strings.TrimSpace(result.CountryCode))
 		}
 		runtimeState := a.state.Runtime
