@@ -59,8 +59,9 @@ type App struct {
 
 	legacyImport profiles.LegacyImport
 
-	mihomo mihomoState
-	tray   trayState
+	mihomo  mihomoState
+	tray    trayState
+	measure measureState
 
 	connectMu     sync.Mutex
 	connectCancel context.CancelFunc

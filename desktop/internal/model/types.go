@@ -3,6 +3,7 @@ package model
 import (
 	"runtime"
 	"strings"
+	"time"
 )
 
 const (
@@ -280,16 +281,16 @@ type RuntimeStatus struct {
 	// session has no such profile - it connects straight from the subscription -
 	// so without this the app reports its own working connection as belonging to
 	// something else.
-	Engine                string               `json:"engine"`
-	RuntimeType           string               `json:"runtimeType"`
-	Message               string               `json:"message"`
-	ActiveConnectionID    string               `json:"activeConnectionId"`
-	ListenIP              string               `json:"listenIp"`
-	ListenPort            int                  `json:"listenPort"`
-	ProxyProtocol         string               `json:"proxyProtocol"`
-	LocalProxyIP          string               `json:"localProxyIp"`
-	PublicProxyIP         string               `json:"publicProxyIp"`
-	FrontingIP            string               `json:"frontingIp"`
+	Engine             string `json:"engine"`
+	RuntimeType        string `json:"runtimeType"`
+	Message            string `json:"message"`
+	ActiveConnectionID string `json:"activeConnectionId"`
+	ListenIP           string `json:"listenIp"`
+	ListenPort         int    `json:"listenPort"`
+	ProxyProtocol      string `json:"proxyProtocol"`
+	LocalProxyIP       string `json:"localProxyIp"`
+	PublicProxyIP      string `json:"publicProxyIp"`
+	FrontingIP         string `json:"frontingIp"`
 
 	// The node carrying traffic, and where it says it is: the name the catalogue
 	// gave it, and the country from the flag in that name.
@@ -335,25 +336,25 @@ type FirewallStatus struct {
 }
 
 type AppState struct {
-	SelectedConnectionProfileID string                 `json:"selectedConnectionProfileId"`
-	SelectedResolverProfileID   string                 `json:"selectedResolverProfileId"`
-	SelectedSettingsProfileID   string                 `json:"selectedSettingsProfileId"`
-	SelectedV2RayProfileID      string                 `json:"selectedV2RayProfileId"`
-	SelectedV2RaySettingsID     string                 `json:"selectedV2RaySettingsId"`
+	SelectedConnectionProfileID string `json:"selectedConnectionProfileId"`
+	SelectedResolverProfileID   string `json:"selectedResolverProfileId"`
+	SelectedSettingsProfileID   string `json:"selectedSettingsProfileId"`
+	SelectedV2RayProfileID      string `json:"selectedV2RayProfileId"`
+	SelectedV2RaySettingsID     string `json:"selectedV2RaySettingsId"`
 	// SelectedSubscriptionID is the subscription the VPN connects through. It
 	// defaults to the built-in catalogue and falls back to it when whatever it
 	// named is gone.
-	SelectedSubscriptionID string `json:"selectedSubscriptionId"`
-	Theme                       string                 `json:"theme"`
-	ConnectionProfiles          []ConnectionProfile    `json:"connectionProfiles"`
-	ResolverProfiles            []ResolverProfile      `json:"resolverProfiles"`
-	SettingsProfiles            []SettingsProfile      `json:"settingsProfiles"`
-	V2RayProfiles               []V2RayProfile         `json:"v2rayProfiles"`
-	V2RaySubscriptions          []V2RaySubscription    `json:"v2raySubscriptions"`
-	V2RaySettingsProfiles       []V2RaySettingsProfile `json:"v2raySettingsProfiles"`
-	WhiteDNSVPNFrontingIPs      []string               `json:"whiteDNSVPNFrontingIps"`
-	WhiteVPN                    WhiteVPNSettings       `json:"whiteVpn"`
-	Runtime                     RuntimeStatus          `json:"runtime"`
+	SelectedSubscriptionID string                 `json:"selectedSubscriptionId"`
+	Theme                  string                 `json:"theme"`
+	ConnectionProfiles     []ConnectionProfile    `json:"connectionProfiles"`
+	ResolverProfiles       []ResolverProfile      `json:"resolverProfiles"`
+	SettingsProfiles       []SettingsProfile      `json:"settingsProfiles"`
+	V2RayProfiles          []V2RayProfile         `json:"v2rayProfiles"`
+	V2RaySubscriptions     []V2RaySubscription    `json:"v2raySubscriptions"`
+	V2RaySettingsProfiles  []V2RaySettingsProfile `json:"v2raySettingsProfiles"`
+	WhiteDNSVPNFrontingIPs []string               `json:"whiteDNSVPNFrontingIps"`
+	WhiteVPN               WhiteVPNSettings       `json:"whiteVpn"`
+	Runtime                RuntimeStatus          `json:"runtime"`
 }
 
 type ConnectionImportResult struct {
@@ -510,10 +511,85 @@ type WhiteVPNNode struct {
 	Type  string `json:"type"`
 	// CountryCode is empty when the catalogue does not say where a node is.
 	CountryCode string `json:"countryCode"`
-	// DelayMs is a measurement, present only once one has been made. Zero with
-	// DelayOK false means "not measured", not "instant".
-	DelayMs int  `json:"delayMs"`
-	DelayOK bool `json:"delayOk"`
+	// Server and Port are where the node is reached, which the reachability
+	// test needs and a person comparing nodes wants to see.
+	Server string `json:"server"`
+	Port   int    `json:"port"`
+	// Transport and TLS say how it carries traffic.
+	Transport string `json:"transport"`
+	TLS       bool   `json:"tls"`
+
+	// Measurements. Each is present only once it has been made: zero with its
+	// OK flag false means "not measured", not "instant" or "nothing".
+	ReachMs             int   `json:"reachMs"`
+	ReachOK             bool  `json:"reachOk"`
+	DelayMs             int   `json:"delayMs"`
+	DelayOK             bool  `json:"delayOk"`
+	SpeedBytesPerSecond int64 `json:"speedBytesPerSecond"`
+	SpeedOK             bool  `json:"speedOk"`
+}
+
+// NodeTestRequest is one run of the tests: which nodes, which tests, and the
+// numbers the user is allowed to change.
+type NodeTestRequest struct {
+	Nodes []string `json:"nodes"`
+
+	Reachability bool `json:"reachability"`
+	Delay        bool `json:"delay"`
+	Speed        bool `json:"speed"`
+
+	ReachabilityTimeoutMs int    `json:"reachabilityTimeoutMs"`
+	ReachabilityWorkers   int    `json:"reachabilityWorkers"`
+	DelayTimeoutMs        int    `json:"delayTimeoutMs"`
+	DelayWorkers          int    `json:"delayWorkers"`
+	DelayURL              string `json:"delayUrl"`
+	SpeedBudgetMs         int    `json:"speedBudgetMs"`
+	SpeedURL              string `json:"speedUrl"`
+}
+
+// The bounds. Anything outside them is replaced with the default rather than
+// clamped, for the same reason the settings do it: a value nobody chose beats
+// one silently bent into shape.
+const (
+	MinTestTimeoutMs = 500
+	MaxTestTimeoutMs = 60000
+	MinTestWorkers   = 1
+	MaxTestWorkers   = 256
+)
+
+func NormalizeNodeTestRequest(request NodeTestRequest) NodeTestRequest {
+	request.Nodes = nonEmptyStrings(request.Nodes)
+	if !request.Reachability && !request.Delay && !request.Speed {
+		// A run with no test selected would look like a run that found nothing.
+		request.Reachability = true
+	}
+	request.ReachabilityTimeoutMs = boundedOrDefault(request.ReachabilityTimeoutMs, MinTestTimeoutMs, MaxTestTimeoutMs, 3500)
+	request.DelayTimeoutMs = boundedOrDefault(request.DelayTimeoutMs, MinTestTimeoutMs, MaxTestTimeoutMs, 5000)
+	request.SpeedBudgetMs = boundedOrDefault(request.SpeedBudgetMs, MinTestTimeoutMs, MaxTestTimeoutMs, 8000)
+	request.ReachabilityWorkers = boundedOrDefault(request.ReachabilityWorkers, MinTestWorkers, MaxTestWorkers, 64)
+	request.DelayWorkers = boundedOrDefault(request.DelayWorkers, MinTestWorkers, MaxTestWorkers, 16)
+	request.DelayURL = strings.TrimSpace(request.DelayURL)
+	request.SpeedURL = strings.TrimSpace(request.SpeedURL)
+	return request
+}
+
+func (r NodeTestRequest) ReachabilityTimeout() time.Duration {
+	return time.Duration(r.ReachabilityTimeoutMs) * time.Millisecond
+}
+
+func (r NodeTestRequest) DelayTimeout() time.Duration {
+	return time.Duration(r.DelayTimeoutMs) * time.Millisecond
+}
+
+func (r NodeTestRequest) SpeedBudget() time.Duration {
+	return time.Duration(r.SpeedBudgetMs) * time.Millisecond
+}
+
+func boundedOrDefault(value, min, max, fallback int) int {
+	if value < min || value > max {
+		return fallback
+	}
+	return value
 }
 
 // WhiteVPNNodeList is the catalogue the dashboard chooses from.

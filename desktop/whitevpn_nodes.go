@@ -244,17 +244,38 @@ func whiteVPNNodesFromSubscription(subscription string) ([]model.WhiteVPNNode, e
 			continue
 		}
 		proxyType, _ := proxy["type"].(string)
+		server, _ := proxy["server"].(string)
+		transport, _ := proxy["network"].(string)
+		tls, _ := proxy["tls"].(bool)
 		nodes = append(nodes, model.WhiteVPNNode{
 			Name:        name,
 			Label:       nodeLabel(name),
 			Type:        strings.ToLower(strings.TrimSpace(proxyType)),
 			CountryCode: countryCodeFromNodeName(name),
+			Server:      strings.TrimSpace(server),
+			Port:        proxyPort(proxy),
+			Transport:   strings.ToLower(strings.TrimSpace(transport)),
+			TLS:         tls,
 		})
 	}
 	if len(nodes) == 0 {
 		return nil, fmt.Errorf("the catalogue held no usable nodes")
 	}
 	return nodes, nil
+}
+
+// proxyPort reads the port whichever way the converter wrote it: YAML numbers
+// arrive as int here and as float64 through JSON.
+func proxyPort(proxy mihomoconf.Proxy) int {
+	switch value := proxy["port"].(type) {
+	case int:
+		return value
+	case int64:
+		return int(value)
+	case float64:
+		return int(value)
+	}
+	return 0
 }
 
 // countryCodeFromNodeName reads the flag the catalogue puts at the front of a
@@ -412,6 +433,8 @@ func (a *App) storeWhiteVPNNodes(nodes []model.WhiteVPNNode, now time.Time) mode
 	for _, node := range nodes {
 		if earlier, ok := previous[node.Name]; ok {
 			node.DelayMs, node.DelayOK = earlier.DelayMs, earlier.DelayOK
+			node.ReachMs, node.ReachOK = earlier.ReachMs, earlier.ReachOK
+			node.SpeedBytesPerSecond, node.SpeedOK = earlier.SpeedBytesPerSecond, earlier.SpeedOK
 		}
 		next = append(next, node)
 	}
