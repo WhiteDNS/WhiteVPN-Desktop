@@ -150,10 +150,22 @@ func (a *App) startWhiteDNSVPNWithMihomo() (model.AppState, error) {
 		}
 	}
 
-	a.appendRuntimeLog(fmt.Sprintf(
-		"mihomo connected: %d nodes available, using %q, health %d",
-		connected.ProxyCount(), connected.Selected(), connected.HealthStatus(),
-	))
+	if connected.Automatic() {
+		a.appendRuntimeLog(fmt.Sprintf(
+			"mihomo connected: %d nodes available, %d answered a delay test, engine picked %q, health %d",
+			connected.ProxyCount(), connected.Seeded(), connected.Selected(), connected.HealthStatus(),
+		))
+	} else {
+		a.appendRuntimeLog(fmt.Sprintf(
+			"mihomo connected: %d nodes available, using %q, health %d",
+			connected.ProxyCount(), connected.Selected(), connected.HealthStatus(),
+		))
+	}
+	if err := connected.TunnelUnverified(); err != nil {
+		// The tunnel is up but nothing confirmed its routes, so the log says so
+		// rather than leaving the impression it was checked.
+		a.appendRuntimeLog(fmt.Sprintf("the tunnel is running but was not verified: %v", err))
+	}
 	a.handleRuntimeState(model.RuntimeConnected, fmt.Sprintf("Proxy listening on 127.0.0.1:%d", connected.MixedPort()))
 	a.resolveExitCountry()
 	a.sampleTraffic(connected)

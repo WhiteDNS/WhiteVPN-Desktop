@@ -58,6 +58,17 @@ func (a *App) watchHealth(current *session.Session) {
 					a.appendRuntimeLog("the connection answered again")
 				}
 				failures = 0
+				// Under automatic selection the engine moves between nodes on its
+				// own, so the name on the dashboard has to be re-read rather than
+				// assumed to still be the one connecting settled on.
+				lookupCtx, lookupCancel := context.WithTimeout(context.Background(), 5*time.Second)
+				node, moved := current.RefreshSelection(lookupCtx)
+				lookupCancel()
+				if moved {
+					a.appendRuntimeLog(fmt.Sprintf("the automatic group moved to %q", node))
+					a.recordConnectedNode(node)
+					a.resolveExitCountry()
+				}
 				continue
 			}
 

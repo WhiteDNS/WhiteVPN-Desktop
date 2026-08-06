@@ -210,6 +210,57 @@ stops any engine it had already spawned, and a session that finishes in the gap
 is closed rather than adopted. A cancelled connect ends `disconnected`, not
 `failed`: the user asked for this one.
 
+## 5-bis. How a node gets chosen — and a correction
+
+An earlier version of this file, and a comment in `internal/session/session.go`,
+said *"a node has to be chosen explicitly, as the phone app does"*. **That was
+wrong about the phone app.** It was written from an assumption rather than from
+Android's source, and it was the assumption behind a run of user reports saying
+the desktop could not connect.
+
+What Android actually does, in `WhiteDnsVpnService.kt`:
+
+```kotlin
+val nativeAutomaticStart = topEndpoint == null &&
+    !validateConnectivity &&
+    explicitProfile == null &&
+    selectedAutomaticTypes.isEmpty() &&
+    nativeAutomaticGroup != null
+```
+
+When the user has narrowed nothing, Android selects the **url-test group**, not a
+node — `MihomoSelectionPolicy.desiredSelection` returns a
+`MihomoGroupSelection(selectorGroup, selectedGroup)` — and its ordinary connect
+path passes `validateConnectivity = false`, so it does not gate on a health
+check at all. It starts the engine and lets mihomo choose.
+
+That is the whole reason the phone feels smooth, and it is not subtle. A
+`url-test` group measures its members continuously and picks the fastest that
+answers; `GroupBase.onDialFailed` re-runs the health check once dialling through
+the current node has failed five times in a row, and the group moves itself. A
+`select` group pinned to one node does none of that — once pinned, it is pinned
+until something outside asks it to change.
+
+The desktop had built the url-test group since the beginning (`AutoGroup`,
+`mihomoconf/config.go`, first entry of the selector) and then walked straight
+past it: `session.start` selected `candidates[0]`, `candidates[1]`, and so on. So
+with a subscription of 800+ nodes, every user on Automatic tried the **same five
+nodes, in the same order**, each behind a 12-second health gate, and Retry tried
+the same five again. A bad head of the catalogue was enough to tell everybody the
+app could not connect — which is a completely different failure from "some nodes
+are down", and looks identical from the outside.
+
+**Now:** on Automatic the engine chooses, exactly as on Android. The node-by-node
+walk survives only as a fallback for when nothing answers through the group, and
+it is ordered by the delays url-test has already measured rather than by
+catalogue position. An explicit choice — a country, or a node from the Servers
+page — still pins, because that is the user answering the question themselves.
+
+A pinned session recovers by trying other nodes (`Session.Recover`). An automatic
+one recovers by re-asserting the group and letting mihomo move, because pinning a
+node there would replace something that keeps looking with something that never
+looks again.
+
 ## 5a. Servers, and why it agrees with the dashboard now
 
 The Servers page and the dashboard's connection dialog show the same thing, so
@@ -367,8 +418,10 @@ The engine is mihomo, the one WhiteVPN for Android runs, built from the same
 pinned sources, and now the only one: the Xray path was removed on 2026-08-04.
 It travels inside the app and unpacks itself beside the app's data on first
 connect, so an install is one file. Connecting works end to end and is verified against the live
-catalogue: the share links in, proxies out, a node selected explicitly, and a
-real HTTP request through the proxy before anything is reported connected. The
+catalogue: the share links in, proxies out, a selection made, and a
+real HTTP request through the proxy before anything is reported connected. On
+Automatic the selection is the engine's own url-test group, as on the phone —
+see *How a node gets chosen* below. The
 catalogue is not a fixed size — 845 proxies measured early on 2026-08-04, 585
 later the same day — so treat any count in this file as a reading, not a
 constant. The tunnel works too, with only the engine elevated.

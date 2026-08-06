@@ -91,14 +91,29 @@ func (c *Client) Proxies(ctx context.Context) (json.RawMessage, error) {
 	return c.invoke(ctx, "getProxies", nil)
 }
 
-// ChangeProxy selects proxy within group.
+// ChangeProxy selects proxy within group. The proxy may itself be a group, which
+// is how automatic selection is handed to the core's url-test group.
+//
+// Its reply follows the same unusual convention as SetupConfig: the call
+// succeeds at the protocol level either way, and an empty string is the only
+// thing that means the selection was made. "Not found group" and "Group is not
+// selectable" arrive as ordinary successful replies. Ignoring the payload — which
+// this did — meant a selection that never happened was reported as one that did,
+// and the health check that followed measured whatever node was already in
+// place. A connection could therefore be reported on a node nobody chose.
 func (c *Client) ChangeProxy(ctx context.Context, group, proxy string) error {
 	params, err := json.Marshal(map[string]string{"group-name": group, "proxy-name": proxy})
 	if err != nil {
 		return err
 	}
-	_, err = c.invoke(ctx, "changeProxy", string(params))
-	return err
+	raw, err := c.invoke(ctx, "changeProxy", string(params))
+	if err != nil {
+		return err
+	}
+	if message := decodeString(raw); message != "" {
+		return fmt.Errorf("engine: could not select %q in %q: %s", proxy, group, message)
+	}
+	return nil
 }
 
 // TestDelay measures one proxy. The measurement is a metric, not a gate: a proxy
