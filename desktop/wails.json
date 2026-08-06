@@ -11,7 +11,10 @@
     "email": ""
   },
   "info": {
-    "productVersion": "1.0.2",
-    "productName": "WhiteVPN Desktop"
+    "companyName": "WhiteDNS",
+    "productName": "WhiteVPN Desktop",
+    "productVersion": "0.0.0",
+    "copyright": "GPL-3.0-or-later",
+    "comments": "https://github.com/WhiteDNS/WhiteVPN-Desktop"
   }
 }

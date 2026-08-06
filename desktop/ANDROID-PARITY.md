@@ -561,6 +561,24 @@ from Wi-Fi to Ethernet must not lose its VPN on the way.
 
 ### Things that will bite
 
+- **There are two version numbers, and only one of them is the app's.** The
+  sidebar reads `appVersion`, set at link time by `-X main.appVersion` from the
+  Makefile's `VERSION`. The number Windows shows in Properties → Details is
+  `productVersion` in `wails.json`, which the Wails CLI reads directly and which
+  no build flag can reach. That second one used to be typed in by hand and had
+  already drifted — a build from a `v1.0.3` tag would have carried `1.0.2` in its
+  metadata. The Makefile now writes it in for the duration of the build and puts
+  the file back afterwards, so the committed value is `0.0.0`: a build that did
+  not come through the Makefile is not a release, which is the same thing
+  `appVersion` says when it stays at `dev`. Do not "fix" that `0.0.0`.
+- **A `0000` language ID makes every string in the exe unreadable.**
+  `build/windows/info.json` keys its string table by language, and Wails ships it
+  keyed `0000` — language-neutral. The strings are written correctly and are
+  there in the binary, but neither Explorer nor .NET's `FileVersionInfo` resolves
+  a neutral table, so Properties → Details came up blank for every field while
+  the numeric `FileVersionRaw` worked. Keyed `0409` (en-US) they all appear. If
+  the table ever looks empty again, check that key first — the resource is
+  probably fine.
 - **`validateConfig` only catches unparseable YAML.** Measured. It accepts
   unknown proxy types, impossible ports, groups naming absent proxies and empty
   documents. Never treat it as evidence a config will work; the health check is
