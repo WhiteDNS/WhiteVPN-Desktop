@@ -56,7 +56,11 @@ func (t *trayState) markReady(ready bool) {
 // the system is ready for it.
 func (a *App) startTray() {
 	a.tray.refresh = make(chan struct{}, 1)
-	systray.Register(a.onTrayReady, a.onTrayExit)
+	if runtime.GOOS == "darwin" {
+		systray.Register(a.onTrayReady, a.onTrayExit)
+		return
+	}
+	go systray.Run(a.onTrayReady, a.onTrayExit)
 }
 
 func (a *App) onTrayReady() {
