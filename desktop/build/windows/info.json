@@ -3,8 +3,9 @@
 		"file_version": "{{.Info.ProductVersion}}"
 	},
 	"info": {
-		"0000": {
+		"0409": {
 			"ProductVersion": "{{.Info.ProductVersion}}",
+			"FileVersion": "{{.Info.ProductVersion}}",
 			"CompanyName": "{{.Info.CompanyName}}",
 			"FileDescription": "{{.Info.ProductName}}",
 			"LegalCopyright": "{{.Info.Copyright}}",

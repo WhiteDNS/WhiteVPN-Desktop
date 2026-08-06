@@ -19,6 +19,35 @@ RELEASE_LDFLAGS ?= -s -w
 # shipped an app whose own sidebar said 1.0.0.
 VERSION_LDFLAGS := -X main.appVersion=$(APP_VERSION)
 WAILS_RELEASE_FLAGS := -trimpath -ldflags "$(RELEASE_LDFLAGS) $(VERSION_LDFLAGS)"
+
+# The other version: what the file itself reports in Properties → Details.
+#
+# It does not come from a build flag. The Wails CLI reads `productVersion` out of
+# wails.json and templates it into build/windows/info.json and the exe manifest,
+# and nothing on the command line can override it — so it was typed in by hand, a
+# second number beside DEFAULT_VERSION, kept in step by memory. It was already
+# out of step: a release built from a v1.0.3 tag would have carried 1.0.2 in its
+# metadata. That is the same failure as the sidebar reading 1.0.0 on a 1.0.1
+# build, and it wants the same answer — one number, derived, not remembered.
+#
+# So the committed wails.json says 0.0.0 and this writes the real version in for
+# the duration of the build. 0.0.0 is honest rather than a placeholder: a build
+# that did not come through here is not a release, which is exactly what the
+# ldflags say too when they leave appVersion at "dev".
+#
+# sed writing to a temp file rather than `sed -i`, because -i takes an argument
+# on BSD sed and none on GNU, and this runs on both.
+WAILS_JSON := wails.json
+WAILS_JSON_BACKUP := wails.json.version-backup
+
+define wails_build_with_version
+	set -e; \
+	cp $(WAILS_JSON) $(WAILS_JSON_BACKUP); \
+	trap 'mv -f $(WAILS_JSON_BACKUP) $(WAILS_JSON)' EXIT INT TERM; \
+	sed 's/"productVersion"[[:space:]]*:[[:space:]]*"[^"]*"/"productVersion": "$(APP_VERSION)"/' $(WAILS_JSON_BACKUP) > $(WAILS_JSON); \
+	grep -q '"productVersion": "$(APP_VERSION)"' $(WAILS_JSON) || { echo "could not set productVersion in $(WAILS_JSON)" >&2; exit 1; }; \
+	$(1)
+endef
 HELPER_GO_LDFLAGS ?= $(RELEASE_LDFLAGS)
 UPX ?= 0
 UPX_FLAGS ?= --best --lzma
@@ -209,7 +238,7 @@ package: validate-version
 	else \
 		$(MAKE) prepare-package; \
 		$(MAKE) prepare-embedded-core TARGET_GOOS="$(GOOS_VALUE)" TARGET_GOARCH="$(GOARCH_VALUE)"; \
-		GOCACHE="$(GO_BUILD_CACHE)" $(WAILS) build $(WAILS_RELEASE_FLAGS) $(WAILS_OPTIONAL_UPX_FLAGS); \
+		( $(call wails_build_with_version,GOCACHE="$(GO_BUILD_CACHE)" $(WAILS) build $(WAILS_RELEASE_FLAGS) $(WAILS_OPTIONAL_UPX_FLAGS)) ); \
 		$(MAKE) package-assets; \
 	fi
 
@@ -334,7 +363,7 @@ macos-app-bundle:
 
 package-windows: validate-version prepare-package
 	$(MAKE) prepare-embedded-core TARGET_GOOS=windows TARGET_GOARCH="$(WINDOWS_CLIENT_ARCH)"
-	GOCACHE="$(GO_BUILD_CACHE)" $(WAILS) build -clean $(WAILS_RELEASE_FLAGS) $(WAILS_OPTIONAL_UPX_FLAGS) -platform $(WINDOWS_PLATFORMS)
+	@$(call wails_build_with_version,GOCACHE="$(GO_BUILD_CACHE)" $(WAILS) build -clean $(WAILS_RELEASE_FLAGS) $(WAILS_OPTIONAL_UPX_FLAGS) -platform $(WINDOWS_PLATFORMS))
 	$(MAKE) package-assets
 
 package-linux: validate-version prepare-package
@@ -343,7 +372,7 @@ package-linux: validate-version prepare-package
 		exit 1; \
 	fi
 	$(MAKE) prepare-embedded-core TARGET_GOOS=linux TARGET_GOARCH="$(LINUX_CLIENT_ARCH)"
-	GOCACHE="$(GO_BUILD_CACHE)" $(WAILS) build -clean $(WAILS_RELEASE_FLAGS) $(LINUX_WAILS_TAG_FLAGS) $(WAILS_OPTIONAL_UPX_FLAGS) -platform $(LINUX_PLATFORMS)
+	@$(call wails_build_with_version,GOCACHE="$(GO_BUILD_CACHE)" $(WAILS) build -clean $(WAILS_RELEASE_FLAGS) $(LINUX_WAILS_TAG_FLAGS) $(WAILS_OPTIONAL_UPX_FLAGS) -platform $(LINUX_PLATFORMS))
 	$(MAKE) package-assets
 
 package-linux-distros: package-linux

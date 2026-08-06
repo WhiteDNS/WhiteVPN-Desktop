@@ -50,6 +50,10 @@
 **/*.log
 **/*.tmp
 **/*.bak
+# The build writes the real version into wails.json and puts the original back
+# when it finishes; this is that original, and it only survives a build the
+# machine did not live through.
+desktop/wails.json.version-backup
 **/.cache/
 **/.gradle/
 **/coverage/
