@@ -16,6 +16,7 @@ import {
   Monitor,
   Moon,
   Pause,
+  Pencil,
   Plus,
   Play,
   Power,
@@ -135,6 +136,7 @@ import type {
   RuntimeStatusName,
   ConnectionSelection,
   WhiteVPNNode,
+  WhiteVPNNodeList,
   NodeTestRequest,
   RuntimeType,
   ValidatorEndpointInput,
@@ -1032,6 +1034,12 @@ function App() {
                   onCancelTest={() => void cancelNodeTest()}
                   onSelectNode={(name) => void useNode(name)}
                   onImportManual={importManualConfigs}
+                  onNodesChanged={(list) => {
+                    setNodes(list.nodes);
+                    // Editing a config changes the stored profiles, which other
+                    // pages read; refreshing the state keeps them in step.
+                    void backend.getAppState().then(applyState);
+                  }}
                   onError={showError}
                   onSuccess={showSuccess}
                   language={language}
@@ -2454,6 +2462,7 @@ function NodesPage({
   onCancelTest,
   onSelectNode,
   onImportManual,
+  onNodesChanged,
   onError,
   onSuccess,
   language,
@@ -2470,6 +2479,7 @@ function NodesPage({
   onCancelTest: () => void;
   onSelectNode: (name: string) => void;
   onImportManual: (rawText: string) => Promise<number>;
+  onNodesChanged: (list: WhiteVPNNodeList) => void;
   onError: (message: string) => void;
   onSuccess: (message: string) => void;
   language: Language;
@@ -2486,6 +2496,12 @@ function NodesPage({
   const [importOpen, setImportOpen] = useState(false);
   const [importText, setImportText] = useState("");
   const [importing, setImporting] = useState(false);
+  // The config the edit form is open on, and the rows a delete is waiting to be
+  // confirmed for. Deleting configs is not undoable, so it asks first.
+  const [editing, setEditing] = useState<V2RayProfile | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState<WhiteVPNNode[] | null>(null);
+  const [deletingBusy, setDeletingBusy] = useState(false);
   const unknown = t("vpn.nodes.unknownCountry");
   const manualProfileCount = state.v2rayProfiles.filter((profile) => !profile.subscriptionId).length;
 
@@ -2612,6 +2628,71 @@ function NodesPage({
     }
   }
 
+  // Only a config added by hand can be edited or removed here. One from the
+  // catalogue or a subscription carries no profile, because it is a reading of
+  // what a provider is serving and comes back unchanged at the next refresh —
+  // a delete button on it would undo itself.
+  const editableNodes = useMemo(() => visible.filter((node) => Boolean(node.profileId)), [visible]);
+  const selectedEditable = useMemo(
+    () => editableNodes.filter((node) => selected.has(node.name)),
+    [editableNodes, selected]
+  );
+
+  async function openEditor(node: WhiteVPNNode) {
+    onError("");
+    try {
+      // Read the stored config rather than rebuilding one from the row: the row
+      // holds what the parser made of the config, which is a subset. Editing
+      // that and saving it back would silently drop everything the row does not
+      // show.
+      setEditing(await backend.manualNodeProfile(node.profileId));
+    } catch (err) {
+      onError(messageFromError(err));
+    }
+  }
+
+  async function saveEdited() {
+    if (!editing || saving) {
+      return;
+    }
+    onError("");
+    setSaving(true);
+    try {
+      onNodesChanged(await backend.saveManualNode(editing));
+      setEditing(null);
+      onSuccess(t("servers.edit.saved"));
+    } catch (err) {
+      onError(messageFromError(err));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function deleteConfirmed() {
+    if (!deleting?.length || deletingBusy) {
+      return;
+    }
+    onError("");
+    setDeletingBusy(true);
+    try {
+      const removed = deleting;
+      onNodesChanged(await backend.deleteManualNodes(removed.map((node) => node.profileId)));
+      // A row that no longer exists must not stay selected, or the next test
+      // runs against a node that is gone.
+      setSelected((current) => {
+        const next = new Set(current);
+        removed.forEach((node) => next.delete(node.name));
+        return next;
+      });
+      setDeleting(null);
+      onSuccess(t("servers.delete.done", { count: removed.length }));
+    } catch (err) {
+      onError(messageFromError(err));
+    } finally {
+      setDeletingBusy(false);
+    }
+  }
+
   async function importConfigs(rawText = importText) {
     if (!rawText.trim() || importing) {
       return;
@@ -2672,6 +2753,12 @@ function NodesPage({
             <Upload />
             {t("servers.import")}
           </Button>
+          {selectedEditable.length > 0 && (
+            <Button variant="outline" className="text-destructive" onClick={() => setDeleting(selectedEditable)}>
+              <Trash2 />
+              {t("servers.deleteSelected", { count: selectedEditable.length })}
+            </Button>
+          )}
           <Button variant="outline" onClick={onReload} disabled={loading}>
             <RotateCcw className={cn(loading && "animate-spin")} />
             {t("vpn.nodes.reload")}
@@ -2959,6 +3046,39 @@ function NodesPage({
                           </TooltipTrigger>
                           <TooltipContent>{node.link ? t("servers.share") : t("servers.share.none")}</TooltipContent>
                         </Tooltip>
+                        {/* Offered only where there is a stored config behind
+                            the row. See editableNodes. */}
+                        {node.profileId && (
+                          <>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon-sm"
+                                  onClick={() => void openEditor(node)}
+                                  aria-label={t("servers.edit")}
+                                >
+                                  <Pencil />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>{t("servers.edit")}</TooltipContent>
+                            </Tooltip>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon-sm"
+                                  className="text-destructive hover:text-destructive"
+                                  onClick={() => setDeleting([node])}
+                                  aria-label={t("servers.delete")}
+                                >
+                                  <Trash2 />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>{t("servers.delete")}</TooltipContent>
+                            </Tooltip>
+                          </>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -2980,6 +3100,50 @@ function NodesPage({
           </ScrollArea>
         </CardContent>
       </Card>
+
+      <Dialog open={Boolean(editing)} onOpenChange={(open) => !open && !saving && setEditing(null)}>
+        <DialogContent className="sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>{t("servers.edit.title")}</DialogTitle>
+            <DialogDescription>{t("servers.edit.description")}</DialogDescription>
+          </DialogHeader>
+          <ScrollArea className="max-h-[60svh] pe-3">
+            {editing && <ManualNodeForm profile={editing} onChange={setEditing} t={t} />}
+          </ScrollArea>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditing(null)} disabled={saving}>
+              {t("common.cancel")}
+            </Button>
+            <Button onClick={() => void saveEdited()} disabled={saving || !editing?.server.trim()}>
+              {saving ? t("servers.edit.saving") : t("common.save")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(deleting)} onOpenChange={(open) => !open && !deletingBusy && setDeleting(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t("servers.delete.title")}</DialogTitle>
+            {/* Named rather than counted where there is one, because "delete 1
+                config" is not enough to check against before it is gone. */}
+            <DialogDescription>
+              {deleting?.length === 1
+                ? t("servers.delete.one", { name: deleting[0].label })
+                : t("servers.delete.many", { count: deleting?.length ?? 0 })}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleting(null)} disabled={deletingBusy}>
+              {t("common.cancel")}
+            </Button>
+            <Button variant="destructive" onClick={() => void deleteConfirmed()} disabled={deletingBusy}>
+              <Trash2 />
+              {deletingBusy ? t("servers.delete.deleting") : t("servers.delete")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={importOpen} onOpenChange={(open) => !importing && setImportOpen(open)}>
         <DialogContent className="sm:max-w-xl">
@@ -4982,6 +5146,255 @@ function ToggleField({
   );
 }
 
+
+// The form behind the Servers page's edit button.
+//
+// Every field of a stored config, but not all at once: a vless node has no
+// Shadowsocks method and a WireGuard peer has no SNI, and showing all of them
+// together turns a config with six meaningful settings into a wall of fifty
+// empty boxes. What is shown follows the protocol and the transport, which is
+// the same thing the exporter looks at when it decides what to write.
+//
+// Only configs added by hand ever reach this. One from the catalogue or a
+// subscription is a reading of what a provider is serving and returns unchanged
+// at the next refresh, so it carries no profile and the button is not offered.
+const transportOptions = ["tcp", "ws", "grpc", "h2", "httpupgrade", "xhttp"];
+const protocolOptions: V2RayProtocol[] = ["vless", "vmess", "trojan", "shadowsocks", "hysteria2", "wireguard", "socks", "http"];
+
+function ManualNodeForm({
+  profile,
+  onChange,
+  t,
+}: {
+  profile: V2RayProfile;
+  onChange: (profile: V2RayProfile) => void;
+  t: TranslateFn;
+}) {
+  const set = <K extends keyof V2RayProfile>(key: K, value: V2RayProfile[K]) => onChange({ ...profile, [key]: value });
+  const protocol = normalizeV2RayProtocol(profile.protocol);
+  const network = (profile.network || "tcp").toLowerCase();
+
+  // Which protocols carry which credential. WireGuard is its own shape
+  // entirely, which is why it takes over the section rather than adding to it.
+  const usesUUID = protocol === "vless" || protocol === "vmess";
+  const usesPassword = protocol === "trojan" || protocol === "shadowsocks" || protocol === "socks" || protocol === "http";
+  const usesUsername = protocol === "socks" || protocol === "http";
+  const isWireGuard = protocol === "wireguard";
+  // Hysteria2 and WireGuard carry their own transport; the rest go through one
+  // of the stream transports and can be given TLS.
+  const usesTransport = !isWireGuard && protocol !== "hysteria2";
+  const usesTLS = !isWireGuard;
+
+  return (
+    <div className="grid gap-4">
+      <SettingsFieldSet legend={t("servers.edit.section.basics")}>
+        <FieldGroup className="grid gap-3 md:grid-cols-2">
+          <TextField label={t("servers.edit.name")} value={profile.name} onChange={(value) => set("name", value)} />
+          <Field>
+            <FieldLabel>{t("servers.edit.protocol")}</FieldLabel>
+            <Select value={protocol} onValueChange={(value) => set("protocol", value as V2RayProtocol)}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent position="popper">
+                {protocolOptions.map((option) => (
+                  <SelectItem key={option} value={option}>
+                    {option}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+          <TextField label={t("servers.edit.server")} value={profile.server} onChange={(value) => set("server", value)} />
+          <NumberField
+            label={t("servers.edit.port")}
+            value={profile.serverPort}
+            min={1}
+            max={65535}
+            onChange={(value) => set("serverPort", value)}
+          />
+        </FieldGroup>
+      </SettingsFieldSet>
+
+      <SettingsFieldSet legend={t("servers.edit.section.credentials")}>
+        <FieldGroup className="grid gap-3 md:grid-cols-2">
+          {usesUUID && <TextField label="UUID" value={profile.uuid} onChange={(value) => set("uuid", value)} />}
+          {usesUsername && (
+            <TextField label={t("servers.edit.username")} value={profile.username} onChange={(value) => set("username", value)} />
+          )}
+          {usesPassword && (
+            <TextField label={t("servers.edit.password")} value={profile.password} onChange={(value) => set("password", value)} />
+          )}
+          {protocol === "shadowsocks" && (
+            <TextField
+              label={t("servers.edit.ssMethod")}
+              value={profile.shadowsocksMethod}
+              placeholder="aes-256-gcm"
+              onChange={(value) => set("shadowsocksMethod", value)}
+            />
+          )}
+          {protocol === "hysteria2" && (
+            <>
+              <TextField label={t("servers.edit.hysteriaAuth")} value={profile.hysteriaAuth} onChange={(value) => set("hysteriaAuth", value)} />
+              <TextField
+                label={t("servers.edit.hysteriaMasquerade")}
+                value={profile.hysteriaMasquerade}
+                onChange={(value) => set("hysteriaMasquerade", value)}
+              />
+            </>
+          )}
+          {protocol === "vmess" && (
+            <>
+              <NumberField label="alterId" value={profile.alterId} min={0} max={65535} onChange={(value) => set("alterId", value)} />
+              <TextField label={t("servers.edit.security")} value={profile.security} placeholder="auto" onChange={(value) => set("security", value)} />
+            </>
+          )}
+          {protocol === "vless" && (
+            <TextField label="flow" value={profile.flow} placeholder="xtls-rprx-vision" onChange={(value) => set("flow", value)} />
+          )}
+          {isWireGuard && (
+            <>
+              <TextField
+                label={t("servers.edit.wgSecretKey")}
+                value={profile.wireGuardSecretKey}
+                onChange={(value) => set("wireGuardSecretKey", value)}
+              />
+              <TextField
+                label={t("servers.edit.wgPeerPublicKey")}
+                value={profile.wireGuardPeerPublicKey}
+                onChange={(value) => set("wireGuardPeerPublicKey", value)}
+              />
+              <TextField
+                label={t("servers.edit.wgPreSharedKey")}
+                value={profile.wireGuardPreSharedKey}
+                onChange={(value) => set("wireGuardPreSharedKey", value)}
+              />
+              <TextField
+                label={t("servers.edit.wgAddresses")}
+                value={profile.wireGuardLocalAddresses}
+                placeholder="172.16.0.2/32, fd00::2/128"
+                onChange={(value) => set("wireGuardLocalAddresses", value)}
+              />
+              <TextField
+                label={t("servers.edit.wgAllowedIps")}
+                value={profile.wireGuardAllowedIps}
+                placeholder="0.0.0.0/0, ::/0"
+                onChange={(value) => set("wireGuardAllowedIps", value)}
+              />
+              <TextField
+                label={t("servers.edit.wgReserved")}
+                value={profile.wireGuardReserved}
+                onChange={(value) => set("wireGuardReserved", value)}
+              />
+              <NumberField label="MTU" value={profile.wireGuardMtu} min={0} max={9000} onChange={(value) => set("wireGuardMtu", value)} />
+              <NumberField
+                label={t("servers.edit.wgKeepAlive")}
+                value={profile.wireGuardKeepAlive}
+                min={0}
+                max={3600}
+                onChange={(value) => set("wireGuardKeepAlive", value)}
+              />
+            </>
+          )}
+        </FieldGroup>
+      </SettingsFieldSet>
+
+      {usesTransport && (
+        <SettingsFieldSet legend={t("servers.edit.section.transport")}>
+          <FieldGroup className="grid gap-3 md:grid-cols-2">
+            <Field>
+              <FieldLabel>{t("servers.edit.transport")}</FieldLabel>
+              <Select value={network} onValueChange={(value) => set("network", value)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent position="popper">
+                  {transportOptions.map((option) => (
+                    <SelectItem key={option} value={option}>
+                      {option}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+            {network === "grpc" ? (
+              <TextField
+                label={t("servers.edit.serviceName")}
+                value={profile.serviceName}
+                onChange={(value) => set("serviceName", value)}
+              />
+            ) : (
+              <>
+                <TextField label={t("servers.edit.path")} value={profile.transportPath} placeholder="/" onChange={(value) => set("transportPath", value)} />
+                <TextField label={t("servers.edit.host")} value={profile.transportHost} onChange={(value) => set("transportHost", value)} />
+              </>
+            )}
+            {network === "xhttp" && (
+              <>
+                <TextField label={t("servers.edit.xhttpMode")} value={profile.xhttpMode} placeholder="auto" onChange={(value) => set("xhttpMode", value)} />
+                <TextField label={t("servers.edit.xhttpExtra")} value={profile.xhttpExtra} onChange={(value) => set("xhttpExtra", value)} />
+              </>
+            )}
+            {(network === "ws" || network === "httpupgrade") && (
+              <>
+                <NumberField
+                  label={t("servers.edit.wsEarlyData")}
+                  value={profile.webSocketEarlyData}
+                  min={0}
+                  max={65535}
+                  onChange={(value) => set("webSocketEarlyData", value)}
+                />
+                <TextField
+                  label={t("servers.edit.wsEarlyDataHeader")}
+                  value={profile.webSocketEarlyDataHeader}
+                  onChange={(value) => set("webSocketEarlyDataHeader", value)}
+                />
+              </>
+            )}
+          </FieldGroup>
+        </SettingsFieldSet>
+      )}
+
+      {usesTLS && (
+        <SettingsFieldSet legend={t("servers.edit.section.tls")}>
+          <FieldGroup className="grid gap-3 md:grid-cols-2">
+            <ToggleField label="TLS" checked={profile.tls} onChange={(value) => set("tls", value)} />
+            <ToggleField
+              label={t("servers.edit.allowInsecure")}
+              description={t("servers.edit.allowInsecure.hint")}
+              checked={profile.allowInsecure}
+              onChange={(value) => set("allowInsecure", value)}
+            />
+            <TextField label="SNI" value={profile.sni} onChange={(value) => set("sni", value)} />
+            <TextField label="ALPN" value={profile.alpn} placeholder="h2,http/1.1" onChange={(value) => set("alpn", value)} />
+            <TextField
+              label={t("servers.edit.fingerprint")}
+              value={profile.utlsFingerprint}
+              placeholder="chrome"
+              onChange={(value) => set("utlsFingerprint", value)}
+            />
+            <TextField label="ECH" value={profile.echConfigList} onChange={(value) => set("echConfigList", value)} />
+            <ToggleField label="REALITY" checked={profile.reality} onChange={(value) => set("reality", value)} />
+            {profile.reality && (
+              <>
+                <TextField
+                  label={t("servers.edit.realityPublicKey")}
+                  value={profile.realityPublicKey}
+                  onChange={(value) => set("realityPublicKey", value)}
+                />
+                <TextField
+                  label={t("servers.edit.realityShortId")}
+                  value={profile.realityShortId}
+                  onChange={(value) => set("realityShortId", value)}
+                />
+              </>
+            )}
+          </FieldGroup>
+        </SettingsFieldSet>
+      )}
+    </div>
+  );
+}
 
 function StatusDot({ status, className }: { status: string; className?: string }) {
   return (

@@ -530,6 +530,16 @@ type WhiteVPNNode struct {
 	// hands back.
 	Link string `json:"link"`
 
+	// ProfileID names the stored profile this node was made from, and is set
+	// only for manually added configs.
+	//
+	// It is what makes a node editable. A node from the WhiteDNS catalogue or a
+	// remote subscription has nothing behind it to edit — it is a reading of what
+	// the provider is serving, and it returns unchanged at the next refresh — so
+	// it carries no ID and the interface offers no edit or delete for it. Doing
+	// otherwise would give someone a delete button that undoes itself.
+	ProfileID string `json:"profileId"`
+
 	// Measurements, each in one of three states rather than two: never run,
 	// run and failed, run and measured. Collapsing the first two makes a node
 	// that could not be reached look exactly like one nobody has tested, which

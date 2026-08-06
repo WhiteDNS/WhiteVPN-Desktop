@@ -85,6 +85,9 @@ type AppApi = {
   GetLocalProxyEndpoint(): Promise<string>;
   ListWhiteVPNNodes(refresh: boolean): Promise<WhiteVPNNodeList>;
   ListSubscriptionNodes(subscriptionId: string, refresh: boolean): Promise<WhiteVPNNodeList>;
+  ManualNodeProfile(profileId: string): Promise<V2RayProfile>;
+  SaveManualNode(profile: V2RayProfile): Promise<WhiteVPNNodeList>;
+  DeleteManualNodes(profileIds: string[]): Promise<WhiteVPNNodeList>;
   MeasureWhiteVPNNodeDelays(names: string[]): Promise<WhiteVPNNodeList>;
   StartNodeTest(request: NodeTestRequest): Promise<void>;
   CancelNodeTest(): Promise<void>;
@@ -176,6 +179,9 @@ export const backend = {
   getLocalProxyEndpoint: () => app().GetLocalProxyEndpoint(),
   listWhiteVpnNodes: (refresh: boolean) => app().ListWhiteVPNNodes(refresh),
   listSubscriptionNodes: (subscriptionId: string, refresh: boolean) => app().ListSubscriptionNodes(subscriptionId, refresh),
+  manualNodeProfile: (profileId: string) => app().ManualNodeProfile(profileId),
+  saveManualNode: (profile: V2RayProfile) => app().SaveManualNode(profile),
+  deleteManualNodes: (profileIds: string[]) => app().DeleteManualNodes(profileIds),
   measureWhiteVpnNodeDelays: (names: string[]) => app().MeasureWhiteVPNNodeDelays(names),
   startNodeTest: (request: NodeTestRequest) => app().StartNodeTest(request),
   cancelNodeTest: () => app().CancelNodeTest(),

@@ -285,6 +285,35 @@ is for finding out which one to pick: test, sort, compare, share.
 | Reachability, speed | — | ✓ |
 | Sort by any column | — | ✓ |
 | Share a node's link | — | ✓ |
+| Edit or delete a config | — | ✓, manual configs only |
+
+### Editing and deleting, and why only some rows offer it
+
+A config added by hand had no way back out short of deleting every manual config
+and importing them all again, so correcting one typo meant redoing the lot.
+`SaveManualNode` and `DeleteManualNodes` fix that, and `ManualNodeProfile` opens
+the form on the stored config rather than on the row — the row holds what the
+parser made of the config, which is a subset, and saving that back would silently
+drop everything the row does not show.
+
+The buttons appear only where `WhiteVPNNode.ProfileID` is set, which is only for
+manual configs. A node from the WhiteDNS catalogue or a remote subscription is a
+reading of what a provider is serving: it returns unchanged at the next refresh,
+so a delete button on it would undo itself. Removing a whole subscription is the
+Subscriptions page's job and already exists.
+
+The node-to-profile match is on the share link, not on position. Both sides come
+from the same exporter, so the strings are identical where they correspond; on
+position they would not be, because the exporter skips profiles it cannot express
+and the parser skips proxies it cannot use, and one incomplete profile would
+shift every row after it onto the wrong config. Deleting the wrong node because
+two lists drifted is not a risk worth taking to save a map.
+
+Three things are refused rather than allowed to go wrong: a config that cannot be
+exported as a share link is not stored, because the engine cannot be built from
+it either and the row would fail at connect with no clue as to why; a
+subscription's config cannot be edited or deleted through this door; and a config
+carrying traffic right now cannot be deleted out from under the connection.
 
 The subscription picker is why the two now read `ListSubscriptionNodes` and the
 cache is keyed by subscription id rather than being one slot. A user added a

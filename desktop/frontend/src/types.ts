@@ -663,6 +663,12 @@ export type WhiteVPNNode = {
   tls: boolean;
   // The share link this node arrived as, which is what sharing hands back.
   link: string;
+  // The stored config this node was made from, set only for configs added by
+  // hand. A node from the catalogue or a subscription has none — it is a
+  // reading of what the provider is serving and comes back unchanged at the
+  // next refresh — which is how this page knows not to offer edit or delete
+  // for it.
+  profileId: string;
   // Measurements, each in one of three states rather than two: never run, run
   // and failed, run and measured. A node that could not be reached must not
   // look like one nobody has tested.
