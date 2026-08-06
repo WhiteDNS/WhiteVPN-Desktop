@@ -2,6 +2,8 @@ module tunnelcheck/engine
 
 go 1.25.0
 
+toolchain go1.26.5
+
 require (
 	github.com/quic-go/quic-go v0.59.1
 	golang.org/x/mobile v0.0.0-20260514233045-7de0a8fa7f4d
