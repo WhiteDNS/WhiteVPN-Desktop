@@ -264,23 +264,30 @@ func (m *Measurer) DelayAll(ctx context.Context, nodes []string, testURL string,
 	if concurrency <= 0 {
 		concurrency = 16
 	}
+	forEachBounded(ctx, nodes, concurrency, func(name string) {
+		callCtx, cancel := context.WithTimeout(ctx, timeout+2*time.Second)
+		defer cancel()
+		delay, err := m.Delay(callCtx, name, testURL, timeout)
+		report(name, delay, err)
+	})
+}
+
+func forEachBounded(ctx context.Context, names []string, concurrency int, work func(string)) {
 	gate := make(chan struct{}, concurrency)
 	var wg sync.WaitGroup
-	for _, node := range nodes {
+	for _, name := range names {
+		select {
+		case gate <- struct{}{}:
+		case <-ctx.Done():
+			wg.Wait()
+			return
+		}
 		wg.Add(1)
-		go func(name string) {
+		go func() {
 			defer wg.Done()
-			select {
-			case gate <- struct{}{}:
-				defer func() { <-gate }()
-			case <-ctx.Done():
-				return
-			}
-			callCtx, cancel := context.WithTimeout(ctx, timeout+2*time.Second)
-			defer cancel()
-			delay, err := m.Delay(callCtx, name, testURL, timeout)
-			report(name, delay, err)
-		}(node)
+			defer func() { <-gate }()
+			work(name)
+		}()
 	}
 	wg.Wait()
 }

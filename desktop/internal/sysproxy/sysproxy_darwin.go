@@ -60,8 +60,7 @@ func Apply(state State) error {
 			failures = append(failures, err.Error())
 		}
 	}
-	if len(failures) == len(services) {
-		// Every one failed, so nothing was configured and saying so is honest.
+	if len(failures) > 0 {
 		return fmt.Errorf("sysproxy: %s", strings.Join(failures, "; "))
 	}
 	return nil
@@ -77,13 +76,26 @@ func Pointing(endpoint string) (State, error) {
 
 // Verify reads the settings back and reports whether they took.
 func Verify(want State) error {
-	got, err := Current()
+	services, err := networkServices()
 	if err != nil {
 		return err
 	}
-	if got.Enabled != want.Enabled || !strings.EqualFold(got.Server, want.Server) {
-		return fmt.Errorf("sysproxy: the settings did not stick — asked for %q (enabled=%t), found %q (enabled=%t)",
-			want.Server, want.Enabled, got.Server, got.Enabled)
+	if len(services) == 0 {
+		return fmt.Errorf("sysproxy: this machine has no network services to verify")
+	}
+	return verifyServices(services, want, serviceProxy)
+}
+
+func verifyServices(services []string, want State, read func(string) (State, error)) error {
+	for _, service := range services {
+		got, err := read(service)
+		if err != nil {
+			return fmt.Errorf("sysproxy: verify %s: %w", service, err)
+		}
+		if got.Enabled != want.Enabled || !strings.EqualFold(got.Server, want.Server) {
+			return fmt.Errorf("sysproxy: %s did not stick — asked for %q (enabled=%t), found %q (enabled=%t)",
+				service, want.Server, want.Enabled, got.Server, got.Enabled)
+		}
 	}
 	return nil
 }

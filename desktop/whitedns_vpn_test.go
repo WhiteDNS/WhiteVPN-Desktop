@@ -6,6 +6,8 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -303,6 +305,17 @@ func TestSubscriptionURLTakesWebAddressesAndNothingElse(t *testing.T) {
 		if _, err := validateV2RaySubscriptionURL(rawURL); err != nil {
 			t.Fatalf("expected %q to be accepted: %v", rawURL, err)
 		}
+	}
+}
+
+func TestSubscriptionRedirectNeverDowngradesHTTPS(t *testing.T) {
+	httpsURL, _ := url.Parse("https://example.com/sub")
+	httpURL, _ := url.Parse("http://mirror.example.com/sub")
+	if err := checkSubscriptionRedirect(&http.Request{URL: httpURL}, []*http.Request{{URL: httpsURL}}); err == nil {
+		t.Fatal("HTTPS-to-HTTP redirect must be rejected")
+	}
+	if err := checkSubscriptionRedirect(&http.Request{URL: httpsURL}, []*http.Request{{URL: httpURL}}); err != nil {
+		t.Fatalf("HTTP-to-HTTPS redirect should remain valid: %v", err)
 	}
 }
 

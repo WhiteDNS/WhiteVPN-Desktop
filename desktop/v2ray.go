@@ -926,7 +926,9 @@ func fetchV2RaySubscriptionDocument(ctx context.Context, rawURL string) (string,
 	}
 	req.Header.Set("User-Agent", "WhiteDNS-Desktop")
 
-	resp, err := http.DefaultClient.Do(req)
+	client := *http.DefaultClient
+	client.CheckRedirect = checkSubscriptionRedirect
+	resp, err := client.Do(req)
 	if err != nil {
 		if resp != nil && resp.Body != nil {
 			_ = resp.Body.Close()
@@ -946,6 +948,18 @@ func fetchV2RaySubscriptionDocument(ctx context.Context, rawURL string) (string,
 		return "", fmt.Errorf("subscription response is too large")
 	}
 	return string(raw), nil
+}
+
+func checkSubscriptionRedirect(req *http.Request, via []*http.Request) error {
+	if len(via) >= 10 {
+		return fmt.Errorf("stopped after 10 redirects")
+	}
+	for _, previous := range via {
+		if previous.URL.Scheme == "https" && req.URL.Scheme != "https" {
+			return fmt.Errorf("subscription redirect from HTTPS to %s is not allowed", req.URL.Scheme)
+		}
+	}
+	return nil
 }
 
 func validateV2RaySubscriptionURL(rawURL string) (*url.URL, error) {

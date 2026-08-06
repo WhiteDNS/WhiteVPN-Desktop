@@ -27,39 +27,34 @@ func (a *App) systemProxyBackupPath() string {
 //
 // Only in proxy mode: with the tunnel up the routing is the tunnel's job, and
 // setting a proxy as well would send some applications through it twice.
-func (a *App) captureSystemProxy(port int) {
+func (a *App) captureSystemProxy(port int) error {
 	if port <= 0 {
-		return
+		return fmt.Errorf("system proxy: invalid local proxy port %d", port)
 	}
 	endpoint := fmt.Sprintf("127.0.0.1:%d", port)
 	next, err := sysproxy.Pointing(endpoint)
 	if err != nil {
-		a.reportSystemProxyFailure(endpoint, err)
-		return
+		return err
 	}
 	previous, err := sysproxy.Current()
 	if err != nil {
-		a.reportSystemProxyFailure(endpoint, err)
-		return
+		return err
 	}
 
 	// The record of what was there goes down before anything is changed. A
 	// failure after this point leaves a machine that can be put back; a failure
 	// before it changes nothing.
 	if err := a.writeSystemProxyBackup(previous); err != nil {
-		a.reportSystemProxyFailure(endpoint, fmt.Errorf("could not record the current settings first: %w", err))
-		return
+		return fmt.Errorf("could not record the current settings first: %w", err)
 	}
 	if err := sysproxy.Apply(next); err != nil {
-		a.reportSystemProxyFailure(endpoint, err)
-		return
+		return err
 	}
 	// Read back rather than assume. Another program can be writing the same
 	// key, and a badge claiming the machine uses this proxy when it does not is
 	// worse than no badge.
 	if err := sysproxy.Verify(next); err != nil {
-		a.reportSystemProxyFailure(endpoint, err)
-		return
+		return err
 	}
 
 	a.mu.Lock()
@@ -67,16 +62,7 @@ func (a *App) captureSystemProxy(port int) {
 	a.mu.Unlock()
 	a.appendRuntimeLog(fmt.Sprintf(
 		"system proxy set to %s, replacing %q (enabled=%t)", endpoint, previous.Server, previous.Enabled))
-}
-
-// reportSystemProxyFailure says so in both places a user might look. The
-// connection itself is fine — the proxy is up and anything pointed at it by
-// hand works — but silence here is the failure that looks like the VPN doing
-// nothing at all.
-func (a *App) reportSystemProxyFailure(endpoint string, err error) {
-	a.appendRuntimeLog(fmt.Sprintf("could not point the system at %s: %v", endpoint, err))
-	a.emit("runtime:error", fmt.Sprintf(
-		"Connected, but Windows was not pointed at %s: %v. Set your browser's proxy to that address by hand, or use TUN mode.", endpoint, err))
+	return nil
 }
 
 // restoreSystemProxy puts back whatever was there before, and is safe to call

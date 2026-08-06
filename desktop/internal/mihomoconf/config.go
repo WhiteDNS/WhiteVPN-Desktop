@@ -42,10 +42,29 @@ var (
 	// app's values win, so they are removed before the overrides are appended —
 	// leaving both would let the engine take either one.
 	overrideKeys = map[string]bool{
+		"port":                      true,
+		"socks-port":                true,
 		"mixed-port":                true,
+		"redir-port":                true,
+		"tproxy-port":               true,
+		"listeners":                 true,
 		"external-controller":       true,
+		"external-controller-tls":   true,
+		"external-controller-unix":  true,
+		"external-controller-pipe":  true,
+		"external-ui":               true,
+		"external-ui-name":          true,
+		"external-ui-url":           true,
+		"external-doh-server":       true,
 		"secret":                    true,
 		"allow-lan":                 true,
+		"bind-address":              true,
+		"authentication":            true,
+		"skip-auth-prefixes":        true,
+		"lan-allowed-ips":           true,
+		"lan-disallowed-ips":        true,
+		"inbound-tfo":               true,
+		"inbound-mptcp":             true,
 		"mode":                      true,
 		"log-level":                 true,
 		"ipv6":                      true,
@@ -256,7 +275,7 @@ func Render(subscriptionYAML string, opts Options) string {
 
 	out.WriteString("dns:\n")
 	out.WriteString("  enable: true\n")
-	out.WriteString("  listen: 0.0.0.0:1053\n")
+	out.WriteString("  listen: 127.0.0.1:1053\n")
 	fmt.Fprintf(&out, "  ipv6: %t\n", opts.Tun.IPv6)
 	fmt.Fprintf(&out, "  respect-rules: %t\n", opts.ProxyGroup != "")
 	out.WriteString("  enhanced-mode: fake-ip\n")

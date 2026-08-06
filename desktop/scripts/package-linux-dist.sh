@@ -13,7 +13,8 @@ asset_suffix="${LINUX_ASSET_SUFFIX:-linux-$arch}"
 description="${LINUX_PACKAGE_DESCRIPTION:-WhiteDNS desktop client}"
 maintainer="${LINUX_PACKAGE_MAINTAINER:-WhiteDNS <noreply@whitedns.local>}"
 license="${LINUX_PACKAGE_LICENSE:-MIT}"
-linuxdeploy_url="${LINUXDEPLOY_URL:-https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage}"
+linuxdeploy_url="${LINUXDEPLOY_URL:-https://github.com/linuxdeploy/linuxdeploy/releases/download/1-alpha-20251107-1/linuxdeploy-x86_64.AppImage}"
+linuxdeploy_sha256="${LINUXDEPLOY_SHA256:-c20cd71e3a4e3b80c3483cef793cda3f4e990aca14014d23c544ca3ce1270b4d}"
 linuxdeploy_bin="${LINUXDEPLOY_BIN:-}"
 
 case "$arch" in
@@ -127,6 +128,9 @@ download_linuxdeploy() {
       printf 'LINUXDEPLOY_BIN is not executable: %s\n' "$linuxdeploy_bin" >&2
       exit 1
     fi
+    if [ "${LINUXDEPLOY_SHA256+x}" = x ]; then
+      verify_linuxdeploy "$linuxdeploy_bin"
+    fi
     printf '%s\n' "$linuxdeploy_bin"
     return 0
   fi
@@ -137,9 +141,18 @@ download_linuxdeploy() {
   fi
 
   linuxdeploy_tmp="$tmp_dir/linuxdeploy-x86_64.AppImage"
-  curl -fsSL "$linuxdeploy_url" -o "$linuxdeploy_tmp"
+  curl --proto '=https' --tlsv1.2 -fsSL "$linuxdeploy_url" -o "$linuxdeploy_tmp"
+  verify_linuxdeploy "$linuxdeploy_tmp"
   chmod 755 "$linuxdeploy_tmp"
   printf '%s\n' "$linuxdeploy_tmp"
+}
+
+verify_linuxdeploy() {
+  actual_sha256="$(sha256sum "$1" | awk '{print $1}')"
+  if [ "$actual_sha256" != "$linuxdeploy_sha256" ]; then
+    printf 'linuxdeploy checksum mismatch: expected %s, got %s\n' "$linuxdeploy_sha256" "$actual_sha256" >&2
+    exit 1
+  fi
 }
 
 if format_enabled deb; then

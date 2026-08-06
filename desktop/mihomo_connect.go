@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -139,7 +141,13 @@ func (a *App) startWhiteDNSVPNWithMihomo() (model.AppState, error) {
 		// Proxy mode: without this the engine listens and nothing on the
 		// machine is talking to it. With the tunnel up the routing is the
 		// tunnel's job and a proxy as well would be one hop too many.
-		a.captureSystemProxy(connected.MixedPort())
+		if err := a.captureSystemProxy(connected.MixedPort()); err != nil {
+			message := fmt.Sprintf("could not configure the system proxy: %v", err)
+			a.appendRuntimeLog(message)
+			a.stopMihomo()
+			a.reportConnectFailure(ctx, message)
+			return a.GetAppState(), fmt.Errorf("system proxy setup failed: %w", err)
+		}
 	}
 
 	a.appendRuntimeLog(fmt.Sprintf(
@@ -412,6 +420,10 @@ func findMihomoCore() (string, error) {
 	name := fmt.Sprintf("mihomo-%s-%s", runtime.GOOS, runtime.GOARCH)
 	if runtime.GOOS == "windows" {
 		name += ".exe"
+		// The core is launched with elevation on Windows. Only use the copy
+		// shipped inside the signed application rather than an environment or
+		// working-directory path that another local process could replace.
+		return extractEmbeddedCore(name)
 	}
 	if override := strings.TrimSpace(os.Getenv("WHITEVPN_MIHOMO_BIN")); override != "" {
 		if _, err := os.Stat(override); err == nil {
@@ -447,21 +459,52 @@ func extractEmbeddedCore(name string) (string, error) {
 	}
 	target := filepath.Join(dir, name)
 
-	// Rewrite only when it differs, so an upgraded app replaces the engine and
-	// an unchanged one does not pay to unpack 56 MB on every connect.
-	if existing, err := os.Stat(target); err == nil && existing.Size() == int64(len(raw)) {
-		return target, nil
-	}
-	if err := os.WriteFile(target, raw, 0o755); err != nil {
+	// Compare content, not just size: a same-sized replacement must never be
+	// reused, especially because this executable is elevated on Windows.
+	if err := writeEmbeddedFile(target, raw, 0o755); err != nil {
 		return "", fmt.Errorf("unpack the engine: %w", err)
 	}
 	if runtime.GOOS == "windows" {
-		if wintun, err := coreAssets.ReadFile("cores/wintun.dll"); err == nil {
-			// The tunnel driver has to sit beside the engine that loads it.
-			_ = os.WriteFile(filepath.Join(dir, "wintun.dll"), wintun, 0o644)
+		wintun, err := coreAssets.ReadFile("cores/wintun.dll")
+		if err != nil {
+			return "", fmt.Errorf("the Wintun driver is not in this build: %w", err)
+		}
+		// The tunnel driver has to sit beside the engine that loads it.
+		if err := writeEmbeddedFile(filepath.Join(dir, "wintun.dll"), wintun, 0o644); err != nil {
+			return "", fmt.Errorf("unpack the Wintun driver: %w", err)
 		}
 	}
 	return target, nil
+}
+
+func writeEmbeddedFile(path string, raw []byte, mode os.FileMode) error {
+	matches, err := fileMatches(path, raw)
+	if err == nil && matches {
+		return nil
+	}
+	return os.WriteFile(path, raw, mode)
+}
+
+func fileMatches(path string, raw []byte) (bool, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return false, err
+	}
+	if info.Size() != int64(len(raw)) {
+		return false, nil
+	}
+
+	file, err := os.Open(path)
+	if err != nil {
+		return false, err
+	}
+	defer file.Close()
+	hash := sha256.New()
+	if _, err := io.Copy(hash, file); err != nil {
+		return false, err
+	}
+	expected := sha256.Sum256(raw)
+	return string(hash.Sum(nil)) == string(expected[:]), nil
 }
 
 // dnsPrivacyMode maps the stored setting onto the engine's.
