@@ -50,6 +50,26 @@ func TestSplitEndpoint(t *testing.T) {
 	}
 }
 
+func TestProxyScriptBatchesAndQuotesEveryService(t *testing.T) {
+	script := proxyScript([]string{"Wi-Fi O'Brien", "Ethernet"}, State{
+		Enabled:  true,
+		Override: "localhost;<local>",
+	}, "127.0.0.1", "2080")
+
+	if got := strings.Count(script, networksetup); got != 8 {
+		t.Fatalf("expected four commands for each service, got %d: %s", got, script)
+	}
+	for _, want := range []string{
+		"'-setwebproxy' 'Wi-Fi O'\"'\"'Brien' '127.0.0.1' '2080'",
+		"'-setsecurewebproxy' 'Ethernet' '127.0.0.1' '2080'",
+		"'-setproxybypassdomains' 'Ethernet' 'localhost'",
+	} {
+		if !strings.Contains(script, want) {
+			t.Fatalf("expected proxy script to contain %q, got: %s", want, script)
+		}
+	}
+}
+
 func TestVerifyServicesRejectsAnyUnconfiguredService(t *testing.T) {
 	want := State{Enabled: true, Server: "127.0.0.1:2080"}
 	err := verifyServices([]string{"Ethernet", "Wi-Fi"}, want, func(service string) (State, error) {

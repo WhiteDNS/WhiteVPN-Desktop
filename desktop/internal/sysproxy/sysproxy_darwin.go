@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"fmt"
 	"os/exec"
+	"strconv"
 	"strings"
 )
 
@@ -54,14 +55,15 @@ func Apply(state State) error {
 	}
 
 	host, port := splitEndpoint(state.Server)
-	var failures []string
-	for _, service := range services {
-		if err := applyToService(service, state, host, port); err != nil {
-			failures = append(failures, err.Error())
+	script := proxyScript(services, state, host, port)
+	command := exec.Command("/usr/bin/osascript", "-e",
+		"do shell script "+strconv.Quote(script)+" with administrator privileges")
+	if out, err := command.CombinedOutput(); err != nil {
+		detail := strings.TrimSpace(string(out))
+		if detail == "" {
+			return fmt.Errorf("sysproxy: administrator approval failed: %w", err)
 		}
-	}
-	if len(failures) > 0 {
-		return fmt.Errorf("sysproxy: %s", strings.Join(failures, "; "))
+		return fmt.Errorf("sysproxy: administrator approval failed: %w: %s", err, detail)
 	}
 	return nil
 }
@@ -100,7 +102,7 @@ func verifyServices(services []string, want State, read func(string) (State, err
 	return nil
 }
 
-func applyToService(service string, state State, host, port string) error {
+func proxyScript(services []string, state State, host, port string) string {
 	// Web and secure-web are the HTTP and HTTPS proxies; SOCKS is set as well
 	// because the engine's mixed port serves all three and some applications
 	// reach for SOCKS first.
@@ -109,26 +111,30 @@ func applyToService(service string, state State, host, port string) error {
 		{"-setsecurewebproxy", "-setsecurewebproxystate"},
 		{"-setsocksfirewallproxy", "-setsocksfirewallproxystate"},
 	}
-	for _, kind := range kinds {
-		if state.Enabled {
-			if err := run(networksetup, kind.set, service, host, port); err != nil {
-				return fmt.Errorf("%s: %w", service, err)
+	var commands []string
+	for _, service := range services {
+		for _, kind := range kinds {
+			if state.Enabled {
+				commands = append(commands, shellCommand(networksetup, kind.set, service, host, port))
+				continue
 			}
-			continue
+			commands = append(commands, shellCommand(networksetup, kind.state, service, "off"))
 		}
-		if err := run(networksetup, kind.state, service, "off"); err != nil {
-			return fmt.Errorf("%s: %w", service, err)
-		}
-	}
-	if state.Enabled && state.Override != "" {
-		// Bypass entries are separate arguments, not one semicolon-joined
-		// string as on Windows.
-		args := append([]string{"-setproxybypassdomains", service}, bypassDomains(state.Override)...)
-		if err := run(networksetup, args...); err != nil {
-			return fmt.Errorf("%s: %w", service, err)
+		if state.Enabled && state.Override != "" {
+			// Bypass entries are separate arguments, not one semicolon-joined
+			// string as on Windows.
+			args := append([]string{networksetup, "-setproxybypassdomains", service}, bypassDomains(state.Override)...)
+			commands = append(commands, shellCommand(args...))
 		}
 	}
-	return nil
+	return strings.Join(commands, " && ")
+}
+
+func shellCommand(args ...string) string {
+	for i := range args {
+		args[i] = "'" + strings.ReplaceAll(args[i], "'", "'\"'\"'") + "'"
+	}
+	return strings.Join(args, " ")
 }
 
 // networkServices lists the services that are enabled. A disabled one is
@@ -210,11 +216,6 @@ func bypassDomains(override string) []string {
 		out = append(out, "Empty")
 	}
 	return out
-}
-
-func run(name string, args ...string) error {
-	_, err := output(name, args...)
-	return err
 }
 
 func output(name string, args ...string) (string, error) {
