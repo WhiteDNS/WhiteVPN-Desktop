@@ -674,6 +674,7 @@ function App() {
   // Where the engine's proxy listens, asked once. The page has to be able to
   // name it while disconnected — that is when someone is setting a browser up.
   const [engineProxyEndpoint, setEngineProxyEndpoint] = useState("");
+  const [appVersion, setAppVersion] = useState("");
   const [page, setPage] = useState<Page>("vpn");
   const [errorToast, setErrorToast] = useState<AppErrorToast | null>(null);
   const [successToast, setSuccessToast] = useState<AppErrorToast | null>(null);
@@ -826,6 +827,10 @@ function App() {
       .getAppState()
       .then(applyState)
       .catch((err) => showError(messageFromError(err)));
+    backend
+      .getAppVersion()
+      .then(setAppVersion)
+      .catch(() => setAppVersion(""));
     backend
       .getLocalProxyEndpoint()
       .then(setEngineProxyEndpoint)
@@ -986,7 +991,7 @@ function App() {
   return (
     <TooltipProvider>
       <SidebarProvider defaultOpen>
-        <AppSidebar page={activePage} runtime={state.runtime} onPage={setPage} language={language} t={t} />
+        <AppSidebar page={activePage} runtime={state.runtime} onPage={setPage} language={language} version={appVersion} t={t} />
         <SidebarInset className="min-w-0 overflow-x-hidden">
           <main className="min-h-svh min-w-0 overflow-x-hidden bg-muted/30 p-4 md:p-6">
             <div className="mx-auto flex w-full min-w-0 max-w-7xl flex-col gap-4">
@@ -1259,12 +1264,14 @@ function AppSidebar({
   runtime,
   onPage,
   language,
+  version,
   t,
 }: {
   page: Page;
   runtime: RuntimeStatus;
   onPage: (page: Page) => void;
   language: Language;
+  version: string;
   t: TranslateFn;
 }) {
   const sidebarEndpoint = runtimeProxyDisplayEndpoint(runtime);
@@ -1296,7 +1303,11 @@ function AppSidebar({
             </div>
             <div className="min-w-0 group-data-[collapsible=icon]:hidden">
               <div className="truncate text-sm leading-snug font-medium">WhiteVPN</div>
-              <p className="truncate text-sm leading-normal text-muted-foreground">v1.0.0</p>
+              {/* Read from the binary, never typed here: a version in two
+                  places is a version that will disagree with itself, and this
+                  one shipped 1.0.1 while saying 1.0.0. Blank until it arrives,
+                  because a stale number is worse than none. */}
+              <p className="truncate text-sm leading-normal text-muted-foreground">{version ? `v${version}` : ""}</p>
             </div>
           </div>
           <ThemeSettingsMenu

@@ -1,7 +1,7 @@
 SHELL := /bin/sh
 
 APP_NAME := WhiteVPN Desktop
-DEFAULT_VERSION := 1.0.0
+DEFAULT_VERSION := 1.0.1
 VERSION_FROM_ARGS := $(shell set -- $(MAKECMDGOALS); while [ "$$1" != "" ]; do if [ "$$1" = "--version" ]; then shift; if [ "$$1" != "" ]; then printf '%s' "$$1"; fi; exit; fi; shift; done)
 VERSION ?= $(if $(VERSION_FROM_ARGS),$(VERSION_FROM_ARGS),$(DEFAULT_VERSION))
 APP_VERSION := $(strip $(VERSION))
@@ -14,13 +14,17 @@ GO_ENV_FILE ?= $(CURDIR)/.cache/go-env
 XRAY_CORE_VERSION ?= v26.3.27
 XRAY_CACHE_DIR ?= $(CURDIR)/.cache/xray
 RELEASE_LDFLAGS ?= -s -w
-WAILS_RELEASE_FLAGS := -trimpath -ldflags "$(RELEASE_LDFLAGS)"
+# -X main.appVersion: the interface reads its version from the binary rather
+# than from a string someone has to remember to edit. Releasing 1.0.1 once
+# shipped an app whose own sidebar said 1.0.0.
+VERSION_LDFLAGS := -X main.appVersion=$(APP_VERSION)
+WAILS_RELEASE_FLAGS := -trimpath -ldflags "$(RELEASE_LDFLAGS) $(VERSION_LDFLAGS)"
 HELPER_GO_LDFLAGS ?= $(RELEASE_LDFLAGS)
 UPX ?= 0
 UPX_FLAGS ?= --best --lzma
 MACOS_CGO_LDFLAGS ?= -framework UniformTypeIdentifiers
 MACOS_GO_TAGS ?= desktop,wv2runtime.download,production
-MACOS_GO_LDFLAGS ?= $(RELEASE_LDFLAGS)
+MACOS_GO_LDFLAGS ?= $(RELEASE_LDFLAGS) $(VERSION_LDFLAGS)
 MACOS_DEPLOYMENT_TARGET_AMD64 ?= 10.13
 MACOS_DEPLOYMENT_TARGET_ARM64 ?= 11.0
 MACOS_BUNDLE_MIN_VERSION ?= $(if $(filter arm64,$(MACOS_CLIENT_ARCH)),$(MACOS_DEPLOYMENT_TARGET_ARM64),$(MACOS_DEPLOYMENT_TARGET_AMD64))

@@ -81,6 +81,7 @@ type AppApi = {
   SaveWhiteVPNSettings(settings: WhiteVPNSettings): Promise<AppState>;
   GetPrivacyPolicyVersion(): Promise<number>;
   AcceptPrivacyPolicy(): Promise<AppState>;
+  GetAppVersion(): Promise<string>;
   GetLocalProxyEndpoint(): Promise<string>;
   ListWhiteVPNNodes(refresh: boolean): Promise<WhiteVPNNodeList>;
   ListSubscriptionNodes(subscriptionId: string, refresh: boolean): Promise<WhiteVPNNodeList>;
@@ -171,6 +172,7 @@ export const backend = {
   saveWhiteVpnSettings: (settings: WhiteVPNSettings) => app().SaveWhiteVPNSettings(settings),
   getPrivacyPolicyVersion: () => app().GetPrivacyPolicyVersion(),
   acceptPrivacyPolicy: () => app().AcceptPrivacyPolicy(),
+  getAppVersion: () => app().GetAppVersion(),
   getLocalProxyEndpoint: () => app().GetLocalProxyEndpoint(),
   listWhiteVpnNodes: (refresh: boolean) => app().ListWhiteVPNNodes(refresh),
   listSubscriptionNodes: (subscriptionId: string, refresh: boolean) => app().ListSubscriptionNodes(subscriptionId, refresh),

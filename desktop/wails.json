@@ -9,6 +9,9 @@
   "author": {
     "name": "WhiteDNS",
     "email": ""
+  },
+  "info": {
+    "productVersion": "1.0.1",
+    "productName": "WhiteVPN Desktop"
   }
 }
-
