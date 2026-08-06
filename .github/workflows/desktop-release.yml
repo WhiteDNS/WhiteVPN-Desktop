@@ -4,12 +4,12 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Desktop release version. Defaults to the vpn-v* tag suffix or the Makefile default."
+        description: "Desktop release version. Defaults to the v* tag suffix or the Makefile default."
         required: false
         type: string
   push:
     tags:
-      - "vpn-v*"
+      - "v*"
 
 permissions:
   contents: read
@@ -84,8 +84,8 @@ jobs:
         run: |
           set -euo pipefail
           version="$INPUT_VERSION"
-          if [ -z "$version" ] && [[ "${GITHUB_REF_NAME}" == vpn-v* ]]; then
-            version="${GITHUB_REF_NAME#vpn-v}"
+          if [ -z "$version" ] && [[ "${GITHUB_REF_NAME}" == v* ]]; then
+            version="${GITHUB_REF_NAME#v}"
           fi
           if [ -z "$version" ]; then
             version="1.0.0-beta2"
@@ -217,7 +217,7 @@ jobs:
 
   publish:
     name: Publish release assets
-    if: startsWith(github.ref, 'refs/tags/vpn-v')
+    if: startsWith(github.ref, 'refs/tags/v')
     needs: build
     runs-on: ubuntu-22.04
     permissions:
