@@ -191,6 +191,11 @@ func TestRespectRulesFollowsTheProxyGroup(t *testing.T) {
 func TestRenderStripsSubscriptionOverrides(t *testing.T) {
 	subscription := strings.Join([]string{
 		"mixed-port: 9999",
+		"external-controller-unix: /tmp/provider.sock",
+		"listeners:",
+		"  - name: provider-listener",
+		"    type: socks",
+		"    port: 9998",
 		"mode: global",
 		"dns:",
 		"  enable: false",
@@ -211,6 +216,12 @@ func TestRenderStripsSubscriptionOverrides(t *testing.T) {
 	if parsed["mode"] != "rule" {
 		t.Fatalf("subscription's mode should not survive: %#v", parsed["mode"])
 	}
+	if _, ok := parsed["listeners"]; ok {
+		t.Fatalf("subscription listeners must not survive: %#v", parsed["listeners"])
+	}
+	if _, ok := parsed["external-controller-unix"]; ok {
+		t.Fatalf("subscription control sockets must not survive: %#v", parsed["external-controller-unix"])
+	}
 	dns := parsed["dns"].(map[string]any)
 	if dns["enable"] != true {
 		t.Fatalf("the subscription's whole dns block should have gone: %#v", dns)
@@ -221,6 +232,14 @@ func TestRenderStripsSubscriptionOverrides(t *testing.T) {
 	}
 	if len(parsed["rules"].([]any)) != 1 {
 		t.Fatalf("subscription rules were lost: %#v", parsed["rules"])
+	}
+}
+
+func TestRenderBindsInternalDNSOnlyToLoopback(t *testing.T) {
+	parsed := parseYAML(t, Render("", Options{}))
+	dns := parsed["dns"].(map[string]any)
+	if dns["listen"] != "127.0.0.1:1053" {
+		t.Fatalf("DNS must not bind to the LAN: %#v", dns["listen"])
 	}
 }
 

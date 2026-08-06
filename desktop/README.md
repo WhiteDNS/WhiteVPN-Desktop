@@ -1,6 +1,7 @@
 # WhiteVPN Desktop
 
-Wails v2 desktop client for the WhiteDNS VPN tunnel and V2Ray profiles, both served by a managed Xray core.
+Wails v2 desktop client for WhiteVPN subscriptions and manual proxy profiles,
+served by the embedded Mihomo/FlClash core.
 
 The MasterDNS/StormDNS side of the original combined app lives on in
 [WhiteDNS-Desktop](https://github.com/WhiteDNS/WhiteDNS-Desktop).
@@ -31,9 +32,10 @@ make test
 make dev
 ```
 
-The app extracts its embedded Xray core from `cores/xray-<goos>-<goarch>`. Package targets reset `cores/`, prepare only the core and Xray geodata for the target platform, and embed them into the app binary. Release packages do not need a separate `cores/` folder beside the app.
-
-The public proxy is always served by Xray-core pinned to `v26.3.27`. During packaging, `make` reuses a matching core from `.cache/xray/` or `cores/`; if missing, it downloads the requested XTLS release asset. For development overrides, set `WHITEVPN_XRAY_BIN=/absolute/path/to/xray`.
+The app extracts its embedded Mihomo core from
+`cores/mihomo-<goos>-<goarch>`. Package targets build the pinned engine source
+for the target platform and embed it into the app binary. Release packages do
+not need a separate `cores/` folder beside the app.
 
 Runtime profile data is stored under the platform user config directory in `WhiteVPN Desktop/state.json`.
 
@@ -52,7 +54,7 @@ For Ubuntu 24.04+ Linux builds, pass `LINUX_GO_TAGS=webkit2_41` and install `lib
 Useful targets:
 
 ```bash
-make xray-core
+make mihomo-core
 make build
 make package
 make build-mac

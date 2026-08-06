@@ -169,6 +169,15 @@ func (s *Session) start(ctx context.Context, opts Options) error {
 	}
 
 	probe := func(probeCtx context.Context) int { return probeStatus(probeCtx, opts.MixedPort) }
+	acceptHealthy := func(code int) error {
+		if opts.Tun.Enabled {
+			if err := verifyTunnel(opts.Tun.Device, opts.Tun.IPv6); err != nil {
+				return fmt.Errorf("session: tunnel verification failed: %w", err)
+			}
+		}
+		s.healthCode = code
+		return nil
+	}
 
 	// A node has to be chosen explicitly, as the phone app does. Leaving the
 	// selection to the url-test group means waiting for it to finish measuring
@@ -181,8 +190,7 @@ func (s *Session) start(ctx context.Context, opts Options) error {
 		if err != nil {
 			return fmt.Errorf("session: the engine started but carried no traffic: %w", err)
 		}
-		s.healthCode = code
-		return nil
+		return acceptHealthy(code)
 	}
 
 	attempts := opts.MaxAttempts
@@ -203,7 +211,9 @@ func (s *Session) start(ctx context.Context, opts Options) error {
 
 		code, err := waitForHealthy(ctx, probe)
 		if err == nil {
-			s.healthCode = code
+			if err := acceptHealthy(code); err != nil {
+				return err
+			}
 			s.selected = candidate
 			return nil
 		}

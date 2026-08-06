@@ -3,7 +3,9 @@
 package sysproxy
 
 import (
+	"errors"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -45,5 +47,32 @@ func TestSplitEndpoint(t *testing.T) {
 	}
 	if host, port := splitEndpoint("127.0.0.1"); host != "127.0.0.1" || port != "" {
 		t.Fatalf("an address with no port should not invent one, got %q, %q", host, port)
+	}
+}
+
+func TestVerifyServicesRejectsAnyUnconfiguredService(t *testing.T) {
+	want := State{Enabled: true, Server: "127.0.0.1:2080"}
+	err := verifyServices([]string{"Ethernet", "Wi-Fi"}, want, func(service string) (State, error) {
+		if service == "Wi-Fi" {
+			return State{}, nil
+		}
+		return want, nil
+	})
+	if err == nil || !strings.Contains(err.Error(), "Wi-Fi") {
+		t.Fatalf("expected the failed service to reject verification, got %v", err)
+	}
+}
+
+func TestVerifyServicesAcceptsOnlyWhenEveryServiceMatches(t *testing.T) {
+	want := State{Enabled: true, Server: "127.0.0.1:2080"}
+	if err := verifyServices([]string{"Ethernet", "Wi-Fi"}, want, func(string) (State, error) {
+		return want, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := verifyServices([]string{"Wi-Fi"}, want, func(string) (State, error) {
+		return State{}, errors.New("networksetup failed")
+	}); err == nil {
+		t.Fatal("read errors must fail verification")
 	}
 }

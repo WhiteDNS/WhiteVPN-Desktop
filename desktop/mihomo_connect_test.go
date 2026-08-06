@@ -23,6 +23,9 @@ func TestFindMihomoCoreExplainsItselfWhenAbsent(t *testing.T) {
 }
 
 func TestFindMihomoCoreAcceptsAnOverride(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows intentionally uses only the embedded elevated core")
+	}
 	name := "mihomo-" + runtime.GOOS + "-" + runtime.GOARCH
 	if runtime.GOOS == "windows" {
 		name += ".exe"
@@ -39,6 +42,23 @@ func TestFindMihomoCoreAcceptsAnOverride(t *testing.T) {
 	}
 	if found != path {
 		t.Fatalf("found %q, want %q", found, path)
+	}
+}
+
+func TestWriteEmbeddedFileReplacesSameSizedContent(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "core")
+	if err := os.WriteFile(path, []byte("evil"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeEmbeddedFile(path, []byte("safe"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "safe" {
+		t.Fatalf("got %q, want embedded content", got)
 	}
 }
 
