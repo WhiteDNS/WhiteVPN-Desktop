@@ -93,6 +93,9 @@ type Session struct {
 	// tunnelUnverified is set when the tunnel was accepted without being checked,
 	// which happens on platforms that have no way to read an adapter's routes yet.
 	tunnelUnverified error
+
+	// reasons carries whatever the engine last said about why a dial failed.
+	reasons *coreReasonTap
 }
 
 // Seeded is how many sampled nodes answered a delay test before the automatic
@@ -187,12 +190,17 @@ func Connect(ctx context.Context, opts Options) (*Session, error) {
 		return nil, fmt.Errorf("session: write config: %w", err)
 	}
 
+	// Read on the way past, so a failure can say what the engine said rather
+	// than only that nothing worked. Both streams: the engine's log, dial
+	// failures included, goes to stdout. See corereason.go.
+	reasons := newCoreReasonTap()
+
 	process, err := engine.Spawn(ctx, engine.SpawnOptions{
 		CorePath:       opts.CorePath,
 		WorkingDir:     opts.HomeDir,
 		ConnectTimeout: 20 * time.Second,
-		Stdout:         opts.CoreStdout,
-		Stderr:         opts.CoreStderr,
+		Stdout:         reasons.Watch(opts.CoreStdout),
+		Stderr:         reasons.Watch(opts.CoreStderr),
 		// A tunnel adapter cannot be created without Administrator, so asking for
 		// it follows the tunnel setting rather than being a separate choice.
 		Elevated:           opts.Tun.Enabled,
@@ -211,6 +219,7 @@ func Connect(ctx context.Context, opts Options) (*Session, error) {
 		// The generated configuration is the only one that carries a url-test
 		// group, and a stated preference is the user choosing for themselves.
 		automatic: len(candidates) > 0 && len(opts.Prefer) == 0,
+		reasons:   reasons,
 	}
 	// Any failure from here on leaves an engine running, so it has to be stopped
 	// rather than abandoned: an abandoned one keeps its listeners, and on the TUN
@@ -260,7 +269,7 @@ func (s *Session) start(ctx context.Context, opts Options) error {
 		// A provider's own document comes with its own selection; take it as-is.
 		code, err := waitForHealthy(ctx, probe)
 		if err != nil {
-			return fmt.Errorf("session: the engine started but carried no traffic: %w", err)
+			return fmt.Errorf("session: the engine started but carried no traffic: %w%s", err, s.engineSaid())
 		}
 		return acceptHealthy(code)
 	}
@@ -346,7 +355,23 @@ func (s *Session) start(ctx context.Context, opts Options) error {
 			break
 		}
 	}
-	return fmt.Errorf("session: no node carried traffic after %d attempts: %w", attempts, lastErr)
+	return fmt.Errorf("session: no node carried traffic after %d attempts: %w%s",
+		attempts, lastErr, s.engineSaid())
+}
+
+// engineSaid is the engine's own explanation, ready to append to a failure.
+//
+// It is what turns "no request completed through the proxy within 12s" — true,
+// and no help at all — into something a user can act on. "REALITY
+// authentication failed" says the keys no longer match the server; "connection
+// refused" says the server is not listening. The engine knew all along and the
+// app was dropping it on the floor.
+func (s *Session) engineSaid() string {
+	reason := s.reasons.Reason()
+	if reason == "" {
+		return ""
+	}
+	return fmt.Sprintf(" (the engine reported: %s)", reason)
 }
 
 // Healthy reports whether a real request still completes through this session.
@@ -510,7 +535,7 @@ func (s *Session) Select(ctx context.Context, node string) error {
 				return fmt.Errorf("session: %q carried no traffic, so %q is still in use: %w", node, previous, err)
 			}
 		}
-		return fmt.Errorf("session: %q carried no traffic: %w", node, err)
+		return fmt.Errorf("session: %q carried no traffic: %w%s", node, err, s.engineSaid())
 	}
 
 	s.healthCode = code
