@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -78,10 +79,77 @@ type Session struct {
 	healthCode int
 	candidates []string
 	selected   string
+
+	// automatic means the engine's url-test group is choosing, rather than this
+	// app having pinned one node. It is false when the user named what to use,
+	// and false for a provider document that selects for itself.
+	automatic bool
+
+	// seeded is how many of the sampled nodes answered before the group was
+	// selected. It is worth logging: a connect where nothing answered says
+	// something about the network, not about the catalogue.
+	seeded int
+
+	// tunnelUnverified is set when the tunnel was accepted without being checked,
+	// which happens on platforms that have no way to read an adapter's routes yet.
+	tunnelUnverified error
 }
 
+// Seeded is how many sampled nodes answered a delay test before the automatic
+// group was asked to choose.
+func (s *Session) Seeded() int { return s.seeded }
+
+// TunnelUnverified is non-nil when the tunnel is up but could not be inspected,
+// so the caller can say so instead of implying it was checked.
+func (s *Session) TunnelUnverified() error { return s.tunnelUnverified }
+
 // Selected is the node currently carrying traffic.
+//
+// Under automatic selection this is whichever node the engine's group had chosen
+// when it was last asked, not a node this app pinned.
 func (s *Session) Selected() string { return s.selected }
+
+// Automatic reports whether the engine is choosing the node.
+func (s *Session) Automatic() bool { return s.automatic }
+
+// RefreshSelection re-reads which node the engine's group is on, and reports
+// whether that has changed since the last look.
+//
+// Under automatic selection the group moves on its own, so a name shown once at
+// connect time goes stale — the dashboard would keep naming a node the traffic
+// stopped using. Nothing is reported when the lookup fails or the group has not
+// settled, because replacing a name that was right with no name at all is worse
+// than a name that is a few seconds old.
+func (s *Session) RefreshSelection(ctx context.Context) (string, bool) {
+	if s.process == nil || !s.automatic {
+		return s.selected, false
+	}
+	name := s.resolveSelection(ctx)
+	if name == "" || name == s.selected {
+		return s.selected, false
+	}
+	s.selected = name
+	return name, true
+}
+
+// resolveSelection asks the engine which node its group settled on, so the
+// interface can name a place rather than a group.
+func (s *Session) resolveSelection(ctx context.Context) string {
+	lookupCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	proxies, err := proxySnapshot(lookupCtx, s.process)
+	if err != nil {
+		return ""
+	}
+	name := resolveGroup(proxies, mihomoconf.SelectGroup)
+	if name == mihomoconf.SelectGroup || name == mihomoconf.AutoGroup {
+		// The group answered with itself, which means it has not settled yet.
+		// Naming nothing beats naming a group.
+		return ""
+	}
+	return name
+}
 
 // MixedPort is where the session's local proxy listens.
 func (s *Session) MixedPort() int { return s.mixedPort }
@@ -140,6 +208,9 @@ func Connect(ctx context.Context, opts Options) (*Session, error) {
 		configPath: configPath,
 		proxyCount: len(candidates),
 		candidates: candidates,
+		// The generated configuration is the only one that carries a url-test
+		// group, and a stated preference is the user choosing for themselves.
+		automatic: len(candidates) > 0 && len(opts.Prefer) == 0,
 	}
 	// Any failure from here on leaves an engine running, so it has to be stopped
 	// rather than abandoned: an abandoned one keeps its listeners, and on the TUN
@@ -173,7 +244,11 @@ func (s *Session) start(ctx context.Context, opts Options) error {
 	probe := func(probeCtx context.Context) int { return probeStatus(probeCtx, opts.MixedPort) }
 	acceptHealthy := func(code int) error {
 		if opts.Tun.Enabled {
-			if err := verifyTunnel(opts.Tun.Device, opts.Tun.IPv6); err != nil {
+			switch err := waitForTunnel(ctx, opts.Tun.Device, opts.Tun.IPv6); {
+			case err == nil:
+			case errors.Is(err, errTunnelUnverifiable):
+				s.tunnelUnverified = err
+			default:
 				return fmt.Errorf("session: tunnel verification failed: %w", err)
 			}
 		}
@@ -181,11 +256,6 @@ func (s *Session) start(ctx context.Context, opts Options) error {
 		return nil
 	}
 
-	// A node has to be chosen explicitly, as the phone app does. Leaving the
-	// selection to the url-test group means waiting for it to finish measuring
-	// hundreds of servers before anything is selected at all, and until then the
-	// group answers with whichever node happens to be first — frequently a dead
-	// one.
 	if len(s.candidates) == 0 {
 		// A provider's own document comes with its own selection; take it as-is.
 		code, err := waitForHealthy(ctx, probe)
@@ -195,14 +265,63 @@ func (s *Session) start(ctx context.Context, opts Options) error {
 		return acceptHealthy(code)
 	}
 
-	attempts := opts.MaxAttempts
-	if attempts > len(s.candidates) {
-		attempts = len(s.candidates)
+	var lastErr error
+
+	// Automatic hands the choice to the engine, which is what the phone app does
+	// and why it behaves the way it does.
+	//
+	// This used to pick a node itself and pin the group to it. With a catalogue of
+	// eight hundred nodes that was the wrong shape twice over: every user tried the
+	// same five, in the same order, so a bad head of the list told everybody the app
+	// could not connect; and once pinned, a `select` group never reconsiders, so a
+	// node that died mid-session stayed selected until a watchdog noticed.
+	//
+	// A url-test group measures its members continuously, picks the fastest that
+	// answers, and — this is the part that matters — moves off a node by itself once
+	// dialling through it starts failing. Eight hundred nodes stop being eight
+	// hundred chances to fail and become eight hundred chances to succeed.
+	if s.automatic {
+		// Measure a random sample first, so the group has real numbers to choose
+		// between rather than eight hundred nodes that all look the same to it.
+		// See seed.go for why this is not optional.
+		s.seeded = s.seedMeasurements(ctx, s.candidates)
+
+		if err := s.changeProxy(ctx, mihomoconf.AutoGroup); err != nil {
+			lastErr = err
+		} else {
+			code, err := waitForHealthy(ctx, probe)
+			if err == nil {
+				if err := acceptHealthy(code); err != nil {
+					return err
+				}
+				s.selected = s.resolveSelection(ctx)
+				return nil
+			}
+			lastErr = fmt.Errorf("automatic selection: %w", err)
+		}
 	}
 
-	var lastErr error
+	// Nothing answered through the group, or the user named the nodes to use.
+	// Either way this walks them one at a time, fastest first.
+	//
+	// A user who picks a country gets the same treatment for the same reason: that
+	// country may hold eighty nodes, and walking the first five of them in
+	// catalogue order is the same mistake in a smaller list.
+	if !s.automatic {
+		s.seeded = s.seedMeasurements(ctx, s.candidates)
+	}
+	order := s.candidates
+	if proxies, err := proxySnapshot(ctx, s.process); err == nil {
+		order = byMeasuredDelay(order, proxies)
+	}
+
+	attempts := opts.MaxAttempts
+	if attempts > len(order) {
+		attempts = len(order)
+	}
+
 	for i := 0; i < attempts; i++ {
-		candidate := s.candidates[i]
+		candidate := order[i]
 		selectCtx, selectCancel := context.WithTimeout(ctx, 10*time.Second)
 		err := s.process.ChangeProxy(selectCtx, mihomoconf.SelectGroup, candidate)
 		selectCancel()
@@ -216,6 +335,9 @@ func (s *Session) start(ctx context.Context, opts Options) error {
 			if err := acceptHealthy(code); err != nil {
 				return err
 			}
+			// The group is pinned to this node now, so the engine is no longer the
+			// one choosing and recovery has to do the choosing instead.
+			s.automatic = false
 			s.selected = candidate
 			return nil
 		}
@@ -252,9 +374,28 @@ func (s *Session) Recover(ctx context.Context, attempts int) (string, error) {
 		return "", fmt.Errorf("session: this subscription selects its own node")
 	}
 
+	// Under automatic selection the engine is already recovering: a url-test group
+	// re-measures after a run of failed dials and moves off a dead node without
+	// being asked. Pinning a node here would take that away — it would replace a
+	// group that keeps looking with one node that never gets reconsidered. So this
+	// waits for the engine's own move and reports where it went.
+	if s.automatic {
+		return s.recoverAutomatically(ctx)
+	}
+
+	// The measurements are stale by now — they were taken when this session was
+	// made, and what has changed since is precisely why recovery is running. A
+	// fresh sample means the alternatives are ordered by how they are behaving
+	// now rather than by how they behaved when the connection still worked.
+	s.seeded = s.seedMeasurements(ctx, s.candidates)
+	ordered := s.candidates
+	if proxies, err := proxySnapshot(ctx, s.process); err == nil {
+		ordered = byMeasuredDelay(ordered, proxies)
+	}
+
 	previous := s.selected
 	var lastErr error
-	for _, candidate := range recoveryOrder(s.candidates, previous, attempts) {
+	for _, candidate := range recoveryOrder(ordered, previous, attempts) {
 		if ctx.Err() != nil {
 			break
 		}
@@ -287,6 +428,40 @@ func (s *Session) Recover(ctx context.Context, attempts int) (string, error) {
 	return "", fmt.Errorf("session: nothing else carried traffic either: %w", lastErr)
 }
 
+// recoverAutomatically waits for the engine's group to move itself off a node
+// that stopped working, and reports where it landed.
+//
+// Re-asserting the selection is what prompts it: the group answers with its own
+// current pick, and mihomo re-checks a group whose dials keep failing. If the
+// group has not moved by the time the budget is spent, the failure says so
+// rather than pretending — but the session is left alone either way, because a
+// group that is still looking is worth more than a node pinned by hand.
+func (s *Session) recoverAutomatically(ctx context.Context) (string, error) {
+	previous := s.selected
+
+	// A fresh random sample, because the group can only choose between nodes it
+	// has numbers for, and if the ones it had have gone the way of the node that
+	// just failed, it needs new ones to look at.
+	s.seeded = s.seedMeasurements(ctx, s.candidates)
+
+	if err := s.changeProxy(ctx, mihomoconf.AutoGroup); err != nil {
+		return "", err
+	}
+	code, err := waitForHealthy(ctx, func(probeCtx context.Context) int {
+		return probeStatus(probeCtx, s.mixedPort)
+	})
+	if err != nil {
+		return "", fmt.Errorf("session: the automatic group has not found a node that answers: %w", err)
+	}
+
+	s.healthCode = code
+	s.selected = s.resolveSelection(ctx)
+	if s.selected == "" {
+		s.selected = previous
+	}
+	return s.selected, nil
+}
+
 // recoveryOrder is which nodes a recovery reaches for: the candidates in their
 // own order, without the one that just failed, capped at what one recovery is
 // willing to spend.
@@ -316,14 +491,22 @@ func (s *Session) Select(ctx context.Context, node string) error {
 	}
 
 	previous := s.selected
+	// What the group has to be put back to, which under automatic selection is
+	// the group itself rather than the node it happens to be on. Restoring the
+	// node would quietly pin a session that was choosing for itself.
+	restore := previous
+	if s.automatic {
+		restore = mihomoconf.AutoGroup
+	}
+
 	if err := s.changeProxy(ctx, node); err != nil {
 		return err
 	}
 
 	code, err := waitForHealthy(ctx, func(probeCtx context.Context) int { return probeStatus(probeCtx, s.mixedPort) })
 	if err != nil {
-		if previous != "" && previous != node {
-			if restoreErr := s.changeProxy(ctx, previous); restoreErr == nil {
+		if restore != "" && restore != node {
+			if restoreErr := s.changeProxy(ctx, restore); restoreErr == nil {
 				return fmt.Errorf("session: %q carried no traffic, so %q is still in use: %w", node, previous, err)
 			}
 		}
@@ -331,6 +514,8 @@ func (s *Session) Select(ctx context.Context, node string) error {
 	}
 
 	s.healthCode = code
+	// A node named by hand is the user choosing, so the engine stops choosing.
+	s.automatic = false
 	s.selected = node
 	return nil
 }
@@ -541,7 +726,10 @@ func withDefaults(opts Options) Options {
 		opts.DNSPrivacy = mihomoconf.DNSAutomatic
 	}
 	if opts.MaxAttempts <= 0 {
-		// Five, as the phone app allows itself for startup attempts.
+		// Five, as the phone app allows itself for startup attempts. This caps the
+		// fallback walk, which now runs in measured order, so it is five nodes the
+		// engine has numbers for rather than five arbitrary ones off the top of the
+		// catalogue.
 		opts.MaxAttempts = 5
 	}
 	return opts
