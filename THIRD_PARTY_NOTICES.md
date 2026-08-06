@@ -1,7 +1,7 @@
 # Third-party notices and binary provenance
 
 WhiteVPN Desktop includes or builds the following third-party components. Each
-component remains under its upstream license; the repository's MIT license
+component remains under its upstream license; the repository's GPL-3.0 license
 does not replace those terms.
 
 ## Runtime components

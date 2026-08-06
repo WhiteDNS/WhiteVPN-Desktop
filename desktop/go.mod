@@ -2,6 +2,8 @@ module whitevpn-desktop
 
 go 1.25.0
 
+toolchain go1.26.5
+
 require (
 	github.com/wailsapp/wails/v2 v2.12.0
 	tunnelcheck/engine v0.0.0

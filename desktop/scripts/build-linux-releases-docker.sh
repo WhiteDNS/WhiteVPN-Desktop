@@ -2,7 +2,7 @@
 set -eu
 
 docker_bin="${LINUX_DOCKER:-docker}"
-image="${LINUX_DOCKER_IMAGE:-golang:1.25-bookworm}"
+image="${LINUX_DOCKER_IMAGE:-golang:1.26.5-bookworm}"
 node_major="${LINUX_NODE_MAJOR:-24}"
 platforms="${ALL_LINUX_PLATFORMS:-linux/amd64,linux/arm64}"
 version="${VERSION:-1.0.0-beta6}"

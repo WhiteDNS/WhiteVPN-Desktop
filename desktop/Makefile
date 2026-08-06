@@ -35,7 +35,7 @@ LINUX_PACKAGE_FORMATS ?= deb,rpm
 LINUX_ASSET_SUFFIX ?= linux-$(LINUX_CLIENT_ARCH)$(if $(filter 4.1,$(LINUX_WEBKIT)),-webkit41,)
 LINUX_PACKAGE_OUTPUT_DIR ?= build/releases
 LINUX_DOCKER ?= docker
-LINUX_DOCKER_IMAGE ?= golang:1.25-bookworm
+LINUX_DOCKER_IMAGE ?= golang:1.26.5-bookworm
 LINUX_NODE_MAJOR ?= 24
 ifeq ($(UPX),1)
 WAILS_OPTIONAL_UPX_FLAGS := -upx -upxflags "$(UPX_FLAGS)"
