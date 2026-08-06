@@ -231,9 +231,22 @@ func (a *App) RefreshV2RaySubscription(id string) (model.V2RaySubscriptionRefres
 
 	rawText, fetchErr := fetchV2RaySubscriptionDocument(context.Background(), subscription.URL)
 	var imported []model.V2RayProfile
+	var importedCount int
 	var parseErr error
 	if fetchErr == nil {
 		imported, parseErr = profiles.ParseV2RaySubscriptionDocument(rawText)
+		importedCount = len(imported)
+		if parseErr != nil {
+			// Not share links. It may still be a whole mihomo configuration —
+			// what a panel serves behind `?app=clash` — which is the engine's
+			// own language and needs no conversion at all. There are no V2Ray
+			// profiles to store for one, and nothing needs them: the node list,
+			// the Servers page and the connect path all read the subscription
+			// body itself.
+			if nodes, err := whiteVPNNodesFromSubscription(rawText); err == nil {
+				imported, parseErr, importedCount = nil, nil, len(nodes)
+			}
+		}
 	}
 
 	a.mu.Lock()
@@ -285,7 +298,7 @@ func (a *App) RefreshV2RaySubscription(id string) (model.V2RaySubscriptionRefres
 
 	// A refresh is a request for the current list, cache included.
 	a.forgetWhiteVPNNodes(id)
-	a.state.V2RaySubscriptions[idx].ImportedCount = len(imported)
+	a.state.V2RaySubscriptions[idx].ImportedCount = importedCount
 	a.state.V2RaySubscriptions[idx].LastUpdatedAt = time.Now().UTC().Format(time.RFC3339)
 	a.state.V2RaySubscriptions[idx].LastError = ""
 	next, err := a.saveLocked()
@@ -294,8 +307,8 @@ func (a *App) RefreshV2RaySubscription(id string) (model.V2RaySubscriptionRefres
 		State:        next,
 		Subscription: subscription,
 		OK:           true,
-		Message:      fmt.Sprintf("Imported %d V2Ray profile%s.", len(imported), pluralSuffix(len(imported))),
-		Imported:     len(imported),
+		Message:      fmt.Sprintf("Imported %d server%s.", importedCount, pluralSuffix(importedCount)),
+		Imported:     importedCount,
 		Removed:      removed,
 	}, err
 }
