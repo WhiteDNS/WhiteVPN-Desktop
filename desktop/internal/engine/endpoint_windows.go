@@ -7,13 +7,8 @@ import (
 	"net"
 
 	"github.com/Microsoft/go-winio"
+	"golang.org/x/sys/windows"
 )
-
-// defaultPipeSecurity restricts the pipe to SYSTEM and the Administrators group.
-// The core runs elevated so it can create the tunnel adapter, and the control
-// channel to something that privileged should not be open to every process on
-// the machine.
-const defaultPipeSecurity = "D:P(A;;GA;;;SY)(A;;GA;;;BA)"
 
 func generateEndpoint() (string, error) {
 	// A random name per run, so a stale or squatted pipe from an earlier run
@@ -27,7 +22,11 @@ func generateEndpoint() (string, error) {
 
 func listen(endpoint, securityDescriptor string) (net.Listener, error) {
 	if securityDescriptor == "" {
-		securityDescriptor = defaultPipeSecurity
+		user, err := windows.GetCurrentProcessToken().GetTokenUser()
+		if err != nil {
+			return nil, fmt.Errorf("read current Windows user for pipe ACL: %w", err)
+		}
+		securityDescriptor = pipeSecurityDescriptor(user.User.Sid.String())
 	}
 	return winio.ListenPipe(endpoint, &winio.PipeConfig{
 		SecurityDescriptor: securityDescriptor,
