@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"slices"
 	"strings"
 	"time"
 	"unicode"
@@ -111,14 +112,17 @@ func (a *App) SaveWhiteDNSVPNFrontingIPs(rawText string) (model.AppState, error)
 // through here so that the connect path and the connection dialog can never be
 // looking at different lists.
 
-// SelectSubscription chooses which subscription the VPN connects through.
+// SelectSubscription chooses which server source the VPN connects through.
 func (a *App) SelectSubscription(id string) (model.AppState, error) {
 	id = strings.TrimSpace(id)
 	a.mu.Lock()
-	if _, ok := findV2RaySubscription(a.state, id); !ok && id != whiteDNSVPNSubscriptionID {
+	manualAvailable := id == model.ManualServerSourceID && slices.ContainsFunc(a.state.V2RayProfiles, func(profile model.V2RayProfile) bool {
+		return profile.SubscriptionID == ""
+	})
+	if _, ok := findV2RaySubscription(a.state, id); !ok && id != whiteDNSVPNSubscriptionID && !manualAvailable {
 		state := a.state
 		a.mu.Unlock()
-		return state, fmt.Errorf("that subscription is not in the list")
+		return state, fmt.Errorf("that server source is not in the list")
 	}
 	if a.state.SelectedSubscriptionID == id {
 		state := a.state
@@ -161,6 +165,21 @@ func (a *App) subscriptionBody(ctx context.Context) (string, error) {
 // subscriptionBodyFor fetches one by name, which is what lets the Servers page
 // look at a subscription the VPN is not connecting through.
 func (a *App) subscriptionBodyFor(ctx context.Context, id string) (string, error) {
+	if id == model.ManualServerSourceID {
+		a.mu.Lock()
+		manualProfiles := make([]model.V2RayProfile, 0, len(a.state.V2RayProfiles))
+		for _, profile := range a.state.V2RayProfiles {
+			if profile.SubscriptionID == "" {
+				manualProfiles = append(manualProfiles, profile)
+			}
+		}
+		a.mu.Unlock()
+		body, err := profiles.ExportV2RayProfiles(manualProfiles)
+		if err != nil {
+			return "", fmt.Errorf("manual configs unavailable: %w", err)
+		}
+		return body, nil
+	}
 	if id == whiteDNSVPNSubscriptionID {
 		raw, err := fetchWhiteDNSVPNSubscriptionDocument(ctx)
 		if err != nil {

@@ -251,7 +251,7 @@ func NormalizeState(state model.AppState) model.AppState {
 	state.SettingsProfiles = normalizeSettingsProfiles(state.SettingsProfiles)
 	state.V2RayProfiles = normalizeV2RayProfiles(state.V2RayProfiles)
 	state.V2RaySubscriptions = normalizeV2RaySubscriptions(state.V2RaySubscriptions)
-	state.SelectedSubscriptionID = normalizeSelectedSubscription(state.SelectedSubscriptionID, state.V2RaySubscriptions)
+	state.SelectedSubscriptionID = normalizeSelectedSubscription(state.SelectedSubscriptionID, state.V2RaySubscriptions, state.V2RayProfiles)
 	state.V2RaySettingsProfiles = normalizeV2RaySettingsProfiles(state.V2RaySettingsProfiles)
 	state.WhiteVPN = model.NormalizeWhiteVPNSettings(state.WhiteVPN)
 	state.WhiteDNSVPNFrontingIPs = NormalizeWhiteDNSVPNFrontingIPs(state.WhiteDNSVPNFrontingIPs)
@@ -463,8 +463,13 @@ func normalizeV2RayProfiles(profiles []model.V2RayProfile) []model.V2RayProfile 
 // always present, rather than to nothing: a selection pointing at a deleted
 // subscription would otherwise leave the app with no source of servers and no
 // way to say so.
-func normalizeSelectedSubscription(selected string, subscriptions []model.V2RaySubscription) string {
+func normalizeSelectedSubscription(selected string, subscriptions []model.V2RaySubscription, profiles []model.V2RayProfile) string {
 	selected = strings.TrimSpace(selected)
+	if selected == model.ManualServerSourceID && slices.ContainsFunc(profiles, func(profile model.V2RayProfile) bool {
+		return profile.SubscriptionID == ""
+	}) {
+		return selected
+	}
 	for _, subscription := range subscriptions {
 		if subscription.ID == selected && selected != "" {
 			return selected

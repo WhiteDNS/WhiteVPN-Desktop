@@ -30,6 +30,7 @@ const strings = {
   "nav.validator": { en: "Validator", fa: "اعتبارسنج" },
   "nav.backup": { en: "Full Backup", fa: "پشتیبان کامل" },
   "nav.source": { en: "Source: WhiteDNS Telegram", fa: "منبع: تلگرام وایت‌دی‌ان‌اس" },
+  "nav.youtubeSubscribe": { en: "Subscribe on YouTube", fa: "عضویت در یوتیوب" },
   "nav.loading": { en: "Loading command center", fa: "در حال بارگذاری" },
 
   // Connection status
@@ -384,13 +385,26 @@ const strings = {
     en: "The same nodes the VPN connects through. Test them, sort them, share them.",
     fa: "همان سرورهایی که وی‌پی‌ان از آن‌ها وصل می‌شود. آزمایش، مرتب‌سازی و اشتراک‌گذاری.",
   },
-  "servers.subscription": { en: "Subscription", fa: "اشتراک" },
-  "servers.notInUse": { en: "not connected through", fa: "اتصال از این اشتراک نیست" },
-  "servers.notInUse.hint": {
-    en: "You are looking at another subscription's servers. Connecting through one of them switches to it.",
-    fa: "در حال دیدن سرورهای اشتراک دیگری هستید. اتصال از یکی از آن‌ها، اشتراک را هم به همان تغییر می‌دهد.",
+  "servers.category": { en: "Server category", fa: "دسته‌بندی سرورها" },
+  "servers.manual": { en: "Manual", fa: "دستی" },
+  "servers.import": { en: "Add configs", fa: "افزودن کانفیگ" },
+  "servers.importing": { en: "Adding…", fa: "در حال افزودن…" },
+  "servers.import.title": { en: "Add server configs", fa: "افزودن کانفیگ سرور" },
+  "servers.import.description": {
+    en: "Paste one or more config links. They are saved locally under Manual, not as a subscription. On Servers, you can also paste directly with Cmd+V or Ctrl+V.",
+    fa: "یک یا چند لینک کانفیگ را وارد کنید. کانفیگ‌ها در دستهٔ دستی ذخیره می‌شوند، نه به‌عنوان اشتراک. در صفحهٔ سرورها می‌توانید مستقیماً با Cmd+V یا Ctrl+V وارد کنید.",
   },
-  "servers.empty": { en: "This subscription has no servers to show.", fa: "این اشتراک سروری برای نمایش ندارد." },
+  "servers.import.placeholder": {
+    en: "vless://…\nvmess://…\ntrojan://…",
+    fa: "vless://…\nvmess://…\ntrojan://…",
+  },
+  "servers.import.success": { en: "Added {count} config(s) to Manual.", fa: "{count} کانفیگ به دستهٔ دستی افزوده شد." },
+  "servers.notInUse": { en: "not connected through", fa: "اتصال از این دسته نیست" },
+  "servers.notInUse.hint": {
+    en: "You are looking at another server category. Connecting through one of its servers switches to it.",
+    fa: "در حال دیدن دستهٔ دیگری هستید. اتصال از یکی از سرورهای آن، دسته را هم تغییر می‌دهد.",
+  },
+  "servers.empty": { en: "This category has no servers to show.", fa: "این دسته سروری برای نمایش ندارد." },
   "servers.tests": { en: "Tests", fa: "آزمون‌ها" },
   "servers.test.reach": { en: "Reachable", fa: "در دسترس" },
   "servers.test.delay": { en: "Delay", fa: "تأخیر" },

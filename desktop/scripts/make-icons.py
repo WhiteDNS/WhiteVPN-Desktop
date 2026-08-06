@@ -26,6 +26,7 @@ TARGETS = [
 ]
 ICO_PATH = "build/windows/icon.ico"
 ICO_SIZES = [(16, 16), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)]
+ICNS_PATH = "build/appicon.icns"
 
 
 def main() -> int:
@@ -56,6 +57,10 @@ def main() -> int:
     out = root / ICO_PATH
     source.resize((256, 256), Image.LANCZOS).save(out, "ICO", sizes=ICO_SIZES)
     print(f"wrote {ICO_PATH:42} {', '.join(f'{w}x{h}' for w, h in ICO_SIZES)}")
+
+    out = root / ICNS_PATH
+    source.save(out, "ICNS")
+    print(f"wrote {ICNS_PATH:42} macOS multi-resolution icon")
 
     print("\nRebuild for these to reach the app: the .ico is embedded in tray.go")
     print("and the taskbar icon is baked into the binary by wails build.")

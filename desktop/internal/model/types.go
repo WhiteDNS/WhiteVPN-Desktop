@@ -42,6 +42,9 @@ const (
 	// one subscription whose address is not stored — the app holds it as a
 	// constant — so it is also the one that may sit in the list without one.
 	BuiltInSubscriptionID = "whitedns-vpn"
+	// ManualServerSourceID names configs pasted directly into the app. They are
+	// stored as profiles, not as a subscription.
+	ManualServerSourceID = "manual"
 
 	DefaultConnectionProfileID = "default"
 	DefaultResolverProfileID   = "resolver-default"

@@ -325,8 +325,7 @@ macos-app-bundle:
 		printf '%s\n' '</dict>'; \
 		printf '%s\n' '</plist>'; \
 	} > "$(MACOS_APP_INFO_PLIST)"
-	@if [ -f "build/appicon.png" ]; then cp "build/appicon.png" "$(MACOS_APP_RESOURCES_DIR)/appicon.png"; fi
-	@if [ -f "build/appicon.icns" ]; then cp "build/appicon.icns" "$(MACOS_APP_RESOURCES_DIR)/appicon.icns"; fi
+	cp "build/appicon.icns" "$(MACOS_APP_RESOURCES_DIR)/appicon.icns"
 	rm -f "build/bin/$(APP_NAME)"
 
 package-windows: validate-version prepare-package
