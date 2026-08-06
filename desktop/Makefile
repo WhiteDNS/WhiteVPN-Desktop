@@ -1,7 +1,7 @@
 SHELL := /bin/sh
 
 APP_NAME := WhiteVPN Desktop
-DEFAULT_VERSION := 1.0.1
+DEFAULT_VERSION := 1.0.2
 VERSION_FROM_ARGS := $(shell set -- $(MAKECMDGOALS); while [ "$$1" != "" ]; do if [ "$$1" = "--version" ]; then shift; if [ "$$1" != "" ]; then printf '%s' "$$1"; fi; exit; fi; shift; done)
 VERSION ?= $(if $(VERSION_FROM_ARGS),$(VERSION_FROM_ARGS),$(DEFAULT_VERSION))
 APP_VERSION := $(strip $(VERSION))
