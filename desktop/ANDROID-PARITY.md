@@ -176,7 +176,7 @@ keys here, not copied literals.
 | Selected subscription | `white_dns_user_subscriptions` / `selected_subscription`, default the built-in one | `[x]` |
 | Built-in WhiteDNS catalogue | Encrypted, refreshed every 3 h | `[~]` fetch, decrypt and on-demand refresh exist; its address is never stored or shown |
 | User subscriptions | Add, Edit, Test, Refresh, Delete per card | `[ ]` |
-| Import formats | HTTPS URL (HTTP rejected), Clash/Xray JSON, mihomo YAML, or share links; 2 MB cap | `[~]` HTTPS enforced and the 2 MB cap was already there; share links, base64 of them and mihomo YAML all connect. Clash/Xray **JSON** does not — nothing converts it yet |
+| Import formats | HTTPS URL (HTTP rejected), Clash/Xray JSON, mihomo YAML, or share links; 2 MB cap | `[x]` share links, mihomo YAML **and** JSON, sing-box JSON, Xray JSON or a list of Xray configs, and base64 around any of them. One entry point — `mihomoconf.ParseSubscription` — so everything downstream sees the same `[]Proxy` |
 
 > The live catalogue is **base64-encoded share links**, not mihomo YAML — 864
 > nodes as of 2026-08-04. A link→mihomo converter is required, ported from
@@ -408,11 +408,37 @@ but only the navigation, the connect button and those dialogs are keyed so far.
    parameters, because a sentence with a number in it does not put that number
    in the same place in both languages.
 
-4. **Clash and Xray JSON subscriptions.** Share links, base64 of them and mihomo
-   YAML all connect; JSON does not, because nothing converts it. §4 says so.
-
-5. **Per-card subscription Test.** The phone offers it; refresh is there, test
+4. **Per-card subscription Test.** The phone offers it; refresh is there, test
    is not.
+
+### Subscription formats, and why they are all one shape
+
+`mihomoconf.ParseSubscription` reads share links, mihomo YAML or JSON, sing-box
+JSON, Xray JSON or a list of Xray configs, and base64 around any of them. All of
+them come out as `[]Proxy`, so the Servers page, the delay and speed tests, node
+selection and IP fronting cannot tell them apart. One model, not two.
+
+Measured 2026-08-06 against a BPB panel, which serves nine combinations of
+`sub/{normal,fragment,raw}` and `?app={clash,sing-box,xray}`: all nine are read,
+and three of the four that used to be refused were connected through and passed
+real traffic. A 3x-ui/Sanaei subscription is the regression case for share
+links.
+
+Two things to know before changing it:
+
+- **A document's nodes are extracted; its groups and rules are not run.** A user
+  who picks a node expects that node, not whatever the provider's url-test
+  group decides, and the Servers page needs something to list. The one
+  exception is `proxy-providers`, where the nodes are fetched by the engine and
+  there is nothing to extract — that still passes through, and both paths have
+  a test.
+- **The TLS name lives under `sni` for trojan and `servername` for everything
+  else**, in both the sing-box and Xray converters. Getting it wrong is a
+  handshake that fails with nothing to explain it.
+
+Nodes read out of a document have no share link, because the document carried
+settings rather than a URL. The Servers page disables Share for them and says
+why.
 
 ### Building for the other platforms
 

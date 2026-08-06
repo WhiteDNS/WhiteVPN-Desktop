@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 
+	yaml "gopkg.in/yaml.v3"
+
 	"whitevpn-desktop/internal/engine"
 	"whitevpn-desktop/internal/mihomoconf"
 )
@@ -371,7 +373,13 @@ func PrepareConfig(opts Options) (string, []string, error) {
 		candidates  []string
 		group       string
 	)
-	if proxies, err := mihomoconf.ConvertLinks(body); err == nil {
+	// One parser for every shape a subscription arrives in, so a mihomo document
+	// yields the same []Proxy as a list of share links and everything after this
+	// point — groups, rules, node selection, fronting — is identical for both.
+	// The document's own groups and rules are deliberately not carried over: a
+	// user picking a node on the Servers page expects that node, not whatever
+	// the provider's url-test group decides.
+	if proxies, _, err := mihomoconf.ParseSubscription(body); err == nil {
 		if opts.FrontingIP != "" {
 			// Nodes fronting cannot be applied to are left reachable at their own
 			// address rather than dropped: a front that covers most of the list is
@@ -397,13 +405,16 @@ func PrepareConfig(opts Options) (string, []string, error) {
 			candidates = preferred
 		}
 		group = mihomoconf.SelectGroup
-	} else if looksLikeMihomoYAML(body) {
-		// Already a mihomo document: pass it through and let its own groups and
-		// rules stand, including whichever node they select.
+	} else if looksLikeMihomoDocument(body) {
+		// A mihomo document whose proxies could not be read as a list — the
+		// usual reason is `proxy-providers`, where the nodes are fetched by the
+		// engine rather than written inline. There is nothing to extract, so it
+		// is passed through and its own groups and rules stand, including
+		// whichever node they select.
 		proxiesYAML = body
 		group = detectProxyGroup(body)
 	} else {
-		return "", nil, fmt.Errorf("session: subscription is neither usable share links nor mihomo YAML: %w", err)
+		return "", nil, fmt.Errorf("session: subscription is neither usable share links nor a mihomo configuration: %w", err)
 	}
 
 	secret, err := randomSecret()
@@ -443,13 +454,23 @@ func intersect(available []string, wanted []string) []string {
 	return kept
 }
 
-func looksLikeMihomoYAML(body string) bool {
-	for _, line := range strings.Split(body, "\n") {
-		if strings.HasPrefix(line, "proxies:") || strings.HasPrefix(line, "proxy-groups:") {
-			return true
-		}
+// looksLikeMihomoDocument decides by parsing rather than by looking at the
+// start of a line.
+//
+// The line-prefix version missed every configuration served as JSON — where the
+// key reads `    "proxies": [` — and JSON is what the panel that prompted this
+// serves. It also missed any YAML that indented its top level or opened with a
+// `---`. Reading the document costs microseconds and cannot be wrong about it.
+func looksLikeMihomoDocument(body string) bool {
+	var document struct {
+		Proxies        []any          `yaml:"proxies"`
+		ProxyGroups    []any          `yaml:"proxy-groups"`
+		ProxyProviders map[string]any `yaml:"proxy-providers"`
 	}
-	return false
+	if err := yaml.Unmarshal([]byte(body), &document); err != nil {
+		return false
+	}
+	return len(document.Proxies) > 0 || len(document.ProxyGroups) > 0 || len(document.ProxyProviders) > 0
 }
 
 // countProxies counts entries under `proxies:` only. Groups use the same

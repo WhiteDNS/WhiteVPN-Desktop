@@ -247,7 +247,10 @@ func measureNodeDelays(ctx context.Context, client *engine.Process, names []stri
 // whiteVPNNodesFromSubscription turns a decrypted catalogue into nodes, in the
 // order the catalogue gave them — which is the order the connect path tries.
 func whiteVPNNodesFromSubscription(subscription string) ([]model.WhiteVPNNode, error) {
-	proxies, sources, err := mihomoconf.ConvertLinksWithSources(subscription)
+	// ParseSubscription rather than ConvertLinksWithSources: a subscription may
+	// be share links or a whole mihomo configuration, and the Servers page, the
+	// tests and the connection dialog have no business knowing which.
+	proxies, sources, err := mihomoconf.ParseSubscription(subscription)
 	if err != nil {
 		return nil, fmt.Errorf("the catalogue held no usable nodes: %w", err)
 	}

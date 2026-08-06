@@ -1,0 +1,215 @@
+{
+ "mixed-port": 7890,
+ "ipv6": true,
+ "allow-lan": false,
+ "unified-delay": false,
+ "log-level": "warning",
+ "mode": "rule",
+ "disable-keep-alive": false,
+ "keep-alive-idle": 10,
+ "keep-alive-interval": 15,
+ "tcp-concurrent": true,
+ "geo-auto-update": true,
+ "geo-update-interval": 168,
+ "external-controller": "127.0.0.1:9090",
+ "external-controller-cors": {
+  "allow-origins": [
+   "*"
+  ],
+  "allow-private-network": true
+ },
+ "external-ui": "ui",
+ "external-ui-url": "https://github.com/MetaCubeX/metacubexd/archive/refs/heads/gh-pages.zip",
+ "profile": {
+  "store-selected": true,
+  "store-fake-ip": true
+ },
+ "dns": {
+  "enable": true,
+  "respect-rules": true,
+  "use-system-hosts": false,
+  "listen": "127.0.0.1:1053",
+  "ipv6": false,
+  "nameserver": [
+   "https://8.8.8.8/dns-query#✅ Selector"
+  ],
+  "proxy-server-nameserver": [
+   "8.8.8.8#DIRECT"
+  ],
+  "direct-nameserver": [
+   "8.8.8.8#DIRECT"
+  ],
+  "direct-nameserver-follow-policy": true,
+  "enhanced-mode": "redir-host"
+ },
+ "tun": {
+  "enable": true,
+  "stack": "mixed",
+  "auto-route": true,
+  "strict-route": true,
+  "auto-detect-interface": true,
+  "dns-hijack": [
+   "any:53",
+   "tcp://any:53"
+  ],
+  "mtu": 9000
+ },
+ "sniffer": {
+  "enable": true,
+  "force-dns-mapping": true,
+  "parse-pure-ip": true,
+  "override-destination": true,
+  "sniff": {
+   "HTTP": {
+    "ports": [
+     80,
+     8080,
+     8880,
+     2052,
+     2082,
+     2086,
+     2095
+    ]
+   },
+   "TLS": {
+    "ports": [
+     443,
+     8443,
+     2053,
+     2083,
+     2087,
+     2096
+    ]
+   }
+  }
+ },
+ "proxies": [
+  {
+   "name": "💦 1. VLESS - Domain : 443",
+   "type": "vless",
+   "server": "example.workers.dev",
+   "port": 443,
+   "ip-version": "ipv4",
+   "tfo": false,
+   "udp": false,
+   "uuid": "11111111-2222-3333-4444-555555555555",
+   "packet-encoding": "",
+   "encryption": "",
+   "tls": true,
+   "servername": "example.workers.dev",
+   "client-fingerprint": "chrome",
+   "skip-cert-verify": false,
+   "alpn": [
+    "http/1.1"
+   ],
+   "network": "ws",
+   "ws-opts": {
+    "path": "/vl/PLACEHOLDER",
+    "max-early-data": 2560,
+    "early-data-header-name": "Sec-WebSocket-Protocol",
+    "headers": {
+     "Host": "example.workers.dev"
+    }
+   }
+  },
+  {
+   "name": "💦 2. VLESS - IPv4 : 443",
+   "type": "vless",
+   "server": "203.0.113.11",
+   "port": 443,
+   "ip-version": "ipv4",
+   "tfo": false,
+   "udp": false,
+   "uuid": "11111111-2222-3333-4444-555555555555",
+   "packet-encoding": "",
+   "encryption": "",
+   "tls": true,
+   "servername": "example.workers.dev",
+   "client-fingerprint": "chrome",
+   "skip-cert-verify": false,
+   "alpn": [
+    "http/1.1"
+   ],
+   "network": "ws",
+   "ws-opts": {
+    "path": "/vl/PLACEHOLDER",
+    "max-early-data": 2560,
+    "early-data-header-name": "Sec-WebSocket-Protocol",
+    "headers": {
+     "Host": "example.workers.dev"
+    }
+   }
+  },
+  {
+   "name": "💦 1. Trojan - Domain : 443",
+   "type": "trojan",
+   "server": "example.workers.dev",
+   "port": 443,
+   "ip-version": "ipv4",
+   "tfo": false,
+   "udp": false,
+   "password": "PLACEHOLDER",
+   "tls": true,
+   "sni": "example.workers.dev",
+   "client-fingerprint": "chrome",
+   "skip-cert-verify": false,
+   "alpn": [
+    "http/1.1"
+   ],
+   "network": "ws",
+   "ws-opts": {
+    "path": "/tr/PLACEHOLDER",
+    "max-early-data": 2560,
+    "early-data-header-name": "Sec-WebSocket-Protocol",
+    "headers": {
+     "Host": "example.workers.dev"
+    }
+   }
+  }
+ ],
+ "proxy-groups": [
+  {
+   "name": "✅ Selector",
+   "type": "select",
+   "proxies": [
+    "💦 Best Ping 🚀",
+    "💦 1. VLESS - Domain : 443",
+    "💦 2. VLESS - IPv4 : 443",
+    "💦 3. VLESS - IPv4 : 443",
+    "💦 4. VLESS - Clean IP : 443",
+    "💦 1. Trojan - Domain : 443",
+    "💦 2. Trojan - IPv4 : 443",
+    "💦 3. Trojan - IPv4 : 443",
+    "💦 4. Trojan - Clean IP : 443"
+   ]
+  },
+  {
+   "name": "💦 Best Ping 🚀",
+   "type": "url-test",
+   "proxies": [
+    "💦 1. VLESS - Domain : 443",
+    "💦 2. VLESS - IPv4 : 443",
+    "💦 3. VLESS - IPv4 : 443",
+    "💦 4. VLESS - Clean IP : 443",
+    "💦 1. Trojan - Domain : 443",
+    "💦 2. Trojan - IPv4 : 443",
+    "💦 3. Trojan - IPv4 : 443",
+    "💦 4. Trojan - Clean IP : 443"
+   ],
+   "url": "https://www.gstatic.com/generate_204",
+   "interval": 30,
+   "tolerance": 50
+  }
+ ],
+ "rules": [
+  "GEOIP,lan,DIRECT,no-resolve",
+  "NETWORK,udp,REJECT",
+  "MATCH,✅ Selector"
+ ],
+ "ntp": {
+  "enable": true,
+  "server": "time.cloudflare.com",
+  "port": 123,
+  "interval": 30
+ }
+}

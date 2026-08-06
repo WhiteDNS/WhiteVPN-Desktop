@@ -424,6 +424,10 @@ const strings = {
   },
   "servers.use": { en: "Connect through this node", fa: "اتصال از این سرور" },
   "servers.share": { en: "Share", fa: "اشتراک‌گذاری" },
+  "servers.share.none": {
+    en: "This node came from a configuration file, so it has no link to share.",
+    fa: "این سرور از یک فایل کانفیگ آمده، پس لینکی برای اشتراک‌گذاری ندارد.",
+  },
   "servers.copy": { en: "Copy link", fa: "کپی لینک" },
   "servers.copied": { en: "Link copied.", fa: "لینک کپی شد." },
   "servers.option.reachTimeout": { en: "Reachable timeout (ms)", fa: "مهلت در دسترس بودن (ms)" },

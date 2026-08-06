@@ -2933,11 +2933,20 @@ function NodesPage({
                         </Tooltip>
                         <Tooltip>
                           <TooltipTrigger asChild>
-                            <Button variant="ghost" size="icon-sm" onClick={() => setShareNode(node)} aria-label={t("servers.share")}>
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              onClick={() => setShareNode(node)}
+                              // A node read out of a provider's own
+                              // configuration has no share link to give: the
+                              // document carried settings, not a URL.
+                              disabled={!node.link}
+                              aria-label={t("servers.share")}
+                            >
                               <Share2 />
                             </Button>
                           </TooltipTrigger>
-                          <TooltipContent>{t("servers.share")}</TooltipContent>
+                          <TooltipContent>{node.link ? t("servers.share") : t("servers.share.none")}</TooltipContent>
                         </Tooltip>
                       </div>
                     </td>

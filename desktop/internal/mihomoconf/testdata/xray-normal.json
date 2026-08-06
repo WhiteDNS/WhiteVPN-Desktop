@@ -1,0 +1,593 @@
+[
+ {
+  "remarks": "💦 1. VLESS - Domain : 443",
+  "version": {
+   "min": "26.2.6"
+  },
+  "log": {
+   "loglevel": "warning"
+  },
+  "dns": {
+   "servers": [
+    {
+     "address": "https://8.8.8.8/dns-query",
+     "tag": "remote-dns"
+    },
+    {
+     "address": "8.8.8.8",
+     "domains": [
+      "full:example.workers.dev"
+     ],
+     "skipFallback": true
+    }
+   ],
+   "queryStrategy": "UseIP",
+   "tag": "dns"
+  },
+  "inbounds": [
+   {
+    "listen": "127.0.0.1",
+    "port": 10808,
+    "protocol": "mixed",
+    "settings": {
+     "auth": "noauth",
+     "udp": true
+    },
+    "sniffing": {
+     "destOverride": [
+      "http",
+      "tls"
+     ],
+     "enabled": true,
+     "routeOnly": true
+    },
+    "tag": "mixed-in"
+   },
+   {
+    "listen": "127.0.0.1",
+    "port": 10853,
+    "protocol": "dokodemo-door",
+    "settings": {
+     "address": "1.1.1.1",
+     "network": "tcp,udp",
+     "port": 53
+    },
+    "tag": "dns-in"
+   }
+  ],
+  "outbounds": [
+   {
+    "protocol": "vless",
+    "settings": {
+     "vnext": [
+      {
+       "address": "example.workers.dev",
+       "port": 443,
+       "users": [
+        {
+         "id": "11111111-2222-3333-4444-555555555555",
+         "encryption": "none"
+        }
+       ]
+      }
+     ]
+    },
+    "streamSettings": {
+     "network": "ws",
+     "wsSettings": {
+      "host": "example.workers.dev",
+      "path": "/vl/PLACEHOLDER?ed=2560"
+     },
+     "security": "tls",
+     "tlsSettings": {
+      "serverName": "example.workers.dev",
+      "fingerprint": "chrome",
+      "alpn": [
+       "http/1.1"
+      ]
+     },
+     "sockopt": {
+      "domainStrategy": "UseIP",
+      "happyEyeballs": {
+       "tryDelayMs": 250,
+       "prioritizeIPv6": false,
+       "interleave": 2,
+       "maxConcurrentTry": 4
+      }
+     }
+    },
+    "tag": "proxy"
+   },
+   {
+    "protocol": "dns",
+    "settings": {
+     "rules": [
+      {
+       "action": "hijack"
+      }
+     ]
+    },
+    "tag": "dns-out"
+   },
+   {
+    "protocol": "freedom",
+    "settings": {
+     "domainStrategy": "UseIP"
+    },
+    "tag": "direct"
+   },
+   {
+    "protocol": "blackhole",
+    "settings": {
+     "response": {
+      "type": "http"
+     }
+    },
+    "tag": "block"
+   }
+  ],
+  "routing": {
+   "domainStrategy": "IPIfNonMatch",
+   "rules": [
+    {
+     "inboundTag": [
+      "mixed-in"
+     ],
+     "port": 53,
+     "outboundTag": "dns-out",
+     "type": "field"
+    },
+    {
+     "inboundTag": [
+      "dns-in"
+     ],
+     "outboundTag": "dns-out",
+     "type": "field"
+    },
+    {
+     "inboundTag": [
+      "remote-dns"
+     ],
+     "outboundTag": "proxy",
+     "type": "field"
+    },
+    {
+     "inboundTag": [
+      "dns"
+     ],
+     "outboundTag": "direct",
+     "type": "field"
+    },
+    {
+     "domain": [
+      "geosite:private"
+     ],
+     "outboundTag": "direct",
+     "type": "field"
+    },
+    {
+     "ip": [
+      "geoip:private"
+     ],
+     "outboundTag": "direct",
+     "type": "field"
+    },
+    {
+     "network": "udp",
+     "outboundTag": "block",
+     "type": "field"
+    },
+    {
+     "network": "tcp",
+     "outboundTag": "proxy",
+     "type": "field"
+    }
+   ]
+  },
+  "policy": {
+   "levels": {
+    "0": {
+     "connIdle": 300,
+     "handshake": 4,
+     "uplinkOnly": 1,
+     "downlinkOnly": 1
+    }
+   },
+   "system": {
+    "statsOutboundUplink": true,
+    "statsOutboundDownlink": true
+   }
+  },
+  "stats": {}
+ },
+ {
+  "remarks": "💦 2. VLESS - IPv4 : 443",
+  "version": {
+   "min": "26.2.6"
+  },
+  "log": {
+   "loglevel": "warning"
+  },
+  "dns": {
+   "servers": [
+    {
+     "address": "https://8.8.8.8/dns-query",
+     "tag": "remote-dns"
+    }
+   ],
+   "queryStrategy": "UseIP",
+   "tag": "dns"
+  },
+  "inbounds": [
+   {
+    "listen": "127.0.0.1",
+    "port": 10808,
+    "protocol": "mixed",
+    "settings": {
+     "auth": "noauth",
+     "udp": true
+    },
+    "sniffing": {
+     "destOverride": [
+      "http",
+      "tls"
+     ],
+     "enabled": true,
+     "routeOnly": true
+    },
+    "tag": "mixed-in"
+   },
+   {
+    "listen": "127.0.0.1",
+    "port": 10853,
+    "protocol": "dokodemo-door",
+    "settings": {
+     "address": "1.1.1.1",
+     "network": "tcp,udp",
+     "port": 53
+    },
+    "tag": "dns-in"
+   }
+  ],
+  "outbounds": [
+   {
+    "protocol": "vless",
+    "settings": {
+     "vnext": [
+      {
+       "address": "203.0.113.10",
+       "port": 443,
+       "users": [
+        {
+         "id": "11111111-2222-3333-4444-555555555555",
+         "encryption": "none"
+        }
+       ]
+      }
+     ]
+    },
+    "streamSettings": {
+     "network": "ws",
+     "wsSettings": {
+      "host": "example.workers.dev",
+      "path": "/vl/PLACEHOLDER?ed=2560"
+     },
+     "security": "tls",
+     "tlsSettings": {
+      "serverName": "example.workers.dev",
+      "fingerprint": "chrome",
+      "alpn": [
+       "http/1.1"
+      ]
+     },
+     "sockopt": {
+      "domainStrategy": "UseIP",
+      "happyEyeballs": {
+       "tryDelayMs": 250,
+       "prioritizeIPv6": false,
+       "interleave": 2,
+       "maxConcurrentTry": 4
+      }
+     }
+    },
+    "tag": "proxy"
+   },
+   {
+    "protocol": "dns",
+    "settings": {
+     "rules": [
+      {
+       "action": "hijack"
+      }
+     ]
+    },
+    "tag": "dns-out"
+   },
+   {
+    "protocol": "freedom",
+    "settings": {
+     "domainStrategy": "UseIP"
+    },
+    "tag": "direct"
+   },
+   {
+    "protocol": "blackhole",
+    "settings": {
+     "response": {
+      "type": "http"
+     }
+    },
+    "tag": "block"
+   }
+  ],
+  "routing": {
+   "domainStrategy": "IPIfNonMatch",
+   "rules": [
+    {
+     "inboundTag": [
+      "mixed-in"
+     ],
+     "port": 53,
+     "outboundTag": "dns-out",
+     "type": "field"
+    },
+    {
+     "inboundTag": [
+      "dns-in"
+     ],
+     "outboundTag": "dns-out",
+     "type": "field"
+    },
+    {
+     "inboundTag": [
+      "remote-dns"
+     ],
+     "outboundTag": "proxy",
+     "type": "field"
+    },
+    {
+     "inboundTag": [
+      "dns"
+     ],
+     "outboundTag": "direct",
+     "type": "field"
+    },
+    {
+     "domain": [
+      "geosite:private"
+     ],
+     "outboundTag": "direct",
+     "type": "field"
+    },
+    {
+     "ip": [
+      "geoip:private"
+     ],
+     "outboundTag": "direct",
+     "type": "field"
+    },
+    {
+     "network": "udp",
+     "outboundTag": "block",
+     "type": "field"
+    },
+    {
+     "network": "tcp",
+     "outboundTag": "proxy",
+     "type": "field"
+    }
+   ]
+  },
+  "policy": {
+   "levels": {
+    "0": {
+     "connIdle": 300,
+     "handshake": 4,
+     "uplinkOnly": 1,
+     "downlinkOnly": 1
+    }
+   },
+   "system": {
+    "statsOutboundUplink": true,
+    "statsOutboundDownlink": true
+   }
+  },
+  "stats": {}
+ },
+ {
+  "remarks": "💦 1. Trojan - Domain : 443",
+  "version": {
+   "min": "26.2.6"
+  },
+  "log": {
+   "loglevel": "warning"
+  },
+  "dns": {
+   "servers": [
+    {
+     "address": "https://8.8.8.8/dns-query",
+     "tag": "remote-dns"
+    },
+    {
+     "address": "8.8.8.8",
+     "domains": [
+      "full:example.workers.dev"
+     ],
+     "skipFallback": true
+    }
+   ],
+   "queryStrategy": "UseIP",
+   "tag": "dns"
+  },
+  "inbounds": [
+   {
+    "listen": "127.0.0.1",
+    "port": 10808,
+    "protocol": "mixed",
+    "settings": {
+     "auth": "noauth",
+     "udp": true
+    },
+    "sniffing": {
+     "destOverride": [
+      "http",
+      "tls"
+     ],
+     "enabled": true,
+     "routeOnly": true
+    },
+    "tag": "mixed-in"
+   },
+   {
+    "listen": "127.0.0.1",
+    "port": 10853,
+    "protocol": "dokodemo-door",
+    "settings": {
+     "address": "1.1.1.1",
+     "network": "tcp,udp",
+     "port": 53
+    },
+    "tag": "dns-in"
+   }
+  ],
+  "outbounds": [
+   {
+    "protocol": "trojan",
+    "settings": {
+     "servers": [
+      {
+       "address": "example.workers.dev",
+       "port": 443,
+       "password": "PLACEHOLDER"
+      }
+     ]
+    },
+    "streamSettings": {
+     "network": "ws",
+     "wsSettings": {
+      "host": "example.workers.dev",
+      "path": "/tr/PLACEHOLDER?ed=2560"
+     },
+     "security": "tls",
+     "tlsSettings": {
+      "serverName": "example.workers.dev",
+      "fingerprint": "chrome",
+      "alpn": [
+       "http/1.1"
+      ]
+     },
+     "sockopt": {
+      "domainStrategy": "UseIP",
+      "happyEyeballs": {
+       "tryDelayMs": 250,
+       "prioritizeIPv6": false,
+       "interleave": 2,
+       "maxConcurrentTry": 4
+      }
+     }
+    },
+    "tag": "proxy"
+   },
+   {
+    "protocol": "dns",
+    "settings": {
+     "rules": [
+      {
+       "action": "hijack"
+      }
+     ]
+    },
+    "tag": "dns-out"
+   },
+   {
+    "protocol": "freedom",
+    "settings": {
+     "domainStrategy": "UseIP"
+    },
+    "tag": "direct"
+   },
+   {
+    "protocol": "blackhole",
+    "settings": {
+     "response": {
+      "type": "http"
+     }
+    },
+    "tag": "block"
+   }
+  ],
+  "routing": {
+   "domainStrategy": "IPIfNonMatch",
+   "rules": [
+    {
+     "inboundTag": [
+      "mixed-in"
+     ],
+     "port": 53,
+     "outboundTag": "dns-out",
+     "type": "field"
+    },
+    {
+     "inboundTag": [
+      "dns-in"
+     ],
+     "outboundTag": "dns-out",
+     "type": "field"
+    },
+    {
+     "inboundTag": [
+      "remote-dns"
+     ],
+     "outboundTag": "proxy",
+     "type": "field"
+    },
+    {
+     "inboundTag": [
+      "dns"
+     ],
+     "outboundTag": "direct",
+     "type": "field"
+    },
+    {
+     "domain": [
+      "geosite:private"
+     ],
+     "outboundTag": "direct",
+     "type": "field"
+    },
+    {
+     "ip": [
+      "geoip:private"
+     ],
+     "outboundTag": "direct",
+     "type": "field"
+    },
+    {
+     "network": "udp",
+     "outboundTag": "block",
+     "type": "field"
+    },
+    {
+     "network": "tcp",
+     "outboundTag": "proxy",
+     "type": "field"
+    }
+   ]
+  },
+  "policy": {
+   "levels": {
+    "0": {
+     "connIdle": 300,
+     "handshake": 4,
+     "uplinkOnly": 1,
+     "downlinkOnly": 1
+    }
+   },
+   "system": {
+    "statsOutboundUplink": true,
+    "statsOutboundDownlink": true
+   }
+  },
+  "stats": {}
+ }
+]

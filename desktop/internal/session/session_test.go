@@ -38,7 +38,15 @@ func TestPrepareConfigFromShareLinks(t *testing.T) {
 
 // A mihomo document already has its own groups and rules, and rewriting them
 // would override choices the provider made deliberately.
-func TestPrepareConfigPassesMihomoYAMLThrough(t *testing.T) {
+// A provider's document is read for its nodes rather than run as-is.
+//
+// It used to be passed through whole, so the provider's groups and rules stood
+// and the app chose nothing. That reads well until you use it: the Servers page
+// had nothing to list, no node could be tested or picked, and a user who chose
+// a country got whatever the provider's own group decided. Extracting the
+// proxies makes a Clash subscription behave exactly like a list of share links,
+// which is the point — one model, not two.
+func TestPrepareConfigReadsTheNodesOutOfAMihomoDocument(t *testing.T) {
 	subscription := strings.Join([]string{
 		"proxies:",
 		"  - name: Node",
@@ -58,12 +66,50 @@ func TestPrepareConfigPassesMihomoYAMLThrough(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// A provider's document selects its own node, so there is nothing for us to
-	// choose between and nothing to override.
-	if len(candidates) != 0 {
-		t.Fatalf("expected no candidates for a provider document, got %v", candidates)
+	if len(candidates) != 1 || candidates[0] != "Node" {
+		t.Fatalf("the document's nodes should be choosable, got %v", candidates)
 	}
 
+	var parsed map[string]any
+	if err := yaml.Unmarshal([]byte(document), &parsed); err != nil {
+		t.Fatal(err)
+	}
+	// Our own groups, so a node picked in the interface is the node used.
+	groups := parsed["proxy-groups"].([]any)
+	if len(groups) == 0 || groups[0].(map[string]any)["name"] != mihomoconf.SelectGroup {
+		t.Fatalf("expected this app's select group, got %#v", groups)
+	}
+	proxies := parsed["proxies"].([]any)
+	if len(proxies) != 1 || proxies[0].(map[string]any)["name"] != "Node" {
+		t.Fatalf("the node should survive into the configuration: %#v", proxies)
+	}
+}
+
+// The exception, and the reason the pass-through still exists: a document whose
+// nodes are fetched by the engine rather than written down. There is nothing to
+// extract, so it is run as the provider wrote it.
+func TestPrepareConfigPassesAProxyProviderDocumentThrough(t *testing.T) {
+	subscription := strings.Join([]string{
+		"proxy-providers:",
+		"  theirs:",
+		"    type: http",
+		"    url: https://example.com/nodes.yaml",
+		"    path: ./theirs.yaml",
+		"proxy-groups:",
+		"  - name: Provider Group",
+		"    type: select",
+		"    use: ['theirs']",
+		"rules:",
+		"  - MATCH,Provider Group",
+	}, "\n")
+
+	document, candidates, err := PrepareConfig(Options{Subscription: subscription})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(candidates) != 0 {
+		t.Fatalf("nothing is written down to choose between, got %v", candidates)
+	}
 	var parsed map[string]any
 	if err := yaml.Unmarshal([]byte(document), &parsed); err != nil {
 		t.Fatal(err)
