@@ -33,6 +33,7 @@ import {
   Upload,
   Wifi,
   X,
+  Youtube,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
@@ -168,6 +169,7 @@ const defaultValidatorWorkers = 128;
 const maxValidatorWorkers = 2048;
 const errorToastTTLMS = 6000;
 const whiteDnsTelegramUrl = "https://t.me/whitedns";
+const whiteDnsYoutubeUrl = "https://www.youtube.com/@WhiteDNS?sub_confirmation=1";
 // Mirrors the limits in internal/model/whitevpn_settings.go. Values outside them
 // are repaired on save, so these only decide when a control stops accepting more.
 const maxFrontingIPs = 5;
@@ -176,6 +178,12 @@ const maxNoiseCount = 20;
 const minNoiseSize = 1;
 const maxNoiseSize = 1280;
 const whiteDNSVPNSubscriptionID = "whitedns-vpn";
+const manualServerSourceID = "manual";
+const manualConfigLinkPattern = /\b(?:vless|vmess|trojan|ss|shadowsocks|hysteria|hysteria2|hy2|wireguard|wg):\/\/\S+/i;
+
+function looksLikeManualConfig(text: string): boolean {
+  return manualConfigLinkPattern.test(text) || (text.includes("[Interface]") && text.includes("[Peer]"));
+}
 
 const defaultValidatorOptions: ValidatorOptions = {
   retries: 1,
@@ -688,8 +696,9 @@ function App() {
     if (!browsing) {
       return fallback;
     }
-    return (state?.v2raySubscriptions ?? []).some((subscription) => subscription.id === browsing) ? browsing : fallback;
-  }, [browsing, state?.selectedSubscriptionId, state?.v2raySubscriptions]);
+    const manualAvailable = browsing === manualServerSourceID && (state?.v2rayProfiles ?? []).some((profile) => !profile.subscriptionId);
+    return manualAvailable || (state?.v2raySubscriptions ?? []).some((subscription) => subscription.id === browsing) ? browsing : fallback;
+  }, [browsing, state?.selectedSubscriptionId, state?.v2rayProfiles, state?.v2raySubscriptions]);
 
   function applyState(next: AppState) {
     setState((current) => normalizeAppState(next, current));
@@ -743,6 +752,20 @@ function App() {
       setBrowsing(id);
       setNodes([]);
       showError(messageFromError(err));
+    } finally {
+      setNodesLoading(false);
+    }
+  }
+
+  async function importManualConfigs(rawText: string): Promise<number> {
+    setNodesLoading(true);
+    try {
+      const result = await backend.importV2RayProfiles(rawText);
+      applyState(result.state);
+      const list = await backend.listSubscriptionNodes(manualServerSourceID, true);
+      setBrowsing(manualServerSourceID);
+      setNodes(list.nodes || []);
+      return result.imported;
     } finally {
       setNodesLoading(false);
     }
@@ -1003,6 +1026,7 @@ function App() {
                   onRunTest={(request) => void runNodeTest(request)}
                   onCancelTest={() => void cancelNodeTest()}
                   onSelectNode={(name) => void useNode(name)}
+                  onImportManual={importManualConfigs}
                   onError={showError}
                   onSuccess={showSuccess}
                   language={language}
@@ -1343,6 +1367,19 @@ function AppSidebar({
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
+      <a
+        href={whiteDnsYoutubeUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        onClick={(event) => {
+          event.preventDefault();
+          openExternalUrl(whiteDnsYoutubeUrl);
+        }}
+        className="mx-2 flex min-h-11 w-auto items-center justify-center gap-2 rounded-lg bg-red-600 px-3 text-sm font-semibold whitespace-nowrap text-white hover:bg-red-700 focus-visible:ring-2 focus-visible:ring-foreground focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar focus-visible:outline-none active:bg-red-800 group-data-[collapsible=icon]:hidden"
+      >
+        <Youtube className="size-5 shrink-0" aria-hidden="true" />
+        <span>{t("nav.youtubeSubscribe")}</span>
+      </a>
       <SidebarSeparator />
       <SidebarFooter>
         <Item className="border-transparent bg-muted/50">
@@ -2405,6 +2442,7 @@ function NodesPage({
   onRunTest,
   onCancelTest,
   onSelectNode,
+  onImportManual,
   onError,
   onSuccess,
   language,
@@ -2420,6 +2458,7 @@ function NodesPage({
   onRunTest: (request: NodeTestRequest) => void;
   onCancelTest: () => void;
   onSelectNode: (name: string) => void;
+  onImportManual: (rawText: string) => Promise<number>;
   onError: (message: string) => void;
   onSuccess: (message: string) => void;
   language: Language;
@@ -2428,12 +2467,20 @@ function NodesPage({
   const [search, setSearch] = useState("");
   const [country, setCountry] = useState("");
   const [protocol, setProtocol] = useState("");
-  const [sort, setSort] = useState<NodeSort>({ column: "label", direction: "asc" });
+  const [sort, setSort] = useState<NodeSort | null>({ column: "label", direction: "asc" });
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [request, setRequest] = useState<NodeTestRequest>(defaultNodeTest);
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [shareNode, setShareNode] = useState<WhiteVPNNode | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importText, setImportText] = useState("");
+  const [importing, setImporting] = useState(false);
   const unknown = t("vpn.nodes.unknownCountry");
+  const manualProfileCount = state.v2rayProfiles.filter((profile) => !profile.subscriptionId).length;
+
+  useEffect(() => {
+    setSort(subscriptionId === manualServerSourceID ? null : { column: "label", direction: "asc" });
+  }, [subscriptionId]);
 
   const countries = useMemo(() => countryOptions(nodes, language, unknown), [nodes, language, unknown]);
   const protocols = useMemo(() => [...new Set(nodes.map((node) => node.type).filter(Boolean))].sort(), [nodes]);
@@ -2457,6 +2504,10 @@ function NodesPage({
         countryName(node.countryCode, language, unknown).toLowerCase().includes(needle)
       );
     });
+
+    if (!sort) {
+      return filtered;
+    }
 
     // Unmeasured sinks to the bottom whichever way the column is sorted: it is
     // absence, not a value, and it should never sit above a real measurement.
@@ -2492,9 +2543,9 @@ function NodesPage({
 
   function toggleSort(column: NodeSortColumn) {
     setSort((current) =>
-      current.column === column
+      current?.column === column
         ? { column, direction: current.direction === "asc" ? "desc" : "asc" }
-        : { column, direction: column === "speed" ? "asc" : "asc" }
+        : { column, direction: "asc" }
     );
   }
 
@@ -2550,6 +2601,47 @@ function NodesPage({
     }
   }
 
+  async function importConfigs(rawText = importText) {
+    if (!rawText.trim() || importing) {
+      return;
+    }
+    onError("");
+    setImporting(true);
+    try {
+      const count = await onImportManual(rawText);
+      setImportText("");
+      setImportOpen(false);
+      setSort(null);
+      onSuccess(t("servers.import.success", { count }));
+    } catch (err) {
+      onError(messageFromError(err));
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  useEffect(() => {
+    function handlePaste(event: ClipboardEvent) {
+      const target = event.target;
+      if (
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        (target instanceof HTMLElement && target.isContentEditable)
+      ) {
+        return;
+      }
+      const text = event.clipboardData?.getData("text") ?? "";
+      if (!looksLikeManualConfig(text) || importing) {
+        return;
+      }
+      event.preventDefault();
+      void importConfigs(text);
+    }
+
+    window.addEventListener("paste", handlePaste);
+    return () => window.removeEventListener("paste", handlePaste);
+  }, [importing, onImportManual, onError, onSuccess, t]);
+
   // The page names the list it is showing, which is not always the one the VPN
   // connects through — a subscription just added has to be browsable before it
   // is chosen, or there is no way to look at it before committing to it.
@@ -2565,6 +2657,10 @@ function NodesPage({
       title={t("nav.servers")}
       actions={
         <>
+          <Button variant="outline" onClick={() => setImportOpen(true)} disabled={importing}>
+            <Upload />
+            {t("servers.import")}
+          </Button>
           <Button variant="outline" onClick={onReload} disabled={loading}>
             <RotateCcw className={cn(loading && "animate-spin")} />
             {t("vpn.nodes.reload")}
@@ -2588,10 +2684,15 @@ function NodesPage({
           <CardTitle className="flex flex-wrap items-center gap-2 text-sm">
             <Shield className="size-4" />
             <Select value={subscriptionId} onValueChange={onSelectSubscription} disabled={loading || testing}>
-              <SelectTrigger className="h-8 w-56" aria-label={t("servers.subscription")}>
+              <SelectTrigger className="h-8 w-56" aria-label={t("servers.category")}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent position="popper">
+                {manualProfileCount > 0 && (
+                  <SelectItem value={manualServerSourceID}>
+                    {t("servers.manual")} ({manualProfileCount})
+                  </SelectItem>
+                )}
                 {state.v2raySubscriptions.map((subscription) => (
                   <SelectItem key={subscription.id} value={subscription.id}>
                     {subscription.name || t("nav.subscriptions")}
@@ -2860,6 +2961,32 @@ function NodesPage({
         </CardContent>
       </Card>
 
+      <Dialog open={importOpen} onOpenChange={(open) => !importing && setImportOpen(open)}>
+        <DialogContent className="sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>{t("servers.import.title")}</DialogTitle>
+            <DialogDescription>{t("servers.import.description")}</DialogDescription>
+          </DialogHeader>
+          <Textarea
+            dir="ltr"
+            value={importText}
+            onChange={(event) => setImportText(event.target.value)}
+            placeholder={t("servers.import.placeholder")}
+            className="h-56 min-h-0 resize-none overflow-auto font-mono text-xs leading-relaxed [field-sizing:fixed]"
+            autoFocus
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setImportOpen(false)} disabled={importing}>
+              {t("common.cancel")}
+            </Button>
+            <Button onClick={() => void importConfigs()} disabled={!importText.trim() || importing}>
+              <Upload />
+              {importing ? t("servers.importing") : t("servers.import")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={Boolean(shareNode)} onOpenChange={(open) => !open && setShareNode(null)}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
@@ -2894,17 +3021,17 @@ function NodeHeader({
   children,
 }: {
   column: NodeSortColumn;
-  sort: NodeSort;
+  sort: NodeSort | null;
   onSort: (column: NodeSortColumn) => void;
   className?: string;
   children: ReactNode;
 }) {
-  const active = sort.column === column;
+  const active = sort?.column === column;
   return (
     <th className={cn("px-2 py-2 font-medium", className)}>
       <button type="button" className="inline-flex items-center gap-1 hover:text-foreground" onClick={() => onSort(column)}>
         {children}
-        {active && <ChevronDown className={cn("size-3", sort.direction === "asc" && "rotate-180")} />}
+        {active && <ChevronDown className={cn("size-3", sort?.direction === "asc" && "rotate-180")} />}
       </button>
     </th>
   );

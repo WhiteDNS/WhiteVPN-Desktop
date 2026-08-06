@@ -2,6 +2,9 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/geist";
+@import "@fontsource/vazir/400.css";
+@import "@fontsource/vazir/500.css";
+@import "@fontsource/vazir/700.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -63,6 +66,11 @@
   --connected-card-border: rgb(167 243 208);
   --connecting-card-bg: rgb(236 253 245);
   --connecting-card-border: rgb(209 250 229);
+}
+
+:root[lang="fa"] {
+  --font-sans: "Vazir", sans-serif;
+  font-family: "Vazir", sans-serif;
 }
 
 .dark {

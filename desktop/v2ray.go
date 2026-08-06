@@ -63,6 +63,22 @@ func (a *App) ImportV2RayProfiles(rawText string) (model.V2RayImportResult, erro
 	if err != nil {
 		return model.V2RayImportResult{State: a.state}, err
 	}
+	imported = slices.DeleteFunc(imported, func(profile model.V2RayProfile) bool {
+		switch profile.Protocol {
+		case model.V2RayProtocolVLESS,
+			model.V2RayProtocolVMess,
+			model.V2RayProtocolTrojan,
+			model.V2RayProtocolShadowsocks,
+			model.V2RayProtocolHysteria2,
+			model.V2RayProtocolWireGuard:
+			return false
+		default:
+			return true
+		}
+	})
+	if len(imported) == 0 {
+		return model.V2RayImportResult{State: a.state}, fmt.Errorf("no configs supported by the WhiteVPN engine found")
+	}
 
 	existingIDs := make(map[string]struct{}, len(a.state.V2RayProfiles)+len(imported))
 	for _, profile := range a.state.V2RayProfiles {
@@ -73,6 +89,7 @@ func (a *App) ImportV2RayProfiles(rawText string) (model.V2RayImportResult, erro
 		imported[idx].ID = uniqueImportedV2RayID(existingIDs, baseID, idx)
 	}
 	a.state.V2RayProfiles = append(imported, a.state.V2RayProfiles...)
+	a.forgetWhiteVPNNodes(model.ManualServerSourceID)
 	if !a.connectionSelectionLockedLocked() {
 		a.state.SelectedV2RayProfileID = imported[len(imported)-1].ID
 	}

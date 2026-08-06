@@ -11,6 +11,7 @@ import (
 func TestImportV2RayProfilesPrependsImportedProfiles(t *testing.T) {
 	existing := duplicateTestV2RayProfile("v2ray-existing", "Existing")
 	existing.Server = "existing.example.com"
+	existing.SubscriptionID = "subscription-existing"
 	state := model.DefaultAppState()
 	state.V2RayProfiles = []model.V2RayProfile{existing}
 	state.SelectedV2RayProfileID = existing.ID
@@ -19,7 +20,8 @@ func TestImportV2RayProfilesPrependsImportedProfiles(t *testing.T) {
 		state: state,
 	}
 	rawText := "vless://11111111-1111-1111-1111-111111111111@first.example.com:443?security=tls&type=tcp#First\n" +
-		"vless://22222222-2222-2222-2222-222222222222@second.example.com:443?security=tls&type=tcp#Second"
+		"vless://22222222-2222-2222-2222-222222222222@second.example.com:443?security=tls&type=tcp#Second\n" +
+		"socks5://user:pass@socks.example.com:1080#NotSupportedByEngine"
 
 	result, err := app.ImportV2RayProfiles(rawText)
 	if err != nil {
@@ -40,6 +42,20 @@ func TestImportV2RayProfilesPrependsImportedProfiles(t *testing.T) {
 	if result.State.SelectedV2RayProfileID != result.State.V2RayProfiles[1].ID {
 		t.Fatalf("expected last imported profile to remain selected, got %q", result.State.SelectedV2RayProfileID)
 	}
+	manual, err := app.ListSubscriptionNodes(model.ManualServerSourceID, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(manual.Nodes) != 2 || manual.Nodes[0].Server != "first.example.com" || manual.Nodes[1].Server != "second.example.com" {
+		t.Fatalf("expected only manual imports at the top in import order, got %#v", manual.Nodes)
+	}
+	selected, err := app.SelectSubscription(model.ManualServerSourceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if selected.SelectedSubscriptionID != model.ManualServerSourceID {
+		t.Fatalf("expected Manual to be the selected server source, got %q", selected.SelectedSubscriptionID)
+	}
 
 	loaded, err := app.store.Load()
 	if err != nil {
@@ -47,6 +63,9 @@ func TestImportV2RayProfilesPrependsImportedProfiles(t *testing.T) {
 	}
 	if len(loaded.V2RayProfiles) != 3 || loaded.V2RayProfiles[0].Server != "first.example.com" || loaded.V2RayProfiles[2].ID != existing.ID {
 		t.Fatalf("expected prepended import order to persist, got %#v", loaded.V2RayProfiles)
+	}
+	if loaded.SelectedSubscriptionID != model.ManualServerSourceID {
+		t.Fatalf("expected Manual selection to persist, got %q", loaded.SelectedSubscriptionID)
 	}
 }
 

@@ -45,6 +45,7 @@ coverage.out
 # Go / Wails build output. The icons under build/ are not output: tray.go
 # embeds two of them, so a checkout without them does not compile at all.
 build/*
+!build/appicon.icns
 !build/appicon.png
 !build/appicon-source.png
 !build/windows/
