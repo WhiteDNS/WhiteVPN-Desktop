@@ -58,9 +58,12 @@ func ParseSubscription(body string) ([]Proxy, []string, error) {
 		}
 	}
 
-	// Nothing read it. The link error leads because a subscription that is none
-	// of these is far more often a broken link list than a broken document.
-	return nil, nil, fmt.Errorf("%w (and it is not a mihomo, sing-box or Xray configuration either: %v)", linkErr, docErr)
+	// Nothing read it. Say what arrived rather than what was hoped for: the
+	// commonest causes are a login page, an error page and an empty response,
+	// and "must contain V2Ray links" describes none of them. What it *is* is
+	// reported, never what it says — a subscription body carries credentials
+	// and this message ends up in screenshots.
+	return nil, nil, fmt.Errorf("this does not look like a subscription: %s", describeBody(body))
 }
 
 // ParseDocument reads the `proxies` of a mihomo configuration.
@@ -137,4 +140,25 @@ func proxyPortOf(proxy Proxy) int {
 		}
 	}
 	return 0
+}
+
+// describeBody says what a subscription body is without repeating what it
+// says. The content is a credential; its shape is a diagnosis.
+func describeBody(body string) string {
+	trimmed := strings.TrimSpace(body)
+	if trimmed == "" {
+		return "the server returned nothing"
+	}
+	lower := strings.ToLower(trimmed)
+	switch {
+	case strings.HasPrefix(lower, "<!doctype html"), strings.HasPrefix(lower, "<html"):
+		// Nearly always a login page or an error page behind the address.
+		return fmt.Sprintf("the server returned a web page (%d bytes), not a subscription — check the address, and whether it needs to be signed in to", len(trimmed))
+	case strings.HasPrefix(trimmed, "{"), strings.HasPrefix(trimmed, "["):
+		return fmt.Sprintf("the server returned %d bytes of JSON with no proxies, outbounds or servers in it", len(trimmed))
+	case strings.Contains(trimmed, "://"):
+		return fmt.Sprintf("the server returned %d bytes containing links, but none of a kind this app can use", len(trimmed))
+	default:
+		return fmt.Sprintf("the server returned %d bytes that are neither share links nor a mihomo, sing-box or Xray configuration", len(trimmed))
+	}
 }
