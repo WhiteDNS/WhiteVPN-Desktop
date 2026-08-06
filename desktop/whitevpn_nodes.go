@@ -24,6 +24,7 @@ import (
 	"whitevpn-desktop/internal/engine"
 	"whitevpn-desktop/internal/mihomoconf"
 	"whitevpn-desktop/internal/model"
+	"whitevpn-desktop/internal/profiles"
 )
 
 const (
@@ -81,7 +82,50 @@ func (a *App) ListSubscriptionNodes(subscriptionID string, refresh bool) (model.
 	if err != nil {
 		return a.staleWhiteVPNNodes(subscriptionID, err)
 	}
+	if subscriptionID == model.ManualServerSourceID {
+		a.attachManualProfileIDs(nodes)
+	}
 	return a.storeWhiteVPNNodes(subscriptionID, nodes, time.Now().UTC()), nil
+}
+
+// attachManualProfileIDs points each manually added node back at the profile it
+// was made from, which is what lets the Servers page edit and delete it.
+//
+// The match is on the share link rather than on position. Both sides come from
+// the same exporter — `subscriptionBodyFor` builds the manual body by running
+// every profile through `ExportV2RayProfile`, and the parser hands back the link
+// each node arrived as — so the strings are identical where they correspond. On
+// position they would not be: the exporter skips profiles it cannot express and
+// the parser skips proxies it cannot use, so one incomplete profile would shift
+// every row after it onto the wrong config. Deleting the wrong node because two
+// lists drifted is not a mistake worth risking to save a map.
+func (a *App) attachManualProfileIDs(nodes []model.WhiteVPNNode) {
+	a.mu.Lock()
+	stored := make([]model.V2RayProfile, 0, len(a.state.V2RayProfiles))
+	for _, profile := range a.state.V2RayProfiles {
+		if profile.SubscriptionID == "" {
+			stored = append(stored, profile)
+		}
+	}
+	a.mu.Unlock()
+
+	byLink := make(map[string]string, len(stored))
+	for _, profile := range stored {
+		link, err := profiles.ExportV2RayProfile(profile)
+		if err != nil {
+			continue
+		}
+		// First writer wins: two identical configs saved twice are the same node
+		// as far as the list is concerned, and the earlier profile is the one the
+		// row has been showing.
+		if _, taken := byLink[link]; !taken {
+			byLink[link] = profile.ID
+		}
+	}
+
+	for i := range nodes {
+		nodes[i].ProfileID = byLink[nodes[i].Link]
+	}
 }
 
 // SaveWhiteVPNSelection stores the dashboard's location and connection choices,
