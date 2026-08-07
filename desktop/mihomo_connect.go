@@ -147,11 +147,18 @@ func (a *App) startWhiteDNSVPNWithMihomo() (model.AppState, error) {
 		// machine is talking to it. With the tunnel up the routing is the
 		// tunnel's job and a proxy as well would be one hop too many.
 		if err := a.captureSystemProxy(connected.MixedPort()); err != nil {
-			message := fmt.Sprintf("could not configure the system proxy: %v", err)
-			a.appendRuntimeLog(message)
-			a.stopMihomo()
-			a.reportConnectFailure(ctx, message)
-			return a.GetAppState(), fmt.Errorf("system proxy setup failed: %w", err)
+			// Not fatal. The connection is up and the proxy is listening; what
+			// failed is pointing the machine at it, and that is something a user
+			// can do by hand. Tearing down a working connection over it left the
+			// app with no usable mode at all on a desktop this cannot configure —
+			// which is what a Linux user got, having been told his connection had
+			// failed when it had not.
+			a.appendRuntimeLog(fmt.Sprintf("could not configure the system proxy: %v", err))
+			a.appendRuntimeLog(fmt.Sprintf(
+				"the connection is up — point your programs at 127.0.0.1:%d, or use tunnel mode", connected.MixedPort()))
+			a.emit("runtime:notice", fmt.Sprintf(
+				"Connected, but this desktop's proxy settings could not be changed. Set your browser's proxy to 127.0.0.1:%d.",
+				connected.MixedPort()))
 		}
 	}
 

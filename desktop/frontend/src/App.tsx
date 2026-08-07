@@ -912,6 +912,11 @@ function App() {
       onRuntimeEvent<ValidatorStateUpdate>("validator:state", applyValidatorState),
       onRuntimeEvent<ValidatorStateUpdate>("validator:progress", applyValidatorState),
       onRuntimeEvent<string>("runtime:error", showError),
+      // Something worth saying that is not a failure — a connection that came
+      // up while something around it did not. It must not use showError, or a
+      // working connection is reported as a broken one, which is the mistake
+      // this event exists to undo.
+      onRuntimeEvent<string>("runtime:notice", showSuccess),
       onRuntimeEvent<FirewallStatus>("firewall:enabled", (status) => {
         void sendFirewallNotification(status);
       }),

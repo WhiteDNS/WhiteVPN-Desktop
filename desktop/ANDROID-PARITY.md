@@ -587,6 +587,20 @@ Measured 2026-08-05, from Windows:
 - **Windows** — `wails build` here.
 - **Linux** — cross-compiles with `CGO_ENABLED=0` (the tray is D-Bus, pure Go).
   Wails packaging still needs a Linux host or Docker.
+
+  What works there: **proxy mode only.** The system proxy is set through
+  gsettings (GNOME and everything on its schemas) and kioslaverc (KDE), both
+  written when both are present — the report that prompted this was Pop!_OS
+  running KDE, and reading `XDG_CURRENT_DESKTOP` would have configured the half
+  the user was not looking at. Neither is truly system-wide: they are
+  preferences well-behaved programs read, and a program that ignores them is not
+  reached by anything short of a tunnel. Say that rather than promise more.
+
+  **Tunnel mode does not work on Linux.** `engine.startElevatedChild` is
+  implemented on Windows only, so the core cannot be raised to create an
+  adapter. That is why the system proxy failing used to leave a Linux user with
+  no usable mode at all, and why it is now a notice rather than a failed
+  connection.
 - **macOS** — **cannot be built from Windows.** Without CGO it does not compile
   at all: `fyne.io/systray` needs Cocoa. With CGO it needs the macOS SDK. It has
   to run on a Mac, or on a macOS CI runner.
