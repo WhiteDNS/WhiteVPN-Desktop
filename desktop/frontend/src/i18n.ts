@@ -481,6 +481,27 @@ const strings = {
   "servers.edit.wgReserved": { en: "Reserved", fa: "Reserved" },
   "servers.edit.wgKeepAlive": { en: "Keep-alive (s)", fa: "Keep-alive (ثانیه)" },
 
+  "servers.selectAll": { en: "Select all", fa: "انتخاب همه" },
+
+  // What can be done to a node that belongs to a subscription. Not editing: a
+  // refresh rebuilds every one of them, so a change would not survive.
+  "servers.copyToManual": { en: "Copy to my configs", fa: "کپی به کانفیگ‌های من" },
+  "servers.copyToManual.none": {
+    en: "This node came from a configuration file, so there is no link to copy.",
+    fa: "این سرور از یک فایل کانفیگ آمده، پس لینکی برای کپی کردن ندارد.",
+  },
+  "servers.copyToManual.done": {
+    en: "{name} copied to your configs, where you can edit it.",
+    fa: "«{name}» به کانفیگ‌های شما کپی شد و حالا قابل ویرایش است.",
+  },
+  "servers.hide": { en: "Hide", fa: "مخفی کردن" },
+  "servers.unhide": { en: "Show again", fa: "بازگرداندن" },
+  "servers.hideSelected": { en: "Hide {count}", fa: "مخفی کردن {count} مورد" },
+  "servers.showHidden": { en: "Show hidden ({count})", fa: "نمایش مخفی‌شده‌ها ({count})" },
+  "servers.hideHidden": { en: "Hide them again", fa: "پنهان کردن دوباره" },
+  "servers.hide.done": { en: "Hidden {count}.", fa: "{count} مورد مخفی شد." },
+  "servers.unhide.done": { en: "Restored {count}.", fa: "{count} مورد بازگردانده شد." },
+
   "servers.delete": { en: "Delete", fa: "حذف" },
   "servers.delete.title": { en: "Delete config", fa: "حذف کانفیگ" },
   "servers.delete.one": {

@@ -302,6 +302,45 @@ reading of what a provider is serving: it returns unchanged at the next refresh,
 so a delete button on it would undo itself. Removing a whole subscription is the
 Subscriptions page's job and already exists.
 
+### What a subscription's nodes get instead
+
+Editing one is not a feature built badly — it is a feature that cannot exist.
+`RefreshV2RaySubscription` drops every profile a subscription produced and
+re-imports from the remote body with fresh ids built from a timestamp, so a
+change does not survive and there is not even a stable id to hang it on. A
+subscription served as a mihomo document produces no profiles at all; its nodes
+are read straight out of the body.
+
+So two things that are true instead:
+
+**Copy to my configs** (`CopyNodeToManual`) takes the node into the user's own
+list, where it is theirs and the edit form already applies. It goes through the
+ordinary import so a copied node is parsed by the same code as a pasted one. It
+needs a share link, which a document-shaped subscription does not carry — the
+same limitation the Share button has, shown the same way.
+
+**Hide** (`SetNodesHidden`) takes a node out of the list and out of the engine's
+configuration without claiming to have deleted it. Held by **name**, in
+`AppState.HiddenNodes` keyed by subscription id, precisely because ids do not
+survive a refresh and this has to. A name goes stale if the provider renames the
+node, and then it reappears — the honest failure, and a visible one.
+
+Three things follow from "out of the configuration":
+
+- `session.Options.Exclude` drops the proxies before the config is built, rather
+  than expressing them as `Prefer`. Prefer only narrows what an attempt reaches
+  for and leaves everything in the group, so a hidden node would still be sitting
+  in the url-test group for the engine to pick — and a non-empty Prefer turns
+  Automatic into an explicit selection, losing the group that makes Automatic
+  work.
+- `preferredNodeNames` skips hidden nodes, or a country filter would name nodes
+  the engine does not hold.
+- Hiding every node is refused. It would leave nothing to build a configuration
+  from and surface later as an error about a missing group.
+
+The node stays in the list carrying `Hidden`, rather than being removed from it:
+a node dropped from the list could never be put back.
+
 The node-to-profile match is on the share link, not on position. Both sides come
 from the same exporter, so the strings are identical where they correspond; on
 position they would not be, because the exporter skips profiles it cannot express
