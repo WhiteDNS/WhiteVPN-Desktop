@@ -252,14 +252,35 @@ func (p *Process) Stop(ctx context.Context) error {
 		return nil
 	}
 
+	// Closing the client and the listener above is the mechanism, not merely
+	// politeness: the core reads frames in a loop and returns on any read error
+	// including EOF, and its main returns with it. So the pipe going away ends
+	// the process, and that works whatever privileges either side holds — which
+	// matters now that the interface runs unelevated while the core, in tunnel
+	// mode, does not. Kill is the last resort for a core wedged badly enough
+	// that it is no longer reading its own socket.
 	select {
 	case err := <-p.exited:
 		return err
 	case <-time.After(5 * time.Second):
-		_ = p.child.Kill()
-		return errors.New("engine: core did not exit cleanly and was killed")
+		return p.killAfterFailedShutdown(errors.New("engine: core did not exit cleanly"))
 	case <-ctx.Done():
-		_ = p.child.Kill()
-		return ctx.Err()
+		return p.killAfterFailedShutdown(ctx.Err())
 	}
+}
+
+// killAfterFailedShutdown terminates a core that would not leave, and says so
+// plainly when it cannot.
+//
+// An unelevated process is not allowed to terminate an elevated one, so in
+// tunnel mode this can fail — and a core left running holds the tunnel adapter
+// and its routes, which is the difference between "disconnected" and "the
+// machine has no internet and nothing on screen explains why". Reporting it is
+// the least that is owed; silently discarding the error would leave that state
+// with no trace at all.
+func (p *Process) killAfterFailedShutdown(cause error) error {
+	if err := p.child.Kill(); err != nil {
+		return fmt.Errorf("%w, and could not be stopped (%v): its tunnel may still be up — end the mihomo process (pid %d) in Task Manager", cause, err, p.PID())
+	}
+	return fmt.Errorf("%w and was stopped", cause)
 }

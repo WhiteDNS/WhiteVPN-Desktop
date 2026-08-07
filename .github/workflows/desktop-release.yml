@@ -132,6 +132,14 @@ jobs:
 
       - name: Build package
         shell: bash
+        # The catalogue's address and key. They were constants in a public file
+        # until now, which meant anyone could decrypt the node list without so
+        # much as downloading the app. A release built without these secrets set
+        # produces a working client with no built-in catalogue rather than
+        # failing, so a fork can build one and nothing here has to be faked.
+        env:
+          WHITEVPN_CATALOGUE_URL: ${{ secrets.WHITEVPN_CATALOGUE_URL }}
+          WHITEVPN_CATALOGUE_KEY: ${{ secrets.WHITEVPN_CATALOGUE_KEY }}
         run: |
           set -euo pipefail
           case "${{ matrix.kind }}" in

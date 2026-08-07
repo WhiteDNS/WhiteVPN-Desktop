@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"slices"
@@ -21,17 +22,56 @@ import (
 const (
 	whiteDNSVPNSubscriptionID              = model.BuiltInSubscriptionID
 	whiteDNSVPNSubscriptionName            = "WhiteDNS VPN"
-	whiteDNSVPNSubscriptionURL             = "https://whitedns-sub.whitedns.workers.dev/encrypted"
-	whiteDNSVPNSubscriptionKey             = "#2gzwj1##z%BVq*7M2sfxe6sV23ut1LQr87JagD4D#&"
 	whiteDNSVPNSubscriptionRefreshInterval = 3 * time.Hour
 
-	whiteDNSVPNFrontingIPListURL       = "https://whitedns-encrypted-ip-list.whitedns.workers.dev/v1/results/ips/encrypted"
-	whiteDNSVPNFrontingIPListKey       = "kc*P$Hfw$YqRSf%Ypyfzx#F$kncPk9QG5%!W8M83K@f"
 	whiteDNSVPNFrontingPingLimit       = 96
 	whiteDNSVPNFrontingValidationLimit = 3
 	whiteDNSVPNFrontingValidationTime  = 8 * time.Second
 	whiteDNSVPNStartupWorkingSample    = 5
 )
+
+// Where the built-in catalogue comes from, and the key that opens it. Both are
+// set at link time by the Makefile:
+//
+//	-X main.whiteDNSVPNSubscriptionURL=... -X main.whiteDNSVPNSubscriptionKey=...
+//
+// They used to be constants in this file, which is in a public repository, and
+// had been since its first commit. That is not a weak secret — it is not a
+// secret at all: anyone could read the key off a web page, fetch the encrypted
+// catalogue and decrypt it, and what falls out is every node's address, UUID,
+// password and REALITY keys. No binary needed, nothing to reverse engineer. A
+// censor gets the complete list to block; anyone else gets the service for free.
+//
+// Moving them here does not make them secret either, and it must not be sold as
+// though it does. They still travel inside every binary that ships, and a client
+// that can decrypt the catalogue is a client an attacker can take apart. What it
+// changes is the effort: reading a public file becomes pulling strings out of a
+// 74 MB executable. That is worth doing, and it is the most that can be done
+// while the client holds the key at all.
+//
+// The old values remain in this repository's history for ever, so this is only
+// worth anything once the key on the server has been changed.
+//
+// A build made without them — `go build`, `wails build`, or anyone building from
+// source — has no catalogue and says so. Manual configs and a user's own
+// subscriptions are unaffected, which is the right shape for an open-source
+// client of a managed service.
+var (
+	whiteDNSVPNSubscriptionURL string
+	whiteDNSVPNSubscriptionKey string
+)
+
+// errNoBuiltInCatalogue is what a build without the catalogue credentials says
+// when something asks for them.
+var errNoBuiltInCatalogue = errors.New(
+	"this build has no WhiteDNS catalogue: it was not built with one. Add a subscription of your own, or paste configs on the Servers page")
+
+// builtInCatalogueAvailable reports whether this build can reach the catalogue
+// at all.
+func builtInCatalogueAvailable() bool {
+	return strings.TrimSpace(whiteDNSVPNSubscriptionURL) != "" &&
+		strings.TrimSpace(whiteDNSVPNSubscriptionKey) != ""
+}
 
 type whiteDNSVPNSubscriptionFetcher func(context.Context) (string, error)
 type whiteDNSVPNFrontingIPFetcher func(context.Context) (string, error)
@@ -58,11 +98,10 @@ type whiteDNSVPNStartupExclusion struct {
 }
 
 func fetchWhiteDNSVPNSubscriptionDocument(ctx context.Context) (string, error) {
+	if !builtInCatalogueAvailable() {
+		return "", errNoBuiltInCatalogue
+	}
 	return fetchV2RaySubscriptionDocument(ctx, whiteDNSVPNSubscriptionURL)
-}
-
-func fetchWhiteDNSVPNFrontingIPListDocument(ctx context.Context) (string, error) {
-	return fetchV2RaySubscriptionDocument(ctx, whiteDNSVPNFrontingIPListURL)
 }
 
 func (a *App) StartWhiteDNSVPNConnection() (model.AppState, error) {

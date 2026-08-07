@@ -605,6 +605,24 @@ Measured 2026-08-05, from Windows:
   at all: `fyne.io/systray` needs Cocoa. With CGO it needs the macOS SDK. It has
   to run on a Mac, or on a macOS CI runner.
 
+**Tests run in CI now.** `.github/workflows/ci.yml`, on every pull request and
+every push to main: build, vet and test on all three operating systems,
+cross-compilation for six targets, the frontend type check and build, and a scan
+that fails if a catalogue credential reappears in the source. Before it, the only
+workflow fired on a tag, so six releases shipped without a single automated test
+having run — the tests were there and were good, and whether they had been run
+depended on somebody remembering.
+
+Two tests had to be fixed to make it green, and both were the tests being wrong
+rather than the code. `TestFindMihomoCoreExplainsItselfWhenAbsent` expected the
+`WHITEVPN_MIHOMO_BIN` override to be honoured, which Windows deliberately ignores
+because the core is launched elevated and must come from inside the application.
+`TestEnsureAppDataWritableRepairsDarwinWithAdministratorPrompt` builds a shell
+command around a path and checks the text; given a Windows-shaped path the
+AppleScript quoting escapes every separator twice, so it can only be checked on a
+host with POSIX paths. Both now skip where they cannot mean anything — and CI is
+where they run for real.
+
 `.github/workflows/desktop-release.yml` already builds all three, on a tag
 `vpn-v*` or by hand. What a runner does *not* start with, and how it gets it:
 
@@ -646,6 +664,25 @@ from Wi-Fi to Ethernet must not lose its VPN on the way.
   `VpnService.Builder.addDnsServer` makes the OS route every query into the
   tunnel — so this is the second place, after IPv6 containment, where copying the
   phone literally means shipping a leak.
+- **The app does not run as Administrator, and must not start.** Only the tunnel
+  adapter needs it. The state file and the unpacked engine live under `%AppData%`,
+  the system proxy is a per-user WinINET setting, and the local port is above
+  1024 — so proxy mode needs nothing. The manifest asked for it anyway, which
+  meant a UAC prompt on every launch for people who never use the tunnel, and a
+  WebView2 browser engine running with full rights to the machine for everyone.
+  It is `asInvoker` now; `engine.startElevatedChild` raises the core on its own
+  when the tunnel is on. Everything downstream was already built for this split —
+  `pipeSecurityDescriptor` admits SYSTEM and Administrators precisely so an
+  elevated core can reach a pipe opened by an unelevated interface, its comment
+  says so, and it long predates the change.
+- **Closing the pipe is how the core is stopped, not `Kill`.** The core reads
+  frames in a loop and returns on any read error including EOF, and its `main`
+  returns with it — so dropping the connection ends the process whatever
+  privileges either side holds. That is what makes an unelevated interface safe
+  to pair with an elevated core. `Kill` is the last resort for a core wedged
+  badly enough to have stopped reading its own socket, and an unelevated process
+  cannot terminate an elevated one, so it now reports that failure with the pid
+  rather than discarding it.
 - **There are two version numbers, and only one of them is the app's.** The
   sidebar reads `appVersion`, set at link time by `-X main.appVersion` from the
   Makefile's `VERSION`. The number Windows shows in Properties → Details is

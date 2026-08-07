@@ -28,6 +28,15 @@ func TestEnsureAppDataWritableSkipsRepairWhenWritable(t *testing.T) {
 }
 
 func TestEnsureAppDataWritableRepairsDarwinWithAdministratorPrompt(t *testing.T) {
+	if filepath.Separator != '/' {
+		// The repair is a shell command built around the path, wrapped in
+		// strconv.Quote for AppleScript. On a host whose separator is a
+		// backslash, every one of them is escaped again and the command stops
+		// resembling anything this code will ever produce — the path it is given
+		// here is Windows-shaped, and macOS has no such path. CI runs this on
+		// macOS, where it means something.
+		t.Skip("the macOS repair command can only be checked on a host with POSIX paths")
+	}
 	runner := &fakeRunner{}
 	dir := filepath.Join(t.TempDir(), "WhiteVPN Desktop")
 
