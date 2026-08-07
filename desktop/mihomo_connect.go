@@ -112,14 +112,15 @@ func (a *App) startWhiteDNSVPNWithMihomo() (model.AppState, error) {
 		// Nodes the user hid never reach the configuration, so the engine cannot
 		// choose one on Automatic. Hidden from the list but still connectable
 		// would be the worst of both.
-		Exclude:    a.hiddenNodeNames(a.selectedSubscriptionID()),
-		FrontingIP: frontingIP,
-		DNSPrivacy:   dnsPrivacyMode(settings.DNSPrivacy.Mode),
-		DoHURL:       settings.DNSPrivacy.DoHURL,
-		DoTEndpoint:  settings.DNSPrivacy.DoTEndpoint,
-		Tun:          tunOptionsFor(settings),
-		CoreStdout:   mihomoLogWriter{app: a},
-		CoreStderr:   mihomoLogWriter{app: a},
+		Exclude:     a.hiddenNodeNames(a.selectedSubscriptionID()),
+		SplitTunnel: splitTunnelFor(settings),
+		FrontingIP:  frontingIP,
+		DNSPrivacy:  dnsPrivacyMode(settings.DNSPrivacy.Mode),
+		DoHURL:      settings.DNSPrivacy.DoHURL,
+		DoTEndpoint: settings.DNSPrivacy.DoTEndpoint,
+		Tun:         tunOptionsFor(settings),
+		CoreStdout:  mihomoLogWriter{app: a},
+		CoreStderr:  mihomoLogWriter{app: a},
 	})
 	if err != nil {
 		a.reportConnectFailure(ctx, err.Error())
@@ -548,4 +549,28 @@ func tunOptionsFor(settings model.WhiteVPNSettings) mihomoconf.TunOptions {
 		return mihomoconf.TunOptions{Enabled: false}
 	}
 	return mihomoconf.DefaultTunOptions()
+}
+
+// splitTunnelFor turns the saved setting into the engine's shape.
+//
+// This is the wiring that was missing. The setting was stored, validated and
+// shown for weeks while nothing outside the model ever read it, so a program
+// added to the bypass list went through the tunnel like everything else and the
+// site it was meant to reach still saw the VPN. A control that changes nothing
+// is worse than one that is absent.
+func splitTunnelFor(settings model.WhiteVPNSettings) mihomoconf.SplitTunnel {
+	switch settings.SplitTunnel.Mode {
+	case model.SplitTunnelBypass:
+		return mihomoconf.SplitTunnel{
+			Mode:      mihomoconf.SplitTunnelBypass,
+			Processes: settings.SplitTunnel.Processes,
+		}
+	case model.SplitTunnelVPNOnly:
+		return mihomoconf.SplitTunnel{
+			Mode:      mihomoconf.SplitTunnelOnly,
+			Processes: settings.SplitTunnel.Processes,
+		}
+	default:
+		return mihomoconf.SplitTunnel{}
+	}
 }

@@ -38,7 +38,7 @@ func TestFrontProxiesLeavesAloneWhatItCannotFront(t *testing.T) {
 			"type": "vless", "server": "node.example.com", "tls": true,
 			"reality-opts": map[string]any{"public-key": "k"},
 		},
-		"no tls and no http transport": {"type": "vless", "server": "node.example.com", "network": "tcp"},
+		"no tls and no http transport":    {"type": "vless", "server": "node.example.com", "network": "tcp"},
 		"a type the phone does not front": {"type": "ss", "server": "node.example.com", "tls": true},
 	}
 	for name, proxy := range cases {

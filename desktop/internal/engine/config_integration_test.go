@@ -42,7 +42,7 @@ func TestGeneratedConfigIsReadableByTheEngine(t *testing.T) {
 	if err != nil {
 		t.Fatalf("convert: %v", err)
 	}
-	proxiesYAML, err := mihomoconf.BuildProxiesYAML(proxies)
+	proxiesYAML, err := mihomoconf.BuildProxiesYAML(proxies, mihomoconf.SplitTunnel{})
 	if err != nil {
 		t.Fatalf("build proxies: %v", err)
 	}
