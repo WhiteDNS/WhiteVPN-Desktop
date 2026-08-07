@@ -531,6 +531,23 @@ const strings = {
   // so fetching a binary and running it is not something to do without verified
   // signatures. Whoever is still on an old build is not in the Telegram
   // channel; this is what reaches them.
+  // Putting the app back to a fresh install. It exists because a bug that only
+  // shows on a first launch is invisible to everyone who has already used the
+  // app — which was all of us until a user on a clean install found one.
+  "settings.reset.title": { en: "Reset", fa: "بازنشانی" },
+  "settings.reset.description": {
+    en: "Delete everything this app has saved and start again as if it were newly installed.",
+    fa: "همهٔ چیزی که این اپ ذخیره کرده پاک می‌شود و اپ مثل روز نصب از نو شروع می‌کند.",
+  },
+  "settings.reset.button": { en: "Reset app data", fa: "بازنشانی داده‌های اپ" },
+  "settings.reset.confirm.title": { en: "Delete everything?", fa: "همه‌چیز پاک شود؟" },
+  "settings.reset.confirm.body": {
+    en: "Your settings, subscriptions and saved configs will be deleted. This cannot be undone, and nothing is backed up first — export a backup on the Full Backup page if you want to keep any of it.",
+    fa: "تنظیمات، اشتراک‌ها و کانفیگ‌های ذخیره‌شدهٔ شما پاک می‌شوند. این کار برگشت‌پذیر نیست و هیچ پشتیبانی هم گرفته نمی‌شود — اگر می‌خواهید چیزی را نگه دارید، از صفحهٔ Full Backup خروجی بگیرید.",
+  },
+  "settings.reset.working": { en: "Resetting…", fa: "در حال بازنشانی…" },
+  "settings.reset.done": { en: "Everything was deleted. The app is as it was on the day it was installed.", fa: "همه‌چیز پاک شد. اپ مثل روز نصب است." },
+
   "settings.update.title": { en: "Updates", fa: "بروزرسانی" },
   "settings.update.description": {
     en: "The app checks for a newer version at startup. It never downloads or installs anything by itself.",

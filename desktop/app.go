@@ -116,6 +116,17 @@ func NewApp() (*App, error) {
 		return nil, err
 	}
 	app.state = forgetBuiltInCatalogueProfiles(forgetBuiltInSubscriptionURL(state))
+	// The catalogue has to be in the list from the first launch, not from the
+	// first refresh.
+	//
+	// It was only ever added by a catalogue refresh or by recording an error
+	// against one, so a fresh install listed no subscriptions at all: the
+	// Servers page's source picker was empty and the Subscriptions page said "0
+	// sources", while the catalogue itself worked — the connect path defaults to
+	// its id whatever the list says. Anyone who had refreshed once never saw it
+	// again, which is why it survived this long: every developer machine had
+	// been through that by the time anyone looked.
+	app.ensureWhiteDNSVPNSubscriptionLocked()
 	if firstRun {
 		app.legacyImport = profiles.ReadLegacyImport(legacyWhiteDNSStatePath())
 	}
@@ -622,12 +633,16 @@ func (a *App) emit(name string, payload any) {
 	wailsruntime.EventsEmit(a.ctx, name, payload)
 }
 
+// appDataDirName is the one folder this app owns. Named rather than repeated so
+// the reset can check it is deleting that and nothing else.
+const appDataDirName = "WhiteVPN Desktop"
+
 func appConfigDir() (string, error) {
 	base, err := os.UserConfigDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(base, "WhiteVPN Desktop"), nil
+	return filepath.Join(base, appDataDirName), nil
 }
 
 func findCoresDir() string {

@@ -8,10 +8,12 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"whitevpn-desktop/internal/model"
+	"whitevpn-desktop/internal/profiles"
 )
 
 func TestDecryptWhiteDNSVPNSubscription(t *testing.T) {
@@ -145,6 +147,39 @@ func whiteDNSVPNTestProfiles(profiles []model.V2RayProfile) []model.V2RayProfile
 // constant here and must never reach the state, because everything the user can
 // see — the subscriptions list, a backup export, the state handed to the
 // interface — is built from that.
+// A first launch has to list the catalogue, not wait for a refresh to add it.
+//
+// It used to be created only by a successful catalogue refresh or by recording
+// an error against one. So a fresh install showed an empty source picker on the
+// Servers page and "0 sources" on the Subscriptions page, while the catalogue
+// itself worked — the connect path defaults to its id whatever the list says.
+// It survived a long time because anyone who had refreshed once never saw it
+// again, and every developer machine had refreshed by the time anyone looked. A
+// macOS user on a clean install found it.
+func TestFirstLaunchListsTheCatalogue(t *testing.T) {
+	dir := t.TempDir()
+	store := profiles.NewStore(filepath.Join(dir, "state.json"))
+	state, err := store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	app := &App{store: store, configDir: dir, state: state}
+	app.ensureWhiteDNSVPNSubscriptionLocked()
+
+	listed := app.GetAppState().V2RaySubscriptions
+	if len(listed) != 1 {
+		t.Fatalf("a first launch should list the catalogue and nothing else, got %#v", listed)
+	}
+	if listed[0].ID != whiteDNSVPNSubscriptionID {
+		t.Fatalf("the listed subscription is not the catalogue: %#v", listed[0])
+	}
+	// Listing it must not start storing its address; see the test below.
+	if listed[0].URL != "" {
+		t.Fatalf("the catalogue's address was stored: %q", listed[0].URL)
+	}
+}
+
 func TestBuiltInCatalogueAddressNeverEntersState(t *testing.T) {
 	// The address is injected at link time and empty in a test binary, and
 	// `strings.Contains(anything, "")` is true — so without a stand-in this test

@@ -6253,6 +6253,10 @@ function WhiteVPNSettingsPage({
       <SettingsSection title={t("settings.update.title")} description={t("settings.update.description")}>
         <UpdateCheckRow t={t} />
       </SettingsSection>
+
+      <SettingsSection title={t("settings.reset.title")} description={t("settings.reset.description")}>
+        <ResetAppDataRow onState={onState} onError={onError} onSuccess={onSuccess} t={t} />
+      </SettingsSection>
     </PageShell>
   );
 }
@@ -6264,6 +6268,72 @@ function WhiteVPNSettingsPage({
 // version and wants to see it should not have to wait out that cache, so this
 // forces it — and then says what it found, including that it could not look,
 // which on these networks is a normal answer rather than an error.
+// Deleting everything the app has stored.
+//
+// Behind a confirmation because it cannot be undone and nothing is backed up
+// first — the dialog says so, and points at the page that does take backups,
+// rather than leaving someone to find out afterwards.
+function ResetAppDataRow({
+  onState,
+  onError,
+  onSuccess,
+  t,
+}: {
+  onState: (next: AppState) => void;
+  onError: (message: string) => void;
+  onSuccess: (message: string) => void;
+  t: TranslateFn;
+}) {
+  const [asking, setAsking] = useState(false);
+  const [working, setWorking] = useState(false);
+
+  async function reset() {
+    if (working) {
+      return;
+    }
+    onError("");
+    setWorking(true);
+    try {
+      onState(await backend.resetAppData());
+      setAsking(false);
+      onSuccess(t("settings.reset.done"));
+    } catch (err) {
+      onError(messageFromError(err));
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  return (
+    <>
+      <div>
+        <Button variant="outline" className="text-destructive" onClick={() => setAsking(true)}>
+          <Trash2 />
+          {t("settings.reset.button")}
+        </Button>
+      </div>
+
+      <Dialog open={asking} onOpenChange={(open) => !open && !working && setAsking(false)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t("settings.reset.confirm.title")}</DialogTitle>
+            <DialogDescription>{t("settings.reset.confirm.body")}</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAsking(false)} disabled={working}>
+              {t("common.cancel")}
+            </Button>
+            <Button variant="destructive" onClick={() => void reset()} disabled={working}>
+              <Trash2 />
+              {working ? t("settings.reset.working") : t("settings.reset.button")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
 function UpdateCheckRow({ t }: { t: TranslateFn }) {
   const [status, setStatus] = useState<UpdateStatus | null>(null);
   const [checking, setChecking] = useState(false);

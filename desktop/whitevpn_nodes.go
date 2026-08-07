@@ -478,6 +478,15 @@ func (a *App) forgetWhiteVPNNodes(subscriptionID string) {
 	a.nodesMu.Unlock()
 }
 
+// forgetAllCachedNodes drops every subscription's catalogue, for a reset: the
+// measurements and node lists belong to state that no longer exists.
+func (a *App) forgetAllCachedNodes() {
+	a.nodesMu.Lock()
+	a.nodes = map[string][]model.WhiteVPNNode{}
+	a.nodesAt = map[string]time.Time{}
+	a.nodesMu.Unlock()
+}
+
 func (a *App) cachedWhiteVPNNodes(subscriptionID string, now time.Time) (model.WhiteVPNNodeList, bool) {
 	a.nodesMu.Lock()
 	defer a.nodesMu.Unlock()
