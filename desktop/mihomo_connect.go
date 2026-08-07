@@ -114,13 +114,18 @@ func (a *App) startWhiteDNSVPNWithMihomo() (model.AppState, error) {
 		// would be the worst of both.
 		Exclude:     a.hiddenNodeNames(a.selectedSubscriptionID()),
 		SplitTunnel: splitTunnelFor(settings),
-		FrontingIP:  frontingIP,
-		DNSPrivacy:  dnsPrivacyMode(settings.DNSPrivacy.Mode),
-		DoHURL:      settings.DNSPrivacy.DoHURL,
-		DoTEndpoint: settings.DNSPrivacy.DoTEndpoint,
-		Tun:         tunOptionsFor(settings),
-		CoreStdout:  mihomoLogWriter{app: a},
-		CoreStderr:  mihomoLogWriter{app: a},
+		// The fourth control that was stored and never read. It refuses a node
+		// whose certificates do not verify through the tunnel — a connection
+		// that carries traffic while being read is the failure it exists for.
+		VerifyTLSIntegrity: settings.TLSIntegrityEnabled,
+		Noise:              amneziaNoiseFor(settings),
+		FrontingIP:         frontingIP,
+		DNSPrivacy:         dnsPrivacyMode(settings.DNSPrivacy.Mode),
+		DoHURL:             settings.DNSPrivacy.DoHURL,
+		DoTEndpoint:        settings.DNSPrivacy.DoTEndpoint,
+		Tun:                tunOptionsFor(settings),
+		CoreStdout:         mihomoLogWriter{app: a},
+		CoreStderr:         mihomoLogWriter{app: a},
 	})
 	if err != nil {
 		a.reportConnectFailure(ctx, err.Error())
@@ -556,6 +561,20 @@ func tunOptionsFor(settings model.WhiteVPNSettings) mihomoconf.TunOptions {
 		return mihomoconf.TunOptions{Enabled: false}
 	}
 	return mihomoconf.DefaultTunOptions()
+}
+
+// amneziaNoiseFor turns the saved noise setting into the engine's shape.
+//
+// The third control that was stored and never read. It reaches WireGuard proxies
+// and nothing else, which is the line Android draws too, because the noise is
+// AmneziaWG's and mihomo has nowhere to put it on a vless or trojan node.
+func amneziaNoiseFor(settings model.WhiteVPNSettings) mihomoconf.AmneziaNoise {
+	return mihomoconf.AmneziaNoise{
+		Enabled: settings.AmneziaNoise.Enabled,
+		Count:   settings.AmneziaNoise.Count,
+		MinSize: settings.AmneziaNoise.MinSize,
+		MaxSize: settings.AmneziaNoise.MaxSize,
+	}
 }
 
 // splitTunnelFor turns the saved setting into the engine's shape.

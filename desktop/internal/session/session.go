@@ -66,9 +66,18 @@ type Options struct {
 	// that makes Automatic work at all.
 	Exclude []string
 
+	// VerifyTLSIntegrity refuses a node whose certificates do not verify through
+	// the tunnel, which is what interception looks like from here.
+	VerifyTLSIntegrity bool
+
 	// SplitTunnel routes named programs around the tunnel, or only them through
 	// it. Empty means everything goes through it.
 	SplitTunnel mihomoconf.SplitTunnel
+
+	// Noise pads WireGuard proxies so their shape is less recognisable. It
+	// reaches nothing else, because the noise is AmneziaWG's and mihomo has
+	// nowhere to put it on a vless or trojan proxy.
+	Noise mihomoconf.AmneziaNoise
 
 	// FrontingIP reaches every eligible node through this address instead of the
 	// one its name resolves to, while still presenting the name. Empty means the
@@ -267,6 +276,15 @@ func (s *Session) start(ctx context.Context, opts Options) error {
 
 	probe := func(probeCtx context.Context) int { return probeStatus(probeCtx, opts.MixedPort) }
 	acceptHealthy := func(code int) error {
+		// Carrying traffic is not the same as carrying it privately. If whatever
+		// sits between here and the internet is terminating TLS, every request
+		// succeeds and the connection is being read — so a node that answers is
+		// still refused when its certificates do not verify.
+		if opts.VerifyTLSIntegrity {
+			if err := verifyTLSIntegrity(ctx, opts.MixedPort); err != nil {
+				return err
+			}
+		}
 		if opts.Tun.Enabled {
 			switch err := waitForTunnel(ctx, opts.Tun.Device, opts.Tun.IPv6); {
 			case err == nil:
@@ -316,12 +334,21 @@ func (s *Session) start(ctx context.Context, opts Options) error {
 			code, err := waitForHealthy(ctx, probe)
 			if err == nil {
 				if err := acceptHealthy(code); err != nil {
-					return err
+					// Interception is about this node, not about the app: reject
+					// it and let the walk below try another. Anything else — a
+					// tunnel that never came up — is not survivable by changing
+					// node.
+					if !errors.Is(err, ErrTLSIntercepted) {
+						return err
+					}
+					lastErr = err
+				} else {
+					s.selected = s.resolveSelection(ctx)
+					return nil
 				}
-				s.selected = s.resolveSelection(ctx)
-				return nil
+			} else {
+				lastErr = fmt.Errorf("automatic selection: %w", err)
 			}
-			lastErr = fmt.Errorf("automatic selection: %w", err)
 		}
 	}
 
@@ -357,7 +384,12 @@ func (s *Session) start(ctx context.Context, opts Options) error {
 		code, err := waitForHealthy(ctx, probe)
 		if err == nil {
 			if err := acceptHealthy(code); err != nil {
-				return err
+				if !errors.Is(err, ErrTLSIntercepted) {
+					return err
+				}
+				// This node's certificates did not verify. Another may.
+				lastErr = fmt.Errorf("%q: %w", candidate, err)
+				continue
 			}
 			// The group is pinned to this node now, so the engine is no longer the
 			// one choosing and recovery has to do the choosing instead.
@@ -641,6 +673,9 @@ func PrepareConfig(opts Options) (string, []string, error) {
 			}
 			proxies = kept
 		}
+		// Before fronting, which only rewrites addresses: the two are
+		// independent and a WireGuard node can have both.
+		proxies, _ = mihomoconf.ApplyAmneziaNoise(proxies, opts.Noise)
 		if opts.FrontingIP != "" {
 			// Nodes fronting cannot be applied to are left reachable at their own
 			// address rather than dropped: a front that covers most of the list is

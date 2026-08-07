@@ -54,6 +54,9 @@ func tunnelRoutes(device string) (string, error) {
 	command := exec.CommandContext(ctx, shell, "-NoProfile", "-NonInteractive", "-Command",
 		`$ErrorActionPreference='SilentlyContinue'; Get-NetRoute -InterfaceAlias $env:WHITEVPN_TUN_DEVICE | ForEach-Object { $_.DestinationPrefix }`)
 	command.Env = append(os.Environ(), "WHITEVPN_TUN_DEVICE="+device)
+	// Or a console window appears and vanishes for every check, and this is
+	// polled while the adapter comes up.
+	hideConsoleWindow(command)
 
 	out, err := command.CombinedOutput()
 	if err != nil {

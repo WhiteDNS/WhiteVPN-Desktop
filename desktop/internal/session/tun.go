@@ -22,8 +22,12 @@ import (
 // in tunnel mode": the proxy port is up straight away, so the request that
 // proves the connection works passes long before the adapter exists.
 const (
-	tunnelBudget       = 20 * time.Second
-	tunnelPollInterval = 500 * time.Millisecond
+	tunnelBudget = 20 * time.Second
+	// A second rather than half of one. Reading the adapter's routes on Windows
+	// costs a PowerShell process, and forty of them across a connect is a lot of
+	// work to ask for — the adapter is either there within a second or two of
+	// coming up, or it is not coming.
+	tunnelPollInterval = time.Second
 )
 
 // errTunnelUnverifiable means this platform has no way to inspect the adapter,
