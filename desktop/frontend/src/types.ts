@@ -650,6 +650,23 @@ export type ConnectionSelection = {
   delaySort: boolean;
 };
 
+// What the app knows about newer releases.
+//
+// error is a string rather than a thrown failure: not reaching GitHub is
+// ordinary where this app is used and is not worth interrupting anyone over.
+// available stays false in that case, so a failed check never nags.
+export type UpdateStatus = {
+  // The running version, or "dev" for a build that did not come from a
+  // release — which is never offered an update.
+  current: string;
+  latest: string;
+  available: boolean;
+  url: string;
+  notes: string;
+  checkedAt: string;
+  error: string;
+};
+
 // One node of the catalogue. `name` is its identity — what the engine selects
 // by — and `label` is the same name with the flag and channel marker removed.
 export type WhiteVPNNode = {
