@@ -178,6 +178,13 @@ type V2RaySubscription struct {
 	LastUpdatedAt string `json:"lastUpdatedAt"`
 	LastError     string `json:"lastError"`
 	ImportedCount int    `json:"importedCount"`
+
+	// AllowInsecureTLS fetches this subscription without verifying the server's
+	// certificate.
+	//
+	// Off by default, and per-subscription rather than global: it is a decision
+	// about one address the user chose to trust, not about the app.
+	AllowInsecureTLS bool `json:"allowInsecureTls"`
 }
 
 type V2RayPingResult struct {

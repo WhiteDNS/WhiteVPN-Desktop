@@ -229,7 +229,7 @@ func (a *App) RefreshV2RaySubscription(id string) (model.V2RaySubscriptionRefres
 	}
 	a.mu.Unlock()
 
-	rawText, fetchErr := a.fetchSubscriptionDocument(context.Background(), subscription.URL)
+	rawText, fetchErr := a.fetchSubscriptionDocument(context.Background(), subscription)
 	var imported []model.V2RayProfile
 	var importedCount int
 	var parseErr error

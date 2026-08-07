@@ -218,6 +218,14 @@ const strings = {
   },
   "subs.editor.description": { en: "Saved V2Ray subscription URL", fa: "نشانی اشتراک V2Ray ذخیره‌شده" },
   "subs.editor.url": { en: "Subscription URL", fa: "نشانی اشتراک" },
+  "subs.editor.allowInsecureTls": {
+    en: "Fetch without checking the certificate",
+    fa: "دریافت بدون بررسی گواهی",
+  },
+  "subs.editor.allowInsecureTlsHint": {
+    en: "This server's certificate cannot be verified, so there is no proof you are talking to the real address. Your subscription link contains your account key — if something is intercepting this connection, turning this on hands the key to it. Only for a provider and a network you trust.",
+    fa: "گواهی این سرور تأیید نمی‌شود، پس معلوم نیست واقعاً با همان نشانی طرف هستید. نشانی اشتراک شما کلید حسابتان را در خود دارد — اگر چیزی این ارتباط را شنود کند، با روشن کردن این گزینه کلید را به آن می‌دهید. فقط برای ارائه‌دهنده و شبکه‌ای که به آن اطمینان دارید.",
+  },
   "subs.thisSubscription": { en: "this subscription", fa: "این اشتراک" },
   "subs.deleteDialog.title": { en: "Delete V2Ray subscription?", fa: "اشتراک V2Ray حذف شود؟" },
   "subs.deleteDialog.description": {
