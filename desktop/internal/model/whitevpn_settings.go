@@ -1,6 +1,9 @@
 package model
 
-import "strings"
+import (
+	"encoding/json"
+	"strings"
+)
 
 // The settings WhiteVPN for Android exposes, so that someone moving from the
 // phone finds the same options here under the same names and with the same
@@ -120,6 +123,28 @@ type WhiteVPNSettings struct {
 	// Administrator.
 	TunEnabled bool `json:"tunEnabled"`
 
+	// SetSystemProxy points the machine's proxy settings at the engine when the
+	// tunnel is off.
+	//
+	// Neither this nor the tunnel leaves a third option: with both off the
+	// engine listens and nothing on the machine is redirected, which is what
+	// somebody wants who is pointing one browser extension or Telegram at it and
+	// leaving everything else alone. Until this existed, turning the tunnel off
+	// silently reconfigured the whole desktop and there was no way to ask for
+	// anything else.
+	//
+	// There is a SetSystemProxy on V2RaySettingsProfile too. That one belongs to
+	// the removed Xray path and nothing reads it.
+	SetSystemProxy bool `json:"setSystemProxy"`
+
+	// ListenPort is where the engine's local proxy listens, serving HTTP and
+	// SOCKS5 on the one port.
+	//
+	// Settable because in proxy-only mode this number is not an implementation
+	// detail — it is what the user typed into another program, and it has to
+	// keep working tomorrow.
+	ListenPort int `json:"listenPort"`
+
 	AcceptedPrivacyPolicyVersion int `json:"acceptedPrivacyPolicyVersion"`
 }
 
@@ -145,7 +170,44 @@ func DefaultWhiteVPNSettings() WhiteVPNSettings {
 		KillSwitch: KillSwitchSettings{Enabled: false},
 		Language:   "",
 		TunEnabled: false,
+		// On by default, because that is what the app did before this was a
+		// choice, and an update that silently stopped proxying a machine would
+		// look exactly like an update that broke the connection.
+		SetSystemProxy: true,
+		ListenPort:     DefaultLocalProxyPort,
 	}
+}
+
+// DefaultLocalProxyPort is the engine's usual mixed port — HTTP and SOCKS5 on
+// one listener.
+const DefaultLocalProxyPort = 2080
+
+// UnmarshalJSON reads settings, treating an absent SetSystemProxy as on.
+//
+// Every settings file written before that field existed has no key for it, and
+// a plain bool reads a missing key as false — which is the new proxy-only mode.
+// Everyone who updated would have found their machine quietly no longer
+// proxied, which looks exactly like an update that broke the connection, and
+// nothing in the app would have said otherwise.
+//
+// The distinction only survives at this boundary. By the time the value is a
+// bool, "absent" and "deliberately off" are the same thing, so no migration
+// running later could tell them apart.
+func (s *WhiteVPNSettings) UnmarshalJSON(data []byte) error {
+	// An alias to borrow the generated decoding without recursing into this
+	// method. The pointer field sits shallower than the embedded struct's, so
+	// encoding/json fills this one and leaves that one alone.
+	type alias WhiteVPNSettings
+	probe := struct {
+		*alias
+		SetSystemProxy *bool `json:"setSystemProxy"`
+	}{alias: (*alias)(s)}
+
+	if err := json.Unmarshal(data, &probe); err != nil {
+		return err
+	}
+	s.SetSystemProxy = probe.SetSystemProxy == nil || *probe.SetSystemProxy
+	return nil
 }
 
 // NormalizeWhiteVPNSettings repairs a settings block read from disk.
@@ -206,6 +268,15 @@ func NormalizeWhiteVPNSettings(settings WhiteVPNSettings) WhiteVPNSettings {
 	settings.Connection.Node = strings.TrimSpace(settings.Connection.Node)
 	settings.Connection.Types = nonEmptyStrings(lowered(settings.Connection.Types))
 	settings.Language = strings.TrimSpace(settings.Language)
+
+	// A port outside the range, or one of the reserved low ones no ordinary
+	// program may bind, becomes the default rather than reaching the engine and
+	// failing there where the cause is much harder to see. Zero included: that
+	// is what a settings block written before this field existed carries, and it
+	// must read as "the usual port", not as "let the system choose".
+	if settings.ListenPort < 1024 || settings.ListenPort > 65535 {
+		settings.ListenPort = defaults.ListenPort
+	}
 	return settings
 }
 

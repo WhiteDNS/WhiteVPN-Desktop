@@ -82,6 +82,10 @@ const strings = {
     fa: "پیش از راه‌اندازی وایت‌وی‌پی‌ان، موتور فعال را قطع کنید.",
   },
   "vpn.metric.localProxy": { en: "Local proxy", fa: "پراکسی محلی" },
+  "vpn.localProxy.copy": {
+    en: "Copy — point a browser extension or Telegram here (HTTP or SOCKS5)",
+    fa: "کپی — افزونهٔ مرورگر یا تلگرام را به اینجا وصل کنید (HTTP یا SOCKS5)",
+  },
   "vpn.metric.frontingIp": { en: "Fronting IP", fa: "آی‌پی جایگزین" },
   "vpn.metric.download": { en: "Download", fa: "دریافت" },
   "vpn.metric.upload": { en: "Upload", fa: "ارسال" },
@@ -603,6 +607,27 @@ const strings = {
   "settings.connection.description": {
     en: "How traffic reaches your machine.",
     fa: "اینکه ترافیک چطور به دستگاه شما می‌رسد.",
+  },
+  "settings.routing.mode": { en: "How traffic reaches the tunnel", fa: "ترافیک چطور به تونل برسد" },
+  "settings.routing.systemProxy": { en: "System proxy — the whole machine", fa: "پراکسی سیستم — کل دستگاه" },
+  "settings.routing.proxyOnly": { en: "Proxy only — nothing is redirected", fa: "فقط پراکسی — چیزی تغییر نمی‌کند" },
+  "settings.routing.tun": { en: "Tunnel (TUN) — the whole machine", fa: "تونل (TUN) — کل دستگاه" },
+  "settings.routing.systemProxy.description": {
+    en: "This desktop's proxy settings are pointed at the app while it is connected, and put back when it disconnects. Most programs follow them.",
+    fa: "تا وقتی متصل هستید، تنظیمات پراکسی این دستگاه به برنامه اشاره می‌کند و هنگام قطع به حالت قبل برمی‌گردد. بیشتر برنامه‌ها از آن پیروی می‌کنند.",
+  },
+  "settings.routing.proxyOnly.description": {
+    en: "Nothing on this machine is changed. The app just listens, and you point one program at it — a browser extension, or Telegram's proxy settings. Everything else goes out normally.",
+    fa: "هیچ چیزی روی این دستگاه تغییر نمی‌کند. برنامه فقط گوش می‌دهد و شما یک برنامه را به آن وصل می‌کنید — افزونهٔ مرورگر یا تنظیمات پراکسی تلگرام. بقیه مثل همیشه از مسیر عادی می‌روند.",
+  },
+  "settings.routing.tun.description": {
+    en: "A virtual network adapter carries everything, including programs that ignore proxy settings. Needs Administrator on Windows.",
+    fa: "یک کارت شبکهٔ مجازی همه چیز را حمل می‌کند، حتی برنامه‌هایی که تنظیمات پراکسی را نادیده می‌گیرند. روی ویندوز نیاز به دسترسی Administrator دارد.",
+  },
+  "settings.routing.port": { en: "Local proxy port", fa: "پورت پراکسی محلی" },
+  "settings.routing.port.description": {
+    en: "Point your program at {endpoint} — it accepts both HTTP and SOCKS5. If another program already holds this port, connecting will say so rather than quietly moving to another one, which would leave whatever you configured pointing at nothing.",
+    fa: "برنامه‌تان را به {endpoint} وصل کنید — هم HTTP و هم SOCKS5 را می‌پذیرد. اگر برنامهٔ دیگری این پورت را گرفته باشد، هنگام اتصال همین را می‌گوید و بی‌سروصدا پورت دیگری انتخاب نمی‌کند، چون آن‌وقت چیزی که تنظیم کرده‌اید به جای خالی وصل می‌ماند.",
   },
   "settings.tunnel": { en: "Tunnel (TUN)", fa: "تونل (TUN)" },
   "settings.tunnel.description": {

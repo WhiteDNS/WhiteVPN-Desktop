@@ -103,10 +103,16 @@ func (a *App) startWhiteDNSVPNWithMihomo() (model.AppState, error) {
 
 	a.handleRuntimeState(model.RuntimeConnecting, "Starting engine")
 
+	mixedPort, err := chooseProxyPort(settings)
+	if err != nil {
+		a.reportConnectFailure(ctx, err.Error())
+		return a.GetAppState(), err
+	}
+
 	connected, err := session.Connect(ctx, session.Options{
 		CorePath:     corePath,
 		HomeDir:      homeDir,
-		MixedPort:    chooseProxyPort(),
+		MixedPort:    mixedPort,
 		Subscription: subscription,
 		Prefer:       prefer,
 		// Nodes the user hid never reach the configuration, so the engine cannot
@@ -147,10 +153,24 @@ func (a *App) startWhiteDNSVPNWithMihomo() (model.AppState, error) {
 	a.state.Runtime.LocalProxyIP = "127.0.0.1"
 	a.mu.Unlock()
 	a.recordConnectedNode(connected.Selected())
-	if !settings.TunEnabled {
+	if proxyOnly(settings) {
+		// Nothing on the machine has been redirected, which is the point: the
+		// engine listens and the user points one program at it. Said plainly,
+		// because a connection that changed nothing otherwise looks like one
+		// that did not work.
+		a.appendRuntimeLog(fmt.Sprintf(
+			"proxy-only: nothing on this machine was redirected — point your programs at 127.0.0.1:%d (HTTP or SOCKS5)",
+			connected.MixedPort()))
+	}
+	if !settings.TunEnabled && settings.SetSystemProxy {
 		// Proxy mode: without this the engine listens and nothing on the
 		// machine is talking to it. With the tunnel up the routing is the
 		// tunnel's job and a proxy as well would be one hop too many.
+		//
+		// SetSystemProxy is checked because it had been stored, defaulted and
+		// logged since this path was written, and never once read — so turning
+		// the tunnel off silently reconfigured the whole machine, and there was
+		// no way to ask for the engine to just listen.
 		if err := a.captureSystemProxy(connected.MixedPort()); err != nil {
 			// Not fatal. The connection is up and the proxy is listening; what
 			// failed is pointing the machine at it, and that is something a user
@@ -385,8 +405,31 @@ func (a *App) stopMihomo() bool {
 // listener does not come up, and the health check then talks to whatever *is*
 // on 2080 and reports a healthy connection through someone else's proxy. A port
 // this app cannot bind is not a port it can claim.
-func chooseProxyPort() int {
-	for _, port := range []int{mihomoconf.DefaultMixedPort, 0} {
+// chooseProxyPort picks the port the engine's local proxy listens on.
+//
+// How hard it insists depends on whether anyone outside this app is relying on
+// the number. With the tunnel up, or with the machine's proxy settings pointed
+// here, nothing the user configured depends on it and any free port will do.
+//
+// In proxy-only mode the port *is* the interface: it is what somebody typed into
+// Telegram or a browser extension, and quietly binding a different one means
+// their program stops working days later, in another application, with nothing
+// anywhere connecting that to this app. So there it is held, and a port that
+// cannot be had is reported instead of worked around.
+func chooseProxyPort(settings model.WhiteVPNSettings) (int, error) {
+	wanted := settings.ListenPort
+	if wanted <= 0 {
+		wanted = mihomoconf.DefaultMixedPort
+	}
+
+	if proxyOnly(settings) {
+		if !portIsFree(wanted) {
+			return 0, fmt.Errorf("port %d is already in use by another program — choose a different local proxy port in Settings, or turn the system proxy back on", wanted)
+		}
+		return wanted, nil
+	}
+
+	for _, port := range []int{wanted, 0} {
 		listener, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
 		if err != nil {
 			continue
@@ -396,9 +439,27 @@ func chooseProxyPort() int {
 		// engine binds it a moment later, and losing that race is a connection
 		// that fails loudly rather than one that succeeds through a stranger.
 		_ = listener.Close()
-		return bound
+		return bound, nil
 	}
-	return mihomoconf.DefaultMixedPort
+	return wanted, nil
+}
+
+// proxyOnly is the mode where the engine listens and nothing else on the machine
+// is touched — no virtual adapter, no change to the machine's proxy settings.
+//
+// It is the mode for pointing one program at the tunnel: a browser extension, or
+// Telegram's proxy field, while everything else goes out normally.
+func proxyOnly(settings model.WhiteVPNSettings) bool {
+	return !settings.TunEnabled && !settings.SetSystemProxy
+}
+
+func portIsFree(port int) bool {
+	listener, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+	if err != nil {
+		return false
+	}
+	_ = listener.Close()
+	return true
 }
 
 // GetLocalProxyEndpoint is where the engine's local proxy listens, whether or
@@ -409,8 +470,24 @@ func chooseProxyPort() int {
 // that nothing reads: it showed 10888 while the engine listened on 2080. A port
 // the user is invited to configure their browser with has to be the port
 // traffic will actually arrive on.
+// It went on to report the default whatever the engine had actually bound,
+// which is the same fault in a smaller place: a running session may be on
+// another port entirely, and the number offered for someone to configure their
+// browser with has to be the one traffic will arrive on.
 func (a *App) GetLocalProxyEndpoint() string {
-	return fmt.Sprintf("127.0.0.1:%d", mihomoconf.DefaultMixedPort)
+	if current := a.mihomo.current(); current != nil {
+		if port := current.MixedPort(); port > 0 {
+			return fmt.Sprintf("127.0.0.1:%d", port)
+		}
+	}
+
+	a.mu.Lock()
+	port := model.NormalizeWhiteVPNSettings(a.state.WhiteVPN).ListenPort
+	a.mu.Unlock()
+	if port <= 0 {
+		port = mihomoconf.DefaultMixedPort
+	}
+	return fmt.Sprintf("127.0.0.1:%d", port)
 }
 
 // EngineMihomo marks a runtime as belonging to the mihomo session.
