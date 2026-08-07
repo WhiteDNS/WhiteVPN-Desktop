@@ -62,6 +62,9 @@ type App struct {
 	mihomo  mihomoState
 	tray    trayState
 	measure measureState
+	// Cached so opening a page does not spend one of GitHub's sixty
+	// unauthenticated requests an hour.
+	updates updateCheckCache
 
 	connectMu     sync.Mutex
 	connectCancel context.CancelFunc
