@@ -110,6 +110,31 @@ type TunOptions struct {
 	// which is why containment has to be verified after connecting and never
 	// assumed.
 	Inet6Address string
+
+	// StrictRoute stops traffic finding its way around the tunnel, and it is what
+	// closes the DNS leak the desktop had in tunnel mode.
+	//
+	// dns-hijack is not enough on its own, because it can only catch what enters
+	// the tunnel. A resolver on the local network does not: the route to
+	// 192.168.0.0/16 is directly connected on the physical adapter and beats the
+	// 0.0.0.0/1 pair the tunnel installs, so every query to the home router left
+	// the machine in the clear. That is why the leak showed in tunnel mode and not
+	// in proxy mode — through a proxy the machine never resolves anything itself,
+	// it hands over the name and mihomo does the lookup.
+	//
+	// The phone has no equivalent setting and does not need one: VpnService takes
+	// DNS servers directly (`addDnsServer`), so Android routes every query into
+	// the tunnel itself. Windows offers nothing like that. So this is the second
+	// place, after IPv6 containment, where matching the phone literally would mean
+	// shipping a leak.
+	//
+	// What it costs: on Windows, WFP filters that block port 53 for everything
+	// except the engine and the tunnel adapter. On Linux, unreachable policy rules
+	// to the same end. macOS ignores it. The Windows filters live in a session
+	// opened with FWPM_SESSION_FLAG_DYNAMIC, so they are removed when the engine
+	// exits — including when it is killed, which matters: filters that outlived a
+	// crash would leave a machine unable to resolve anything until it rebooted.
+	StrictRoute bool
 }
 
 // DefaultTunOptions are the desktop's tunnel settings, IPv6 contained.
@@ -122,6 +147,7 @@ func DefaultTunOptions() TunOptions {
 		AutoRoute:    true,
 		IPv6:         true,
 		Inet6Address: "fdfe:dcba:9876::1/126",
+		StrictRoute:  true,
 	}
 }
 
@@ -307,6 +333,9 @@ func renderTun(tun TunOptions) string {
 	// bypasses the tunnel's DNS entirely, which both leaks the query and defeats
 	// fake-ip.
 	out.WriteString("  dns-hijack:\n    - any:53\n")
+	// And hijacking is only half of it: it catches what enters the tunnel, and a
+	// query to the router on the local network never does. See StrictRoute.
+	fmt.Fprintf(&out, "  strict-route: %t\n", tun.StrictRoute)
 	if tun.IPv6 && tun.Inet6Address != "" {
 		fmt.Fprintf(&out, "  inet6-address:\n    - %s\n", tun.Inet6Address)
 	}
