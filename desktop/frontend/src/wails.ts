@@ -86,6 +86,8 @@ type AppApi = {
   ListWhiteVPNNodes(refresh: boolean): Promise<WhiteVPNNodeList>;
   ListSubscriptionNodes(subscriptionId: string, refresh: boolean): Promise<WhiteVPNNodeList>;
   ManualNodeProfile(profileId: string): Promise<V2RayProfile>;
+  CopyNodeToManual(subscriptionId: string, nodeName: string): Promise<V2RayImportResult>;
+  SetNodesHidden(subscriptionId: string, nodeNames: string[], hidden: boolean): Promise<WhiteVPNNodeList>;
   SaveManualNode(profile: V2RayProfile): Promise<WhiteVPNNodeList>;
   DeleteManualNodes(profileIds: string[]): Promise<WhiteVPNNodeList>;
   MeasureWhiteVPNNodeDelays(names: string[]): Promise<WhiteVPNNodeList>;
@@ -180,6 +182,9 @@ export const backend = {
   listWhiteVpnNodes: (refresh: boolean) => app().ListWhiteVPNNodes(refresh),
   listSubscriptionNodes: (subscriptionId: string, refresh: boolean) => app().ListSubscriptionNodes(subscriptionId, refresh),
   manualNodeProfile: (profileId: string) => app().ManualNodeProfile(profileId),
+  copyNodeToManual: (subscriptionId: string, nodeName: string) => app().CopyNodeToManual(subscriptionId, nodeName),
+  setNodesHidden: (subscriptionId: string, nodeNames: string[], hidden: boolean) =>
+    app().SetNodesHidden(subscriptionId, nodeNames, hidden),
   saveManualNode: (profile: V2RayProfile) => app().SaveManualNode(profile),
   deleteManualNodes: (profileIds: string[]) => app().DeleteManualNodes(profileIds),
   measureWhiteVpnNodeDelays: (names: string[]) => app().MeasureWhiteVPNNodeDelays(names),

@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -255,6 +256,7 @@ func NormalizeState(state model.AppState) model.AppState {
 	state.V2RaySettingsProfiles = normalizeV2RaySettingsProfiles(state.V2RaySettingsProfiles)
 	state.WhiteVPN = model.NormalizeWhiteVPNSettings(state.WhiteVPN)
 	state.WhiteDNSVPNFrontingIPs = NormalizeWhiteDNSVPNFrontingIPs(state.WhiteDNSVPNFrontingIPs)
+	state.HiddenNodes = NormalizeHiddenNodes(state.HiddenNodes)
 
 	if !hasConnection(state.ConnectionProfiles, state.SelectedConnectionProfileID) {
 		state.SelectedConnectionProfileID = state.ConnectionProfiles[0].ID
@@ -310,6 +312,40 @@ func NormalizeWhiteDNSVPNFrontingIPs(values []string) []string {
 	}
 	if len(out) == 0 {
 		return []string{}
+	}
+	return out
+}
+
+// NormalizeHiddenNodes keeps the hidden list tidy: no blanks, no duplicates, no
+// subscription left holding an empty list, and a stable order so two saves of
+// the same state produce the same file.
+func NormalizeHiddenNodes(hidden map[string][]string) map[string][]string {
+	out := make(map[string][]string, len(hidden))
+	for subscription, names := range hidden {
+		subscription = strings.TrimSpace(subscription)
+		if subscription == "" {
+			continue
+		}
+		seen := make(map[string]struct{}, len(names))
+		kept := make([]string, 0, len(names))
+		for _, name := range names {
+			name = strings.TrimSpace(name)
+			if name == "" {
+				continue
+			}
+			if _, taken := seen[name]; taken {
+				continue
+			}
+			seen[name] = struct{}{}
+			kept = append(kept, name)
+		}
+		if len(kept) == 0 {
+			// An empty entry is the same as no entry, and dropping it stops the
+			// map growing a key for every subscription ever looked at.
+			continue
+		}
+		sort.Strings(kept)
+		out[subscription] = kept
 	}
 	return out
 }

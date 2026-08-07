@@ -9,6 +9,8 @@ import {
   Copy,
   Cpu,
   Download,
+  Eye,
+  EyeOff,
   ExternalLink,
   FileText,
   Gauge,
@@ -2502,6 +2504,10 @@ function NodesPage({
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState<WhiteVPNNode[] | null>(null);
   const [deletingBusy, setDeletingBusy] = useState(false);
+  // Hidden nodes are kept out of the way rather than out of reach: this reveals
+  // them so they can be put back, which is the only way back from hiding one.
+  const [showHidden, setShowHidden] = useState(false);
+  const [hidingBusy, setHidingBusy] = useState(false);
   const unknown = t("vpn.nodes.unknownCountry");
   const manualProfileCount = state.v2rayProfiles.filter((profile) => !profile.subscriptionId).length;
 
@@ -2515,6 +2521,11 @@ function NodesPage({
   const visible = useMemo(() => {
     const needle = search.trim().toLowerCase();
     const filtered = nodes.filter((node) => {
+      // A node the user hid is out of the way by default and reachable through
+      // the toggle, because hiding has to be undoable from somewhere.
+      if (node.hidden && !showHidden) {
+        return false;
+      }
       if (country && node.countryCode !== country) {
         return false;
       }
@@ -2563,8 +2574,9 @@ function NodesPage({
       return left - right;
     });
     return sort.direction === "desc" ? sorted.reverse() : sorted;
-  }, [nodes, search, country, protocol, sort, language, unknown]);
+  }, [nodes, search, country, protocol, sort, language, unknown, showHidden]);
 
+  const hiddenCount = useMemo(() => nodes.filter((node) => node.hidden).length, [nodes]);
   const selectedNames = useMemo(() => visible.filter((node) => selected.has(node.name)).map((node) => node.name), [visible, selected]);
   const targets = selectedNames.length ? selectedNames : visible.map((node) => node.name);
 
@@ -2574,6 +2586,23 @@ function NodesPage({
         ? { column, direction: current.direction === "asc" ? "desc" : "asc" }
         : { column, direction: "asc" }
     );
+  }
+
+  const allVisibleSelected = visible.length > 0 && visible.every((node) => selected.has(node.name));
+  const someVisibleSelected = visible.some((node) => selected.has(node.name));
+
+  // Clearing removes only what is on screen, so a selection made under one
+  // filter is not silently thrown away by unticking under another.
+  function toggleSelectAll() {
+    setSelected((current) => {
+      const next = new Set(current);
+      if (allVisibleSelected) {
+        visible.forEach((node) => next.delete(node.name));
+      } else {
+        visible.forEach((node) => next.add(node.name));
+      }
+      return next;
+    });
   }
 
   function toggleSelected(name: string) {
@@ -2637,6 +2666,11 @@ function NodesPage({
     () => editableNodes.filter((node) => selected.has(node.name)),
     [editableNodes, selected]
   );
+  // The mirror of that: a subscription's nodes cannot be deleted, only hidden.
+  const selectedHideable = useMemo(
+    () => visible.filter((node) => !node.profileId && !node.hidden && selected.has(node.name)),
+    [visible, selected]
+  );
 
   async function openEditor(node: WhiteVPNNode) {
     onError("");
@@ -2690,6 +2724,35 @@ function NodesPage({
       onError(messageFromError(err));
     } finally {
       setDeletingBusy(false);
+    }
+  }
+
+  // A subscription's nodes belong to whoever serves them: a refresh rebuilds
+  // them all, so editing one is not something that could work. Copying takes it
+  // into the user's own configs, where it is theirs and the edit form applies.
+  async function copyToManual(node: WhiteVPNNode) {
+    onError("");
+    try {
+      await backend.copyNodeToManual(subscriptionId, node.name);
+      onSuccess(t("servers.copyToManual.done", { name: node.label }));
+    } catch (err) {
+      onError(messageFromError(err));
+    }
+  }
+
+  async function setHidden(targets: WhiteVPNNode[], hidden: boolean) {
+    if (!targets.length || hidingBusy) {
+      return;
+    }
+    onError("");
+    setHidingBusy(true);
+    try {
+      onNodesChanged(await backend.setNodesHidden(subscriptionId, targets.map((node) => node.name), hidden));
+      onSuccess(hidden ? t("servers.hide.done", { count: targets.length }) : t("servers.unhide.done", { count: targets.length }));
+    } catch (err) {
+      onError(messageFromError(err));
+    } finally {
+      setHidingBusy(false);
     }
   }
 
@@ -2757,6 +2820,18 @@ function NodesPage({
             <Button variant="outline" className="text-destructive" onClick={() => setDeleting(selectedEditable)}>
               <Trash2 />
               {t("servers.deleteSelected", { count: selectedEditable.length })}
+            </Button>
+          )}
+          {selectedHideable.length > 0 && (
+            <Button variant="outline" onClick={() => void setHidden(selectedHideable, true)} disabled={hidingBusy}>
+              <EyeOff />
+              {t("servers.hideSelected", { count: selectedHideable.length })}
+            </Button>
+          )}
+          {hiddenCount > 0 && (
+            <Button variant="outline" onClick={() => setShowHidden((shown) => !shown)}>
+              {showHidden ? <EyeOff /> : <Eye />}
+              {showHidden ? t("servers.hideHidden") : t("servers.showHidden", { count: hiddenCount })}
             </Button>
           )}
           <Button variant="outline" onClick={onReload} disabled={loading}>
@@ -2918,10 +2993,27 @@ function NodesPage({
       <Card className="min-h-0">
         <CardContent className="p-0">
           <ScrollArea className="h-[calc(100svh-24rem)]">
-            <table className="w-full min-w-[860px] table-fixed text-start text-sm">
+            <table className="w-full min-w-[980px] table-fixed text-start text-sm">
               <thead className="sticky top-0 z-10 bg-muted/95 text-xs uppercase text-muted-foreground backdrop-blur">
                 <tr>
-                  <th className="w-10 px-2 py-2"></th>
+                  <th className="w-10 px-2 py-2">
+                    <input
+                      type="checkbox"
+                      className="size-4"
+                      // Only what is on screen. Selecting behind an active
+                      // filter would hand a test or a delete rows the user
+                      // cannot see.
+                      checked={allVisibleSelected}
+                      ref={(element) => {
+                        if (element) {
+                          element.indeterminate = someVisibleSelected && !allVisibleSelected;
+                        }
+                      }}
+                      onChange={toggleSelectAll}
+                      disabled={!visible.length}
+                      aria-label={t("servers.selectAll")}
+                    />
+                  </th>
                   <NodeHeader column="country" sort={sort} onSort={toggleSort} className="w-32">
                     {t("vpn.location")}
                   </NodeHeader>
@@ -2941,12 +3033,25 @@ function NodesPage({
                   <NodeHeader column="speed" sort={sort} onSort={toggleSort} className="w-28 text-end">
                     {t("servers.test.speed")}
                   </NodeHeader>
-                  <th className="w-24 px-2 py-2 text-end font-medium">{t("servers.column.actions")}</th>
+                  {/* Wide enough for five 28px buttons and the gaps between
+                      them. It was w-24 when a row had two, and adding edit and
+                      delete pushed them out over the Speed column instead of
+                      making the column bigger. */}
+                  <th className="w-44 px-2 py-2 text-end font-medium">{t("servers.column.actions")}</th>
                 </tr>
               </thead>
               <tbody>
                 {visible.map((node) => (
-                  <tr key={node.name} className="border-b last:border-b-0 hover:bg-muted/40">
+                  <tr
+                    key={node.name}
+                    className={cn(
+                      "border-b last:border-b-0 hover:bg-muted/40",
+                      // Only ever on screen while hidden nodes are being shown,
+                      // and it has to look different from the rest or there is
+                      // no telling which ones they are.
+                      node.hidden && "opacity-50"
+                    )}
+                  >
                     <td className="px-2 py-1.5">
                       <input
                         type="checkbox"
@@ -3046,6 +3151,44 @@ function NodesPage({
                           </TooltipTrigger>
                           <TooltipContent>{node.link ? t("servers.share") : t("servers.share.none")}</TooltipContent>
                         </Tooltip>
+                        {/* A subscription's node cannot be edited — a refresh
+                            rebuilds it — so it gets the two things that do
+                            work: take a copy, or put it out of the way. */}
+                        {!node.profileId && (
+                          <>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon-sm"
+                                  onClick={() => void copyToManual(node)}
+                                  disabled={!node.link}
+                                  aria-label={t("servers.copyToManual")}
+                                >
+                                  <Copy />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                {node.link ? t("servers.copyToManual") : t("servers.copyToManual.none")}
+                              </TooltipContent>
+                            </Tooltip>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon-sm"
+                                  className={cn(!node.hidden && "text-destructive hover:text-destructive")}
+                                  onClick={() => void setHidden([node], !node.hidden)}
+                                  disabled={hidingBusy}
+                                  aria-label={node.hidden ? t("servers.unhide") : t("servers.hide")}
+                                >
+                                  {node.hidden ? <Eye /> : <EyeOff />}
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>{node.hidden ? t("servers.unhide") : t("servers.hide")}</TooltipContent>
+                            </Tooltip>
+                          </>
+                        )}
                         {/* Offered only where there is a stored config behind
                             the row. See editableNodes. */}
                         {node.profileId && (

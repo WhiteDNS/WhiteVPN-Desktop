@@ -361,8 +361,18 @@ type AppState struct {
 	V2RaySubscriptions     []V2RaySubscription    `json:"v2raySubscriptions"`
 	V2RaySettingsProfiles  []V2RaySettingsProfile `json:"v2raySettingsProfiles"`
 	WhiteDNSVPNFrontingIPs []string               `json:"whiteDNSVPNFrontingIps"`
-	WhiteVPN               WhiteVPNSettings       `json:"whiteVpn"`
-	Runtime                RuntimeStatus          `json:"runtime"`
+	// HiddenNodes are the nodes a user has taken out of a subscription, keyed by
+	// subscription id and held by node name.
+	//
+	// By name, because a subscription's own identity is not stable: refreshing one
+	// drops every profile it produced and re-imports with new ids built from a
+	// timestamp, so anything keyed by id would come undone at the next refresh —
+	// which is the whole thing this has to survive. A name can go stale if the
+	// provider renames a node, and then it reappears; that is the honest failure
+	// and it is visible, unlike silently hiding some other node.
+	HiddenNodes map[string][]string `json:"hiddenNodes"`
+	WhiteVPN    WhiteVPNSettings    `json:"whiteVpn"`
+	Runtime     RuntimeStatus       `json:"runtime"`
 }
 
 type ConnectionImportResult struct {
@@ -529,6 +539,13 @@ type WhiteVPNNode struct {
 	// Link is the share link this node arrived as, which is what sharing it
 	// hands back.
 	Link string `json:"link"`
+
+	// Hidden means the user took this node out of the subscription. It stays in
+	// the list so it can be put back, is skipped by the interface unless hidden
+	// nodes are being shown, and never reaches the engine's configuration at all —
+	// a node hidden from the list but still connectable would be the worst of
+	// both.
+	Hidden bool `json:"hidden"`
 
 	// ProfileID names the stored profile this node was made from, and is set
 	// only for manually added configs.

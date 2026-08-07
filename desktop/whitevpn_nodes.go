@@ -85,7 +85,26 @@ func (a *App) ListSubscriptionNodes(subscriptionID string, refresh bool) (model.
 	if subscriptionID == model.ManualServerSourceID {
 		a.attachManualProfileIDs(nodes)
 	}
+	a.markHiddenNodes(subscriptionID, nodes)
 	return a.storeWhiteVPNNodes(subscriptionID, nodes, time.Now().UTC()), nil
+}
+
+// markHiddenNodes flags the nodes the user has taken out of this subscription.
+//
+// Flagged rather than dropped: a node removed from the list could never be put
+// back, so hiding would be a one-way door with no way out of it.
+func (a *App) markHiddenNodes(subscriptionID string, nodes []model.WhiteVPNNode) {
+	hidden := a.hiddenNodeNames(subscriptionID)
+	if len(hidden) == 0 {
+		return
+	}
+	lookup := make(map[string]struct{}, len(hidden))
+	for _, name := range hidden {
+		lookup[name] = struct{}{}
+	}
+	for i := range nodes {
+		_, nodes[i].Hidden = lookup[nodes[i].Name]
+	}
 }
 
 // attachManualProfileIDs points each manually added node back at the profile it
@@ -400,9 +419,12 @@ func isFlagOnly(value string) bool {
 // the whole catalogue — a user who asked for Germany and silently got Japan has
 // been lied to about where their traffic goes.
 func preferredNodeNames(nodes []model.WhiteVPNNode, settings model.WhiteVPNSettings) []string {
+	// A hidden node is not in the configuration, so preferring one would name a
+	// node the engine does not hold and fail the connect with a confusing error
+	// about a choice matching nothing.
 	if node := strings.TrimSpace(settings.Connection.Node); node != "" {
 		for _, candidate := range nodes {
-			if candidate.Name == node {
+			if candidate.Name == node && !candidate.Hidden {
 				return []string{candidate.Name}
 			}
 		}
@@ -424,6 +446,9 @@ func preferredNodeNames(nodes []model.WhiteVPNNode, settings model.WhiteVPNSetti
 
 	names := make([]string, 0, len(nodes))
 	for _, candidate := range nodes {
+		if candidate.Hidden {
+			continue
+		}
 		if country != "" && candidate.CountryCode != country {
 			continue
 		}

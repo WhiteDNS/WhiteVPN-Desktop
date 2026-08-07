@@ -663,6 +663,10 @@ export type WhiteVPNNode = {
   tls: boolean;
   // The share link this node arrived as, which is what sharing hands back.
   link: string;
+  // The user took this node out of the subscription. It stays in the list so it
+  // can be put back, is filtered from view unless hidden nodes are shown, and
+  // never reaches the engine's configuration.
+  hidden: boolean;
   // The stored config this node was made from, set only for configs added by
   // hand. A node from the catalogue or a subscription has none — it is a
   // reading of what the provider is serving and comes back unchanged at the

@@ -109,7 +109,11 @@ func (a *App) startWhiteDNSVPNWithMihomo() (model.AppState, error) {
 		MixedPort:    chooseProxyPort(),
 		Subscription: subscription,
 		Prefer:       prefer,
-		FrontingIP:   frontingIP,
+		// Nodes the user hid never reach the configuration, so the engine cannot
+		// choose one on Automatic. Hidden from the list but still connectable
+		// would be the worst of both.
+		Exclude:    a.hiddenNodeNames(a.selectedSubscriptionID()),
+		FrontingIP: frontingIP,
 		DNSPrivacy:   dnsPrivacyMode(settings.DNSPrivacy.Mode),
 		DoHURL:       settings.DNSPrivacy.DoHURL,
 		DoTEndpoint:  settings.DNSPrivacy.DoTEndpoint,

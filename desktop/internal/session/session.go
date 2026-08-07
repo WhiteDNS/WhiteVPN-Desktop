@@ -55,6 +55,17 @@ type Options struct {
 	// another without being told.
 	Prefer []string
 
+	// Exclude drops nodes from the configuration entirely, by name. It is how a
+	// node the user hid stays hidden.
+	//
+	// Dropped rather than merely not preferred, and that distinction matters:
+	// Prefer narrows what an attempt reaches for while leaving everything in the
+	// group, so a hidden node expressed as a preference would still be sitting in
+	// the url-test group for the engine to choose. It would also make Prefer
+	// non-empty and turn Automatic into an explicit selection, losing the group
+	// that makes Automatic work at all.
+	Exclude []string
+
 	// FrontingIP reaches every eligible node through this address instead of the
 	// one its name resolves to, while still presenting the name. Empty means the
 	// nodes are reached directly.
@@ -487,6 +498,35 @@ func (s *Session) recoverAutomatically(ctx context.Context) (string, error) {
 	return s.selected, nil
 }
 
+// withoutNodes removes the named nodes from a subscription's proxies.
+//
+// Hiding everything is refused rather than allowed to produce an empty
+// configuration: the engine would fail to start and the error would be about a
+// missing group, which says nothing about what the user actually did.
+func withoutNodes(proxies []mihomoconf.Proxy, exclude []string) ([]mihomoconf.Proxy, error) {
+	drop := make(map[string]struct{}, len(exclude))
+	for _, name := range exclude {
+		if trimmed := strings.TrimSpace(name); trimmed != "" {
+			drop[trimmed] = struct{}{}
+		}
+	}
+	if len(drop) == 0 {
+		return proxies, nil
+	}
+
+	kept := make([]mihomoconf.Proxy, 0, len(proxies))
+	for _, proxy := range proxies {
+		if _, hidden := drop[proxy.Name()]; hidden {
+			continue
+		}
+		kept = append(kept, proxy)
+	}
+	if len(kept) == 0 {
+		return nil, fmt.Errorf("session: every node in this subscription is hidden")
+	}
+	return kept, nil
+}
+
 // recoveryOrder is which nodes a recovery reaches for: the candidates in their
 // own order, without the one that just failed, capped at what one recovery is
 // willing to spend.
@@ -590,6 +630,13 @@ func PrepareConfig(opts Options) (string, []string, error) {
 	// user picking a node on the Servers page expects that node, not whatever
 	// the provider's url-test group decides.
 	if proxies, _, err := mihomoconf.ParseSubscription(body); err == nil {
+		if len(opts.Exclude) > 0 {
+			kept, err := withoutNodes(proxies, opts.Exclude)
+			if err != nil {
+				return "", nil, err
+			}
+			proxies = kept
+		}
 		if opts.FrontingIP != "" {
 			// Nodes fronting cannot be applied to are left reachable at their own
 			// address rather than dropped: a front that covers most of the list is
