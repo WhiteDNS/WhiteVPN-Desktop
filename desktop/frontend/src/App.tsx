@@ -435,6 +435,7 @@ function normalizeV2RaySubscription(subscription: V2RaySubscription): V2RaySubsc
     lastUpdatedAt: subscription.lastUpdatedAt || "",
     lastError: subscription.lastError || "",
     importedCount: Math.max(0, Number(subscription.importedCount) || 0),
+    allowInsecureTls: Boolean(subscription.allowInsecureTls),
   };
 }
 
@@ -3746,6 +3747,20 @@ function V2RaySubscriptionsPage({
                 <AlertDescription>{draft.lastError}</AlertDescription>
               </Alert>
             )}
+            {/* Offered once a refresh has failed, never before — but always
+                shown while it is on, or it could not be turned back off. */}
+            {(draft.lastError || draft.allowInsecureTls) && (
+              <div className="grid gap-2 rounded-md border px-3 py-2">
+                <label className="flex items-center justify-between gap-3 text-sm">
+                  {t("subs.editor.allowInsecureTls")}
+                  <Switch
+                    checked={draft.allowInsecureTls}
+                    onCheckedChange={(allowInsecureTls) => setDraft({ ...draft, allowInsecureTls })}
+                  />
+                </label>
+                <p className="text-xs text-muted-foreground">{t("subs.editor.allowInsecureTlsHint")}</p>
+              </div>
+            )}
           </FieldGroup>
           <DialogFooter className="sm:justify-between">
             {draft.id ? (
@@ -3904,6 +3919,7 @@ function defaultV2RaySubscriptionDraft(): V2RaySubscription {
     lastUpdatedAt: "",
     lastError: "",
     importedCount: 0,
+    allowInsecureTls: false,
   };
 }
 

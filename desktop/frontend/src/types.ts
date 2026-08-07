@@ -101,6 +101,7 @@ export interface V2RaySubscription {
   lastUpdatedAt: string;
   lastError: string;
   importedCount: number;
+  allowInsecureTls: boolean;
 }
 
 export interface V2RayPingResult {

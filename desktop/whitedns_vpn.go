@@ -237,7 +237,7 @@ func (a *App) subscriptionBodyFor(ctx context.Context, id string) (string, error
 	if !ok {
 		return "", fmt.Errorf("the selected subscription is no longer in the list")
 	}
-	body, err := a.fetchSubscriptionDocument(ctx, subscription.URL)
+	body, err := a.fetchSubscriptionDocument(ctx, subscription)
 	if err != nil {
 		return "", fmt.Errorf("subscription unavailable: %w", err)
 	}
