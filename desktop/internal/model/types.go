@@ -375,6 +375,25 @@ type AppState struct {
 	Runtime     RuntimeStatus       `json:"runtime"`
 }
 
+// UpdateStatus is what the app knows about newer releases.
+//
+// Error is a string rather than a failure of the call, because not reaching
+// GitHub is ordinary where this app is used and is not worth interrupting anyone
+// over. Available stays false in that case, so a failed check never nags.
+type UpdateStatus struct {
+	// Current is the running version, or "dev" for a build that did not come
+	// from a release — which is never offered an update.
+	Current string `json:"current"`
+	// Latest is the newest published release, empty when the check did not get
+	// an answer.
+	Latest    string `json:"latest"`
+	Available bool   `json:"available"`
+	URL       string `json:"url"`
+	Notes     string `json:"notes"`
+	CheckedAt string `json:"checkedAt"`
+	Error     string `json:"error"`
+}
+
 type ConnectionImportResult struct {
 	State    AppState `json:"state"`
 	Imported int      `json:"imported"`

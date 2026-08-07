@@ -21,6 +21,7 @@ import type {
   LegacyImportOffer,
   WhiteVPNSettings,
   WhiteVPNNodeList,
+  UpdateStatus,
   ConnectionSelection,
   NodeTestRequest,
 } from "./types";
@@ -82,6 +83,7 @@ type AppApi = {
   GetPrivacyPolicyVersion(): Promise<number>;
   AcceptPrivacyPolicy(): Promise<AppState>;
   GetAppVersion(): Promise<string>;
+  CheckForUpdate(force: boolean): Promise<UpdateStatus>;
   GetLocalProxyEndpoint(): Promise<string>;
   ListWhiteVPNNodes(refresh: boolean): Promise<WhiteVPNNodeList>;
   ListSubscriptionNodes(subscriptionId: string, refresh: boolean): Promise<WhiteVPNNodeList>;
@@ -178,6 +180,7 @@ export const backend = {
   getPrivacyPolicyVersion: () => app().GetPrivacyPolicyVersion(),
   acceptPrivacyPolicy: () => app().AcceptPrivacyPolicy(),
   getAppVersion: () => app().GetAppVersion(),
+  checkForUpdate: (force: boolean) => app().CheckForUpdate(force),
   getLocalProxyEndpoint: () => app().GetLocalProxyEndpoint(),
   listWhiteVpnNodes: (refresh: boolean) => app().ListWhiteVPNNodes(refresh),
   listSubscriptionNodes: (subscriptionId: string, refresh: boolean) => app().ListSubscriptionNodes(subscriptionId, refresh),

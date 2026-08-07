@@ -526,6 +526,33 @@ const strings = {
     fa: "«در دسترس» آدرس را مستقیم می‌زند، بدون وی‌پی‌ان و بدون موتور — پس سروری که از محل شما مسدود است در این آزمون رد می‌شود، در حالی که از راه موتور کاملاً کار می‌کند. تأخیر و سرعت روی موتور جداگانه‌ای اجرا می‌شوند و هرگز اتصال زنده را مختل نمی‌کنند، و سرعت هر بار یک سرور است، پس تا ۲۵ مورد محدود می‌شود.",
   },
 
+  // Telling someone a newer version exists. The app does not download or
+  // install anything — it runs as Administrator and nothing it ships is signed,
+  // so fetching a binary and running it is not something to do without verified
+  // signatures. Whoever is still on an old build is not in the Telegram
+  // channel; this is what reaches them.
+  "settings.update.title": { en: "Updates", fa: "بروزرسانی" },
+  "settings.update.description": {
+    en: "The app checks for a newer version at startup. It never downloads or installs anything by itself.",
+    fa: "اپ هنگام اجرا نسخهٔ جدید را بررسی می‌کند. هیچ‌وقت خودش چیزی دانلود یا نصب نمی‌کند.",
+  },
+  "update.badge": { en: "Update to v{version}", fa: "بروزرسانی به نسخهٔ {version}" },
+  "update.available": {
+    en: "Version {version} is out. Click to open the download page.",
+    fa: "نسخهٔ {version} منتشر شده. برای باز کردن صفحهٔ دانلود کلیک کنید.",
+  },
+  "update.check": { en: "Check for updates", fa: "بررسی بروزرسانی" },
+  "update.checking": { en: "Checking…", fa: "در حال بررسی…" },
+  "update.upToDate": { en: "You are on the latest version ({version}).", fa: "شما روی آخرین نسخه هستید ({version})." },
+  "update.failed": {
+    en: "Could not reach the release list. Connect first and try again.",
+    fa: "دسترسی به فهرست نسخه‌ها ممکن نشد. اول وصل شوید و دوباره امتحان کنید.",
+  },
+  "update.dev": {
+    en: "This is a development build, so there is nothing to update to.",
+    fa: "این یک بیلد توسعه است، پس چیزی برای بروزرسانی وجود ندارد.",
+  },
+
   "common.close": { en: "Close", fa: "بستن" },
   "common.copy": { en: "Copy", fa: "کپی" },
   "common.cancel": { en: "Cancel", fa: "انصراف" },

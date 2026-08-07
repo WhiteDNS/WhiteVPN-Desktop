@@ -1,6 +1,7 @@
 import {
   Activity,
   AlertCircle,
+  ArrowUpCircle,
   Check,
   ChevronDown,
   ChevronRight,
@@ -137,6 +138,7 @@ import type {
   RuntimeStatus,
   RuntimeStatusName,
   ConnectionSelection,
+  UpdateStatus,
   WhiteVPNNode,
   WhiteVPNNodeList,
   NodeTestRequest,
@@ -679,6 +681,11 @@ function App() {
   // name it while disconnected — that is when someone is setting a browser up.
   const [engineProxyEndpoint, setEngineProxyEndpoint] = useState("");
   const [appVersion, setAppVersion] = useState("");
+  // What the app knows about newer releases. Null until the check has run, and
+  // a check that could not reach GitHub leaves available false rather than
+  // saying anything — it is blocked in the places this app is used, and a
+  // failed check must not become a message.
+  const [update, setUpdate] = useState<UpdateStatus | null>(null);
   const [page, setPage] = useState<Page>("vpn");
   const [errorToast, setErrorToast] = useState<AppErrorToast | null>(null);
   const [successToast, setSuccessToast] = useState<AppErrorToast | null>(null);
@@ -839,6 +846,13 @@ function App() {
       .getLocalProxyEndpoint()
       .then(setEngineProxyEndpoint)
       .catch(() => setEngineProxyEndpoint(""));
+    // Not on the critical path: nothing waits for it, and a slow or blocked
+    // GitHub delays nothing. The backend caches for six hours, so this costs a
+    // request on the first launch of a session and nothing after.
+    backend
+      .checkForUpdate(false)
+      .then(setUpdate)
+      .catch(() => setUpdate(null));
     backend
       .getPrivacyPolicyVersion()
       .then(setPolicyVersion)
@@ -1000,7 +1014,7 @@ function App() {
   return (
     <TooltipProvider>
       <SidebarProvider defaultOpen>
-        <AppSidebar page={activePage} runtime={state.runtime} onPage={setPage} language={language} version={appVersion} t={t} />
+        <AppSidebar page={activePage} runtime={state.runtime} onPage={setPage} language={language} version={appVersion} update={update} t={t} />
         <SidebarInset className="min-w-0 overflow-x-hidden">
           <main className="min-h-svh min-w-0 overflow-x-hidden bg-muted/30 p-4 md:p-6">
             <div className="mx-auto flex w-full min-w-0 max-w-7xl flex-col gap-4">
@@ -1280,6 +1294,7 @@ function AppSidebar({
   onPage,
   language,
   version,
+  update,
   t,
 }: {
   page: Page;
@@ -1287,6 +1302,7 @@ function AppSidebar({
   onPage: (page: Page) => void;
   language: Language;
   version: string;
+  update: UpdateStatus | null;
   t: TranslateFn;
 }) {
   const sidebarEndpoint = runtimeProxyDisplayEndpoint(runtime);
@@ -1322,7 +1338,23 @@ function AppSidebar({
                   places is a version that will disagree with itself, and this
                   one shipped 1.0.1 while saying 1.0.0. Blank until it arrives,
                   because a stale number is worse than none. */}
-              <p className="truncate text-sm leading-normal text-muted-foreground">{version ? `v${version}` : ""}</p>
+              {update?.available ? (
+                // The version becomes the way to the new one. Whoever is still
+                // on an old build is not in the Telegram channel — that is who
+                // this reaches — and the number they already glance at is the
+                // right place to say so.
+                <button
+                  type="button"
+                  onClick={() => openExternalUrl(update.url)}
+                  className="flex items-center gap-1 truncate text-sm leading-normal text-primary hover:underline"
+                  title={t("update.available", { version: update.latest })}
+                >
+                  <ArrowUpCircle className="size-3.5 shrink-0" />
+                  <span className="truncate">{t("update.badge", { version: update.latest })}</span>
+                </button>
+              ) : (
+                <p className="truncate text-sm leading-normal text-muted-foreground">{version ? `v${version}` : ""}</p>
+              )}
             </div>
           </div>
           <ThemeSettingsMenu
@@ -6217,7 +6249,58 @@ function WhiteVPNSettingsPage({
           </Field>
         </FieldGroup>
       </SettingsSection>
+
+      <SettingsSection title={t("settings.update.title")} description={t("settings.update.description")}>
+        <UpdateCheckRow t={t} />
+      </SettingsSection>
     </PageShell>
+  );
+}
+
+// Asking for the check rather than waiting for it.
+//
+// The automatic one runs at startup and is cached for six hours, which is right
+// for something nobody asked for. Someone who has just been told there is a new
+// version and wants to see it should not have to wait out that cache, so this
+// forces it — and then says what it found, including that it could not look,
+// which on these networks is a normal answer rather than an error.
+function UpdateCheckRow({ t }: { t: TranslateFn }) {
+  const [status, setStatus] = useState<UpdateStatus | null>(null);
+  const [checking, setChecking] = useState(false);
+
+  async function check() {
+    setChecking(true);
+    try {
+      setStatus(await backend.checkForUpdate(true));
+    } catch {
+      setStatus(null);
+    } finally {
+      setChecking(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-3">
+      <Button variant="outline" onClick={() => void check()} disabled={checking}>
+        <ArrowUpCircle className={cn(checking && "animate-pulse")} />
+        {checking ? t("update.checking") : t("update.check")}
+      </Button>
+      {status && !checking && (
+        <span className="text-sm text-muted-foreground">
+          {status.available ? (
+            <button type="button" onClick={() => openExternalUrl(status.url)} className="text-primary hover:underline">
+              {t("update.available", { version: status.latest })}
+            </button>
+          ) : status.current === "dev" ? (
+            t("update.dev")
+          ) : status.error ? (
+            t("update.failed")
+          ) : (
+            t("update.upToDate", { version: status.current })
+          )}
+        </span>
+      )}
+    </div>
   );
 }
 
