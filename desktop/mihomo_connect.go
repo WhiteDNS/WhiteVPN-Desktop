@@ -187,6 +187,7 @@ func (a *App) startWhiteDNSVPNWithMihomo() (model.AppState, error) {
 	a.resolveExitCountry()
 	a.sampleTraffic(connected)
 	a.watchHealth(connected)
+	a.retryBlockedSubscriptions()
 	return a.GetAppState(), nil
 }
 
