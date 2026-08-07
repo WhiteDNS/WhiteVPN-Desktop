@@ -101,7 +101,23 @@ func fetchWhiteDNSVPNSubscriptionDocument(ctx context.Context) (string, error) {
 	if !builtInCatalogueAvailable() {
 		return "", errNoBuiltInCatalogue
 	}
-	return fetchV2RaySubscriptionDocument(ctx, whiteDNSVPNSubscriptionURL)
+	body, err := fetchV2RaySubscriptionDocument(ctx, whiteDNSVPNSubscriptionURL)
+	if err == nil {
+		return body, nil
+	}
+
+	// The same fallback the user's own subscriptions get, and this path needs it
+	// most: connecting is what fetches this, so there is never a tunnel to fall
+	// back to here. A network that reads the ClientHello and cuts it leaves the
+	// app with no node list, which is to say no app at all.
+	if looksLikeInterference(err) {
+		if fragmented := fragmentedDirectClient(false); fragmented != nil {
+			if body, retryErr := fetchV2RaySubscriptionDocumentWith(ctx, whiteDNSVPNSubscriptionURL, fragmented); retryErr == nil {
+				return body, nil
+			}
+		}
+	}
+	return "", err
 }
 
 func (a *App) StartWhiteDNSVPNConnection() (model.AppState, error) {

@@ -59,6 +59,19 @@ func (a *App) fetchSubscriptionDocument(ctx context.Context, subscription model.
 	}
 	directErr = err
 
+	// The reply was not TLS, which is what a filter reading the ClientHello
+	// leaves behind. Splitting that first write across segments too small to
+	// hold the hostname gives it nothing to match on. Only on this failure: a
+	// 404 or a bad certificate is not something a differently-shaped handshake
+	// is going to fix, and retrying either would just be a second wait.
+	if looksLikeInterference(directErr) {
+		if fragmented := fragmentedDirectClient(skipVerify); fragmented != nil {
+			if body, err := fetchV2RaySubscriptionDocumentWith(ctx, subscription.URL, fragmented); err == nil {
+				return body, nil
+			}
+		}
+	}
+
 	return "", subscriptionFetchError(directErr, proxiedErr, skipVerify)
 }
 
