@@ -121,6 +121,40 @@ func TestRenderEnablesTunAndContainsIPv6(t *testing.T) {
 	}
 }
 
+// The DNS leak this was shipped with, and the reason dns-hijack alone is not the
+// answer.
+//
+// Hijacking catches queries that enter the tunnel. A query to the resolver on
+// the local network never enters it: the route to that subnet is directly
+// connected on the physical adapter and beats the 0.0.0.0/1 pair the tunnel
+// installs. So every lookup went to the home router in the clear, and a leak
+// test showed the user's own ISP — in tunnel mode only, because through a proxy
+// the machine never resolves anything itself.
+//
+// If this ever goes back to false, that leak returns and nothing else in the
+// suite notices.
+func TestRenderKeepsDNSInsideTheTunnel(t *testing.T) {
+	document := Render("", Options{Secret: "s3cret", ProxyGroup: SelectGroup, Tun: DefaultTunOptions()})
+	tun := parseYAML(t, document)["tun"].(map[string]any)
+
+	if tun["strict-route"] != true {
+		t.Fatalf("without strict-route, DNS to a resolver on the local network leaves the tunnel: %#v", tun["strict-route"])
+	}
+}
+
+// It follows the tunnel: with nothing routed there is nothing to keep inside,
+// and the filters would only be blocking the machine's own DNS.
+func TestRenderLeavesStrictRouteOffWithTheTunnel(t *testing.T) {
+	tun := DefaultTunOptions()
+	tun.StrictRoute = false
+	document := Render("", Options{Secret: "s", ProxyGroup: SelectGroup, Tun: tun})
+
+	parsed := parseYAML(t, document)["tun"].(map[string]any)
+	if parsed["strict-route"] != false {
+		t.Fatalf("expected strict-route to follow the option: %#v", parsed["strict-route"])
+	}
+}
+
 func TestRenderCanLeaveTunOff(t *testing.T) {
 	document := Render("", Options{Secret: "s"})
 	parsed := parseYAML(t, document)
