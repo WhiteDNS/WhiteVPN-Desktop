@@ -11,6 +11,13 @@ import (
 // A missing engine has to say so plainly. It is the first thing anyone opting in
 // will hit, and "connection failed" would send them looking in the wrong place.
 func TestFindMihomoCoreExplainsItselfWhenAbsent(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		// Windows never reads the override. The core is launched elevated there,
+		// so it comes only from the copy inside the application rather than from
+		// an environment variable another local process could point elsewhere —
+		// which means there is no missing path for it to complain about.
+		t.Skip("Windows intentionally uses only the embedded elevated core")
+	}
 	t.Setenv("WHITEVPN_MIHOMO_BIN", filepath.Join(t.TempDir(), "absent.exe"))
 
 	_, err := findMihomoCore()

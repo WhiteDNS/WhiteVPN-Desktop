@@ -1,0 +1,139 @@
+name: CI
+
+# Every release so far was built without a single automated test running: the
+# only workflow was the release one, and it fires on a tag. The tests existed and
+# were good; whether they had been run depended on somebody remembering to. This
+# is that somebody.
+#
+# On pull requests and on main, so a change is checked before it is merged and
+# again after — a green PR that goes red once merged is worth knowing about
+# immediately rather than at the next release.
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+# A second push to a branch makes the first run irrelevant.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  go:
+    name: Go (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # All three, because a good deal of this code only exists on one of them
+        # — the system proxy, the tunnel, elevation — and a test that only ever
+        # runs on the developer's machine is a test for that machine. Several
+        # tests skip themselves off their own platform, which is exactly why the
+        # other platforms have to be here.
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.5"
+          cache-dependency-path: desktop/go.sum
+
+      # WebKit and GTK, which the Wails bindings need to compile on Linux.
+      # Without them the build fails for want of a header rather than for
+      # anything to do with the change under test.
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev
+
+      - name: Build
+        working-directory: desktop
+        run: go build ./...
+
+      - name: Vet
+        working-directory: desktop
+        run: go vet ./internal/... .
+
+      # -race on Linux only: it is the slowest of the three and the concurrency
+      # this app has — the health watchdog, the traffic sampler, the seeding —
+      # is not platform-specific, so running it once is enough to catch it.
+      - name: Test
+        working-directory: desktop
+        run: go test ${{ runner.os == 'Linux' && '-race' || '' }} ./internal/... .
+
+  cross-compile:
+    name: Cross-compile
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.5"
+          cache-dependency-path: desktop/go.sum
+
+      # The platform-specific files are the ones most likely to be broken by a
+      # change made elsewhere, and they are invisible until something builds for
+      # that platform. This catches a Windows-only or Linux-only file that no
+      # longer compiles without waiting for a release to find out.
+      - name: Build the platform packages for every target
+        working-directory: desktop
+        run: |
+          set -euo pipefail
+          for target in windows/amd64 windows/arm64 linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do
+            echo "==> $target"
+            GOOS="${target%/*}" GOARCH="${target#*/}" go build ./internal/...
+          done
+
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: desktop/frontend/package-lock.json
+
+      - name: Install
+        working-directory: desktop/frontend
+        run: npm ci
+
+      # The type check is the one that has caught real mistakes: a binding added
+      # in Go and not in wails.ts, a translation key used before it exists.
+      - name: Type check
+        working-directory: desktop/frontend
+        run: npx tsc --noEmit
+
+      - name: Build
+        working-directory: desktop/frontend
+        run: npm run build
+
+  secrets:
+    name: No secrets in source
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The catalogue's key sat in a public file from the first commit until it
+      # was moved into the build. Nothing stopped it going back except noticing,
+      # so this notices.
+      - name: The catalogue credentials must come from the build, not the source
+        run: |
+          set -euo pipefail
+          # Tests are excluded: one of them sets the address to a stand-in so it
+          # can check the real one never reaches the saved state, which is the
+          # opposite of the mistake being looked for.
+          if grep -rnE 'whiteDNSVPNSubscription(Key|URL)[[:space:]]*=[[:space:]]*"[^"]+"' desktop \
+              --include='*.go' --exclude='*_test.go'; then
+            echo "::error::A catalogue URL or key is hard-coded above. They are injected at link time; see desktop/Makefile."
+            exit 1
+          fi
+          echo "clean"

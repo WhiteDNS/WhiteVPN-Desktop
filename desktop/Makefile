@@ -18,7 +18,24 @@ RELEASE_LDFLAGS ?= -s -w
 # than from a string someone has to remember to edit. Releasing 1.0.1 once
 # shipped an app whose own sidebar said 1.0.0.
 VERSION_LDFLAGS := -X main.appVersion=$(APP_VERSION)
-WAILS_RELEASE_FLAGS := -trimpath -ldflags "$(RELEASE_LDFLAGS) $(VERSION_LDFLAGS)"
+
+# The built-in catalogue's address and key.
+#
+# They lived in whitedns_vpn.go, in a public repository, from its first commit —
+# which meant anyone could read the key off a web page, fetch the encrypted
+# catalogue and decrypt every node's credentials out of it. No binary required.
+#
+# Injecting them here does not make them secret; they still ship inside every
+# binary, and a client that can decrypt the catalogue can be taken apart. It
+# raises the effort from reading a file to pulling strings out of an executable,
+# which is the most that is available while the client holds the key at all.
+#
+# Empty is a valid build: it produces a client with no catalogue that says so,
+# which is what anyone building from source should get.
+WHITEVPN_CATALOGUE_URL ?=
+WHITEVPN_CATALOGUE_KEY ?=
+CATALOGUE_LDFLAGS := $(if $(WHITEVPN_CATALOGUE_URL),-X 'main.whiteDNSVPNSubscriptionURL=$(WHITEVPN_CATALOGUE_URL)',) $(if $(WHITEVPN_CATALOGUE_KEY),-X 'main.whiteDNSVPNSubscriptionKey=$(WHITEVPN_CATALOGUE_KEY)',)
+WAILS_RELEASE_FLAGS := -trimpath -ldflags "$(RELEASE_LDFLAGS) $(VERSION_LDFLAGS) $(CATALOGUE_LDFLAGS)"
 
 # The other version: what the file itself reports in Properties → Details.
 #
@@ -53,7 +70,7 @@ UPX ?= 0
 UPX_FLAGS ?= --best --lzma
 MACOS_CGO_LDFLAGS ?= -framework UniformTypeIdentifiers
 MACOS_GO_TAGS ?= desktop,wv2runtime.download,production
-MACOS_GO_LDFLAGS ?= $(RELEASE_LDFLAGS) $(VERSION_LDFLAGS)
+MACOS_GO_LDFLAGS ?= $(RELEASE_LDFLAGS) $(VERSION_LDFLAGS) $(CATALOGUE_LDFLAGS)
 MACOS_DEPLOYMENT_TARGET_AMD64 ?= 10.13
 MACOS_DEPLOYMENT_TARGET_ARM64 ?= 11.0
 MACOS_BUNDLE_MIN_VERSION ?= $(if $(filter arm64,$(MACOS_CLIENT_ARCH)),$(MACOS_DEPLOYMENT_TARGET_ARM64),$(MACOS_DEPLOYMENT_TARGET_AMD64))

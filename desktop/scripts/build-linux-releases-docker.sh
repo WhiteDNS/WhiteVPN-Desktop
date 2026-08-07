@@ -66,6 +66,8 @@ for platform in $(printf '%s' "$platforms" | tr ',' ' '); do
     -e LINUX_NODE_MAJOR="$node_major" \
     -e LINUX_PACKAGE_FORMATS="$package_formats" \
     -e RELEASE_LDFLAGS="$release_ldflags" \
+    -e WHITEVPN_CATALOGUE_URL="${WHITEVPN_CATALOGUE_URL:-}" \
+    -e WHITEVPN_CATALOGUE_KEY="${WHITEVPN_CATALOGUE_KEY:-}" \
     -e HELPER_GO_LDFLAGS="$helper_ldflags" \
     -e UPX="$upx" \
     -e UPX_FLAGS="$upx_flags" \
@@ -112,6 +114,8 @@ for platform in $(printf '%s' "$platforms" | tr ',' ' '); do
         XRAY_CACHE_DIR=/workspace/desktop/.cache/xray \
         XRAY_CORE_VERSION="${XRAY_CORE_VERSION:-v26.3.27}" \
         RELEASE_LDFLAGS="$RELEASE_LDFLAGS" \
+        WHITEVPN_CATALOGUE_URL="$WHITEVPN_CATALOGUE_URL" \
+        WHITEVPN_CATALOGUE_KEY="$WHITEVPN_CATALOGUE_KEY" \
         HELPER_GO_LDFLAGS="$HELPER_GO_LDFLAGS" \
         UPX="$UPX" \
         UPX_FLAGS="$UPX_FLAGS"

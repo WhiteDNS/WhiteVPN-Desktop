@@ -9,7 +9,27 @@
     <trustInfo xmlns="urn:schemas-microsoft-com:asm.v2">
         <security>
             <requestedPrivileges>
-                <requestedExecutionLevel level="requireAdministrator" uiAccess="false"/>
+                <!--
+                    asInvoker, not requireAdministrator.
+
+                    Only one thing here needs Administrator: creating the tunnel
+                    adapter. Everything else is the user's own — the state file
+                    and the unpacked engine live under %AppData%, the system
+                    proxy is a per-user WinINET setting, and the local port is
+                    above 1024. Demanding it for the whole app meant a UAC prompt
+                    on every launch for people who only ever use proxy mode, and
+                    a WebView2 browser engine running with full rights to the
+                    machine for everyone.
+
+                    The engine is elevated on its own when the tunnel is on:
+                    engine.startElevatedChild asks for it through ShellExecuteEx,
+                    and the control pipe is already built for the split — see
+                    pipeSecurityDescriptor, which admits SYSTEM and
+                    Administrators precisely so an elevated engine can reach a
+                    pipe opened by an unelevated interface, including when UAC
+                    used a different administrator account.
+                -->
+                <requestedExecutionLevel level="asInvoker" uiAccess="false"/>
             </requestedPrivileges>
         </security>
     </trustInfo>

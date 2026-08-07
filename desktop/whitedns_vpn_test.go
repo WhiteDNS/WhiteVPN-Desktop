@@ -18,7 +18,7 @@ func TestDecryptWhiteDNSVPNSubscription(t *testing.T) {
 	plaintext := base64.StdEncoding.EncodeToString([]byte(testV2RaySubscriptionLink("encrypted")))
 	encrypted := encryptWhiteDNSVPNTestPayload(t, plaintext)
 
-	decrypted, err := decryptWhiteDNSVPNSubscription(encrypted, whiteDNSVPNSubscriptionKey)
+	decrypted, err := decryptWhiteDNSVPNSubscription(encrypted, testCatalogueKey)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -28,9 +28,9 @@ func TestDecryptWhiteDNSVPNSubscription(t *testing.T) {
 }
 
 func TestDecryptWhiteDNSVPNFrontingIPList(t *testing.T) {
-	encrypted := encryptWhiteDNSVPNTestPayloadWithKey(t, `["203.0.113.10","bad","203.0.113.10","198.51.100.20"]`, whiteDNSVPNFrontingIPListKey)
+	encrypted := encryptWhiteDNSVPNTestPayloadWithKey(t, `["203.0.113.10","bad","203.0.113.10","198.51.100.20"]`, testCatalogueKey)
 
-	decrypted, err := decryptWhiteDNSVPNIPList(encrypted, whiteDNSVPNFrontingIPListKey)
+	decrypted, err := decryptWhiteDNSVPNIPList(encrypted, testCatalogueKey)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,9 +62,17 @@ func TestParseWhiteDNSVPNCustomFrontingIPs(t *testing.T) {
 	}
 }
 
+// testCatalogueKey is what these tests encrypt and decrypt with.
+//
+// Deliberately not the real key. These tests are about the crypto, not about any
+// particular passphrase, and one that reaches for the production value breaks
+// the moment that value stops being a compile-time constant — which is exactly
+// what happened when it moved out of the source and into the build.
+const testCatalogueKey = "test-passphrase-not-the-real-one"
+
 func encryptWhiteDNSVPNTestPayload(t *testing.T, plaintext string) string {
 	t.Helper()
-	return encryptWhiteDNSVPNTestPayloadWithKey(t, plaintext, whiteDNSVPNSubscriptionKey)
+	return encryptWhiteDNSVPNTestPayloadWithKey(t, plaintext, testCatalogueKey)
 }
 
 func encryptWhiteDNSVPNTestPayloadWithKey(t *testing.T, plaintext string, keyText string) string {
@@ -138,6 +146,13 @@ func whiteDNSVPNTestProfiles(profiles []model.V2RayProfile) []model.V2RayProfile
 // see — the subscriptions list, a backup export, the state handed to the
 // interface — is built from that.
 func TestBuiltInCatalogueAddressNeverEntersState(t *testing.T) {
+	// The address is injected at link time and empty in a test binary, and
+	// `strings.Contains(anything, "")` is true — so without a stand-in this test
+	// passes or fails for reasons that have nothing to do with what it checks.
+	restore := whiteDNSVPNSubscriptionURL
+	whiteDNSVPNSubscriptionURL = "https://catalogue.invalid/encrypted"
+	defer func() { whiteDNSVPNSubscriptionURL = restore }()
+
 	app := &App{state: model.DefaultAppState()}
 	app.mu.Lock()
 	idx := app.ensureWhiteDNSVPNSubscriptionLocked()
