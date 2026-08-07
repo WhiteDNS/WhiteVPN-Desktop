@@ -114,8 +114,34 @@ VPN off while the interface still said Connected.
 |---|---|---|---|
 | TLS integrity | `white_dns_tls_integrity` / `enabled` | `false` | `[x]` |
 
-Probes certificate validity and quarantines a failing endpoint for 24 h
-(`white_dns_scan_state` → `tls_quarantine:*`).
+**What it actually is, because the name misleads.** Not a check on the server's
+own certificate before connecting — it is a check for *interception*. After the
+connection is up it makes an HTTPS request through the proxy and looks at whether
+the certificate verifies. If something between this machine and the internet is
+terminating TLS and re-issuing certificates, every request succeeds, the health
+check passes, the dashboard is green, and the connection is being read. The
+certificate is the only thing that says so.
+
+It fails **closed** on a certificate failure and **open** on anything else, which
+is the line Android draws too (`"all probes unreachable; allowing connection"`).
+The asymmetry is deliberate: a rejected certificate is evidence, while
+unreachable is the ordinary condition of these networks, and refusing to connect
+whenever three URLs are blocked would make the setting unusable exactly where it
+matters. `TestInterceptedTLSIsRefused` stands up a real intercepting proxy with
+its own authority and checks the connection is refused.
+
+A node that fails is rejected and the walk moves to the next, rather than the
+connect being abandoned.
+
+Android's 24-hour quarantine (`white_dns_scan_state` → `tls_quarantine:*`) is not
+ported: it keys on clean-IP scan endpoints, and the scan is `[ ]` here.
+
+**Both of these were stored and never read**, like split tunnelling and IP
+fronting before them: shown, validated, saved, and connected to nothing. The
+noise settings reach WireGuard proxies and nothing else — that is not a shortcut,
+the noise is AmneziaWG's and mihomo has nowhere to put it on a vless or trojan
+proxy, and Android draws the same line. The interface says so rather than letting
+someone turn it on and wonder.
 
 ### 2.2 WARP / Amnezia noise (`settings_warp_section`)
 

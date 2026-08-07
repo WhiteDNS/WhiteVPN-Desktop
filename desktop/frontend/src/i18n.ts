@@ -597,8 +597,8 @@ const strings = {
   },
   "settings.tlsIntegrity": { en: "TLS integrity", fa: "یکپارچگی TLS" },
   "settings.tlsIntegrity.description": {
-    en: "Verifies a server's certificate before connecting, and sets aside any that fail for a day.",
-    fa: "گواهی سرور را پیش از اتصال بررسی می‌کند و هر سروری را که رد شود یک روز کنار می‌گذارد.",
+    en: "After connecting, checks that certificates still verify through the tunnel. A node where they do not is being read, and is refused.",
+    fa: "بعد از اتصال بررسی می‌کند که گواهی‌ها از داخل تونل معتبر بمانند. سروری که این بررسی را رد کند در حال شنود شدن است و پذیرفته نمی‌شود.",
   },
 
   "settings.dns.title": { en: "DNS privacy", fa: "حریم خصوصی DNS" },
@@ -655,8 +655,8 @@ const strings = {
 
   "settings.noise.title": { en: "Obfuscation", fa: "Amnezia Noise" },
   "settings.noise.description": {
-    en: "Pad the connection with noise so its shape is less recognisable.",
-    fa: "اتصال را با نویز پر می‌کند تا الگویش کمتر قابل تشخیص باشد.",
+    en: "Pad the connection with noise so its shape is less recognisable. Applies to WireGuard servers only — it has no effect on any other kind.",
+    fa: "اتصال را با نویز پر می‌کند تا الگویش کمتر قابل تشخیص باشد. فقط روی سرورهای WireGuard اثر دارد و روی بقیهٔ انواع هیچ تأثیری ندارد.",
   },
   "settings.noise.enable": { en: "Amnezia noise", fa: "فعال‌سازی Amnezia Noise" },
   "settings.noise.count": { en: "Packets", fa: "تعداد" },
