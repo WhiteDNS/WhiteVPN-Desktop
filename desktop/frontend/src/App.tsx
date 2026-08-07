@@ -473,6 +473,19 @@ function normalizeV2RaySettingsProfile(profile: V2RaySettingsProfile): V2RaySett
   };
 }
 
+// The three ways traffic can reach the engine, as one value.
+//
+// The tunnel takes precedence because that is what the connect path does: with
+// it on, the system proxy is deliberately left alone.
+type RoutingMode = "tun" | "systemProxy" | "proxyOnly";
+
+function routingMode(settings: WhiteVPNSettings): RoutingMode {
+  if (settings.tunEnabled) {
+    return "tun";
+  }
+  return settings.setSystemProxy ? "systemProxy" : "proxyOnly";
+}
+
 function normalizeSettingsProfile(profile: SettingsProfile): SettingsProfile {
   const missingStartupLoss =
     !profile.mtuStartupLossVerifyEnabled &&
@@ -2219,9 +2232,23 @@ function WhiteDNSVPNPage({
                         {exitCountry.pending && <RotateCcw className="size-3 animate-spin text-muted-foreground" />}
                       </Badge>
                     )}
-                    <Badge variant="outline" className="h-6 gap-1 px-3">
-                      <Monitor className="size-3" />
-                      <span className="max-w-48 truncate font-mono">{localProxyEndpoint}</span>
+                    {/* Copyable, because in proxy-only mode this address is the
+                        product: it is what gets typed into Telegram or a
+                        browser extension, and retyping it by eye off a badge is
+                        how a digit goes missing. */}
+                    <Badge
+                      asChild
+                      variant="outline"
+                      className="h-6 cursor-pointer gap-1 px-3 hover:bg-accent"
+                    >
+                      <button
+                        type="button"
+                        title={t("vpn.localProxy.copy")}
+                        onClick={() => void navigator.clipboard?.writeText(localProxyEndpoint)}
+                      >
+                        <Monitor className="size-3" />
+                        <span className="max-w-48 truncate font-mono">{localProxyEndpoint}</span>
+                      </button>
                     </Badge>
                     <Badge variant="outline" className="h-6 gap-1 px-3">
                       <Shield className="size-3" />
@@ -6058,20 +6085,60 @@ function WhiteVPNSettingsPage({
       }
     >
       <SettingsSection title={t("settings.connection.title")} description={t("settings.connection.description")}>
-        <div className="grid gap-2 sm:grid-cols-2">
-          <SettingSwitchRow
-            label={t("settings.tunnel")}
-            checked={draft.tunEnabled}
-            onCheckedChange={(checked) => patch({ tunEnabled: checked })}
-          />
-          <SettingSwitchRow
-            label={t("settings.killSwitch")}
-            checked={draft.killSwitch.enabled}
-            disabled
-            onCheckedChange={(checked) => patch({ killSwitch: { enabled: checked } })}
-          />
-        </div>
-        <FieldDescription>{t("settings.tunnel.description")}</FieldDescription>
+        {/* One choice rather than two switches. The tunnel and the system proxy
+            are mutually exclusive at connect — with the tunnel up the system
+            proxy is deliberately not set — so two independent switches would
+            silently override each other. */}
+        <Field>
+          <FieldLabel>{t("settings.routing.mode")}</FieldLabel>
+          <Select
+            value={routingMode(draft)}
+            onValueChange={(value) =>
+              patch(
+                value === "tun"
+                  ? { tunEnabled: true, setSystemProxy: false }
+                  : { tunEnabled: false, setSystemProxy: value === "systemProxy" },
+              )
+            }
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent position="popper">
+              <SelectItem value="systemProxy">{t("settings.routing.systemProxy")}</SelectItem>
+              <SelectItem value="proxyOnly">{t("settings.routing.proxyOnly")}</SelectItem>
+              <SelectItem value="tun">{t("settings.routing.tun")}</SelectItem>
+            </SelectContent>
+          </Select>
+          <FieldDescription>{t(`settings.routing.${routingMode(draft)}.description`)}</FieldDescription>
+        </Field>
+
+        {/* Only in proxy-only mode. Everywhere else the port is an
+            implementation detail and inviting someone to change it would be
+            inviting them to break something for no reason. */}
+        {routingMode(draft) === "proxyOnly" && (
+          <Field>
+            <FieldLabel>{t("settings.routing.port")}</FieldLabel>
+            <Input
+              type="number"
+              min={1024}
+              max={65535}
+              className="max-w-40"
+              value={draft.listenPort || 2080}
+              onChange={(event) => patch({ listenPort: Number(event.target.value) || 0 })}
+            />
+            <FieldDescription>
+              {t("settings.routing.port.description", { endpoint: `127.0.0.1:${draft.listenPort || 2080}` })}
+            </FieldDescription>
+          </Field>
+        )}
+
+        <SettingSwitchRow
+          label={t("settings.killSwitch")}
+          checked={draft.killSwitch.enabled}
+          disabled
+          onCheckedChange={(checked) => patch({ killSwitch: { enabled: checked } })}
+        />
         <FieldDescription>{t("settings.killSwitch.description")}</FieldDescription>
       </SettingsSection>
 

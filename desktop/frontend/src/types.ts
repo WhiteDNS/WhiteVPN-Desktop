@@ -747,5 +747,7 @@ export type WhiteVPNSettings = {
   killSwitch: KillSwitchSettings;
   language: string;
   tunEnabled: boolean;
+  setSystemProxy: boolean;
+  listenPort: number;
   acceptedPrivacyPolicyVersion: number;
 };

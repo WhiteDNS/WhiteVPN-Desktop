@@ -426,6 +426,7 @@ Things the phone has no equivalent for, added because a desktop needs them.
 | Tray icon | Status, connect/disconnect, open, quit — in the app's own language | `[x]` |
 | Runs in the background | Closing the window hides it; the app keeps carrying traffic | `[x]` |
 | Sets the system proxy | In proxy mode, points Windows at the local proxy and puts back what it found | `[x]` |
+| Proxy-only mode | No phone equivalent. The engine listens and nothing on the machine is redirected | `[+]` |
 
 Closing a VPN's window means "get out of my way", not "stop protecting my
 traffic". But hiding is only offered once there is an icon to come back from:
@@ -439,6 +440,27 @@ shipping the half that starts a proxy without the half that sends anything to
 it. Connected, healthy, 0 D/s, and a user quite reasonably reporting that none
 of the ports work. `TunEnabled` defaults to false, so that was the default
 experience.
+
+The correction went too far the other way: setting it became unconditional
+whenever the tunnel was off, so turning the tunnel off silently reconfigured the
+whole desktop and there was no way to ask for anything else. Users wanting one
+browser extension or Telegram routed — and the rest of the machine left alone —
+had nothing to reach for. There is now a third mode, **proxy-only**, where both
+are off: the engine listens on its mixed port, serving HTTP and SOCKS5, and
+nothing on the machine is touched.
+
+The three are one choice in the interface rather than two switches, because they
+are mutually exclusive at connect — with the tunnel up the system proxy is
+deliberately not set — and two independent switches would silently override each
+other.
+
+Proxy-only is also the one mode where the port is a promise rather than an
+implementation detail: it is what somebody typed into another program, and it
+has to still be right tomorrow. So `chooseProxyPort` holds the configured port
+there and reports one it cannot have, while in the other two modes it falls back
+to any free port as before. Silently binding a different one would break their
+Telegram days later, in a different application, with nothing anywhere
+connecting that to this app.
 
 What was there before the change is written to `system-proxy.json` **before**
 the change, and removed only after it has been put back. A crash therefore
