@@ -229,7 +229,7 @@ func (a *App) RefreshV2RaySubscription(id string) (model.V2RaySubscriptionRefres
 	}
 	a.mu.Unlock()
 
-	rawText, fetchErr := fetchV2RaySubscriptionDocument(context.Background(), subscription.URL)
+	rawText, fetchErr := a.fetchSubscriptionDocument(context.Background(), subscription.URL)
 	var imported []model.V2RayProfile
 	var importedCount int
 	var parseErr error
@@ -926,6 +926,12 @@ func selectedV2RaySettingsProfile(state model.AppState) (model.V2RaySettingsProf
 }
 
 func fetchV2RaySubscriptionDocument(ctx context.Context, rawURL string) (string, error) {
+	return fetchV2RaySubscriptionDocumentWith(ctx, rawURL, http.DefaultClient)
+}
+
+// fetchV2RaySubscriptionDocumentWith fetches through a caller's client, which is
+// how a subscription can be fetched through the running tunnel.
+func fetchV2RaySubscriptionDocumentWith(ctx context.Context, rawURL string, base *http.Client) (string, error) {
 	parsedURL, err := validateV2RaySubscriptionURL(rawURL)
 	if err != nil {
 		return "", err
@@ -939,7 +945,10 @@ func fetchV2RaySubscriptionDocument(ctx context.Context, rawURL string) (string,
 	}
 	req.Header.Set("User-Agent", "WhiteDNS-Desktop")
 
-	client := *http.DefaultClient
+	if base == nil {
+		base = http.DefaultClient
+	}
+	client := *base
 	client.CheckRedirect = checkSubscriptionRedirect
 	resp, err := client.Do(req)
 	if err != nil {

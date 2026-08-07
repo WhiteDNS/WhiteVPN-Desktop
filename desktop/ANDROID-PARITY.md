@@ -677,6 +677,26 @@ from Wi-Fi to Ethernet must not lose its VPN on the way.
 
 ### Things that will bite
 
+- **A first launch is a state nobody on the team is ever in.** The catalogue was
+  only added to the subscriptions list by a successful refresh or by recording an
+  error against one, never when state was loaded — so a fresh install showed an
+  empty source picker and "0 sources" while the catalogue itself worked, because
+  the connect path defaults to its id whatever the list says. Everyone who had
+  used the app once had refreshed once, so nobody saw it. A user on a clean macOS
+  install did. **Settings → Reset exists because of this**: without a way back to
+  a fresh install, the first-run experience is the one thing that never gets
+  checked. `TestFirstLaunchListsTheCatalogue` pins it.
+- **"Skip the certificate check" would not have fixed the blocked subscription.**
+  A user got `tls: first record does not look like a TLS handshake` and another
+  client on the same machine offered exactly that switch, so it read like a
+  certificate problem. Fetched from elsewhere the same address answers with a
+  valid certificate and the right content: the error means the bytes coming back
+  are not TLS at all. Verification never runs, so skipping it changes nothing —
+  the switch would have been turned on, would not have worked, and would have
+  left someone believing they had traded away a protection, with the account key
+  in the subscription URL as the price. What helps is fetching through the
+  tunnel, which the app does now when one is up, and an error that says the
+  network is interfering rather than describing TLS records.
 - **`dns-hijack` does not stop a DNS leak on its own.** It catches queries that
   enter the tunnel. A query to the resolver on the local network never does: the
   route to that subnet is directly connected on the physical adapter and beats
