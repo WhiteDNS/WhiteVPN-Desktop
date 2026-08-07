@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"math/rand"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -69,12 +70,26 @@ func ConvertLinks(input string) ([]Proxy, error) {
 // from. Sharing a node means handing back the link it arrived as, and only the
 // converter knows which line survived and which was skipped.
 func ConvertLinksWithSources(input string) ([]Proxy, []string, error) {
+	proxies, sources, _, err := ConvertLinksWithReport(input)
+	return proxies, sources, err
+}
+
+// ConvertLinksWithReport also reports what it threw away.
+//
+// A subscription of 800 links that yields 425 nodes is not obviously wrong, and
+// was not obviously right either: everything this cannot read was discarded
+// without a word, so nobody could say whether the number was the catalogue's or
+// this parser's. Counting the discards is what makes the difference answerable —
+// a protocol nobody supports and a link nobody could read are different problems
+// and want different fixes.
+func ConvertLinksWithReport(input string) ([]Proxy, []string, SkipReport, error) {
 	body := input
 	if decoded, ok := decodeBase64Text(input); ok {
 		body = decoded
 	}
 
 	names := newNameRegistry()
+	report := SkipReport{Unsupported: map[string]int{}, Unreadable: map[string]int{}}
 	var proxies []Proxy
 	var sources []string
 	for _, raw := range strings.Split(body, "\n") {
@@ -83,6 +98,7 @@ func ConvertLinksWithSources(input string) ([]Proxy, []string, error) {
 			continue
 		}
 		scheme := strings.ToLower(line[:strings.Index(line, "://")])
+		report.Links++
 
 		var (
 			proxy Proxy
@@ -102,18 +118,77 @@ func ConvertLinksWithSources(input string) ([]Proxy, []string, error) {
 		case "wireguard", "wg":
 			proxy, err = parseWireGuard(line, names)
 		default:
+			// A protocol this app does not speak. Named, because which one it is
+			// decides whether anything should be done about it.
+			report.Unsupported[scheme]++
 			continue
 		}
 		if err != nil {
+			// A protocol it does speak, in a form it could not read.
+			report.Unreadable[scheme]++
 			continue
 		}
 		proxies = append(proxies, proxy)
 		sources = append(sources, strings.TrimSpace(line))
 	}
+	report.Converted = len(proxies)
 	if len(proxies) == 0 {
-		return nil, nil, errors.New("mihomoconf: no usable proxies in this subscription")
+		return nil, nil, report, errors.New("mihomoconf: no usable proxies in this subscription")
 	}
-	return proxies, sources, nil
+	return proxies, sources, report, nil
+}
+
+// SkipReport is what a subscription held that did not become a node.
+type SkipReport struct {
+	// Links is how many lines looked like one, whatever came of them.
+	Links int
+	// Converted is how many became proxies.
+	Converted int
+	// Unsupported counts links by scheme for protocols this app does not read.
+	Unsupported map[string]int
+	// Unreadable counts links by scheme for protocols it does read but could
+	// not parse — a link that should have worked and did not.
+	Unreadable map[string]int
+}
+
+// Skipped is how many links did not become nodes.
+func (r SkipReport) Skipped() int { return r.Links - r.Converted }
+
+// Summary explains a node count, or is empty when nothing needs explaining.
+//
+// Empty when nothing was skipped, because "425 links, 425 usable" is noise. It
+// exists for the case where the two numbers differ and somebody is wondering
+// which of them is the truth.
+func (r SkipReport) Summary() string {
+	if r.Skipped() <= 0 {
+		return ""
+	}
+	var reasons []string
+	for _, group := range []struct {
+		counts map[string]int
+		label  string
+	}{
+		{r.Unsupported, "not supported"},
+		{r.Unreadable, "unreadable"},
+	} {
+		schemes := make([]string, 0, len(group.counts))
+		for scheme := range group.counts {
+			schemes = append(schemes, scheme)
+		}
+		// Sorted so the same subscription reports the same way twice running,
+		// which is what makes two of these worth comparing.
+		sort.Slice(schemes, func(i, j int) bool {
+			if group.counts[schemes[i]] != group.counts[schemes[j]] {
+				return group.counts[schemes[i]] > group.counts[schemes[j]]
+			}
+			return schemes[i] < schemes[j]
+		})
+		for _, scheme := range schemes {
+			reasons = append(reasons, fmt.Sprintf("%d %s (%s)", group.counts[scheme], scheme, group.label))
+		}
+	}
+	return fmt.Sprintf("%d links, %d usable, %d skipped: %s",
+		r.Links, r.Converted, r.Skipped(), strings.Join(reasons, ", "))
 }
 
 // --- vless / vmess-aead ------------------------------------------------------

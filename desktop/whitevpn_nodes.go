@@ -78,9 +78,14 @@ func (a *App) ListSubscriptionNodes(subscriptionID string, refresh bool) (model.
 	if err != nil {
 		return a.staleWhiteVPNNodes(subscriptionID, err)
 	}
-	nodes, err := whiteVPNNodesFromSubscription(subscription)
+	nodes, summary, err := whiteVPNNodesWithReport(subscription)
 	if err != nil {
 		return a.staleWhiteVPNNodes(subscriptionID, err)
+	}
+	if summary != "" {
+		// Only when the two numbers differ. A count that needs no explaining
+		// gets none, or this line would be in the log on every refresh.
+		a.appendRuntimeLog(fmt.Sprintf("%s: %s", subscriptionID, summary))
 	}
 	if subscriptionID == model.ManualServerSourceID {
 		a.attachManualProfileIDs(nodes)
@@ -310,17 +315,34 @@ func measureNodeDelays(ctx context.Context, client *engine.Process, names []stri
 // whiteVPNNodesFromSubscription turns a decrypted catalogue into nodes, in the
 // order the catalogue gave them — which is the order the connect path tries.
 func whiteVPNNodesFromSubscription(subscription string) ([]model.WhiteVPNNode, error) {
+	nodes, _, err := whiteVPNNodesWithReport(subscription)
+	return nodes, err
+}
+
+// whiteVPNNodesWithReport also explains the count it returns.
+//
+// "425 nodes" from a subscription of 800 links is not a number anybody can check.
+// Everything unreadable was dropped in silence, so the count could as easily have
+// been the catalogue's size as this parser's reach, and there was no way to tell
+// which — the question that prompted this could not be answered from inside the
+// app at all.
+func whiteVPNNodesWithReport(subscription string) ([]model.WhiteVPNNode, string, error) {
 	// ParseSubscription rather than ConvertLinksWithSources: a subscription may
 	// be share links or a whole mihomo configuration, and the Servers page, the
 	// tests and the connection dialog have no business knowing which.
-	proxies, sources, err := mihomoconf.ParseSubscription(subscription)
+	proxies, sources, report, err := mihomoconf.ParseSubscriptionWithReport(subscription)
 	if err != nil {
-		return nil, fmt.Errorf("the catalogue held no usable nodes: %w", err)
+		return nil, "", fmt.Errorf("the catalogue held no usable nodes: %w", err)
 	}
 	nodes := make([]model.WhiteVPNNode, 0, len(proxies))
+	nameless := 0
 	for index, proxy := range proxies {
 		name := proxy.Name()
 		if strings.TrimSpace(name) == "" {
+			// A node with no name cannot be listed, picked or hidden, all of
+			// which are done by name. Counted rather than merely dropped: this
+			// is the third place a node could vanish without one.
+			nameless++
 			continue
 		}
 		proxyType, _ := proxy["type"].(string)
@@ -340,9 +362,19 @@ func whiteVPNNodesFromSubscription(subscription string) ([]model.WhiteVPNNode, e
 		})
 	}
 	if len(nodes) == 0 {
-		return nil, fmt.Errorf("the catalogue held no usable nodes")
+		return nil, "", fmt.Errorf("the catalogue held no usable nodes")
 	}
-	return nodes, nil
+
+	summary := report.Summary()
+	if nameless > 0 {
+		unnamed := fmt.Sprintf("%d with no name", nameless)
+		if summary == "" {
+			summary = fmt.Sprintf("%d links, %d usable, %d skipped: %s", len(proxies), len(nodes), nameless, unnamed)
+		} else {
+			summary += ", " + unnamed
+		}
+	}
+	return nodes, summary, nil
 }
 
 // proxyPort reads the port whichever way the converter wrote it: YAML numbers

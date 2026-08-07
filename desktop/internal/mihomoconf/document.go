@@ -32,29 +32,40 @@ import (
 // most subscriptions are. A document has no share links to report, so the
 // sources come back empty for it rather than invented.
 func ParseSubscription(body string) ([]Proxy, []string, error) {
-	proxies, sources, linkErr := ConvertLinksWithSources(body)
+	proxies, sources, _, err := ParseSubscriptionWithReport(body)
+	return proxies, sources, err
+}
+
+// ParseSubscriptionWithReport also reports what the document held and this could
+// not use, which is what makes a node count explainable.
+//
+// Only the links path fills the report in. The others read a list of proxies
+// out of a structured document rather than a line at a time, so there is no
+// per-line discard to count and an empty report is the honest answer.
+func ParseSubscriptionWithReport(body string) ([]Proxy, []string, SkipReport, error) {
+	proxies, sources, report, linkErr := ConvertLinksWithReport(body)
 	if linkErr == nil {
-		return proxies, sources, nil
+		return proxies, sources, report, nil
 	}
 
 	proxies, docErr := ParseDocument(body)
 	if docErr == nil {
-		return proxies, make([]string, len(proxies)), nil
+		return proxies, make([]string, len(proxies)), SkipReport{}, nil
 	}
 
 	if proxies, err := ParseSingBox(body); err == nil {
-		return proxies, make([]string, len(proxies)), nil
+		return proxies, make([]string, len(proxies)), SkipReport{}, nil
 	}
 	if proxies, err := ParseXrayJSON(body); err == nil {
-		return proxies, make([]string, len(proxies)), nil
+		return proxies, make([]string, len(proxies)), SkipReport{}, nil
 	}
 
 	// Base64 is a wrapper, not a format. ConvertLinks already unwraps it to look
 	// for links; a document served the same way deserves the same treatment,
 	// and providers do serve them that way.
 	if decoded, ok := decodeBase64Text(strings.TrimSpace(body)); ok {
-		if proxies, _, err := ParseSubscription(decoded); err == nil {
-			return proxies, make([]string, len(proxies)), nil
+		if proxies, _, report, err := ParseSubscriptionWithReport(decoded); err == nil {
+			return proxies, make([]string, len(proxies)), report, nil
 		}
 	}
 
@@ -63,7 +74,7 @@ func ParseSubscription(body string) ([]Proxy, []string, error) {
 	// and "must contain V2Ray links" describes none of them. What it *is* is
 	// reported, never what it says — a subscription body carries credentials
 	// and this message ends up in screenshots.
-	return nil, nil, fmt.Errorf("this does not look like a subscription: %s", describeBody(body))
+	return nil, nil, SkipReport{}, fmt.Errorf("this does not look like a subscription: %s", describeBody(body))
 }
 
 // ParseDocument reads the `proxies` of a mihomo configuration.
