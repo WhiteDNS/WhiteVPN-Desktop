@@ -561,6 +561,19 @@ from Wi-Fi to Ethernet must not lose its VPN on the way.
 
 ### Things that will bite
 
+- **`dns-hijack` does not stop a DNS leak on its own.** It catches queries that
+  enter the tunnel. A query to the resolver on the local network never does: the
+  route to that subnet is directly connected on the physical adapter and beats
+  the `0.0.0.0/1` pair the tunnel installs, so lookups went to the home router in
+  the clear and a leak test showed the user's own ISP. Tunnel mode only — through
+  a proxy the machine never resolves anything itself, it hands the name over and
+  mihomo does the lookup, which is why proxy mode looked clean and hid this.
+  `strict-route: true` is what closes it: WFP filters on Windows blocking port 53
+  for everything but the engine and the tunnel adapter, unreachable policy rules
+  on Linux, ignored on macOS. **Android does not set it and does not need to** —
+  `VpnService.Builder.addDnsServer` makes the OS route every query into the
+  tunnel — so this is the second place, after IPv6 containment, where copying the
+  phone literally means shipping a leak.
 - **There are two version numbers, and only one of them is the app's.** The
   sidebar reads `appVersion`, set at link time by `-X main.appVersion` from the
   Makefile's `VERSION`. The number Windows shows in Properties → Details is
