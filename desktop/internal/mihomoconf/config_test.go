@@ -29,7 +29,7 @@ func parseYAML(t *testing.T, document string) map[string]any {
 }
 
 func TestBuildProxiesYAMLProducesGroupsAndACatchAllRule(t *testing.T) {
-	document, err := BuildProxiesYAML(sampleProxies(t))
+	document, err := BuildProxiesYAML(sampleProxies(t), SplitTunnel{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +76,7 @@ func TestBuildProxiesYAMLDropsDuplicateNames(t *testing.T) {
 		{"name": "Same", "type": "vless", "server": "b.example.com", "port": 443},
 		{"name": "Other", "type": "vless", "server": "c.example.com", "port": 443},
 	}
-	document, err := BuildProxiesYAML(proxies)
+	document, err := BuildProxiesYAML(proxies, SplitTunnel{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,7 +87,7 @@ func TestBuildProxiesYAMLDropsDuplicateNames(t *testing.T) {
 }
 
 func TestBuildProxiesYAMLRefusesAnEmptySet(t *testing.T) {
-	if _, err := BuildProxiesYAML(nil); err == nil {
+	if _, err := BuildProxiesYAML(nil, SplitTunnel{}); err == nil {
 		t.Fatal("expected an error with no proxies")
 	}
 }
@@ -310,7 +310,7 @@ func TestSecretIsEscaped(t *testing.T) {
 }
 
 func TestFullConfigFromLinksParses(t *testing.T) {
-	proxiesYAML, err := BuildProxiesYAML(sampleProxies(t))
+	proxiesYAML, err := BuildProxiesYAML(sampleProxies(t), SplitTunnel{})
 	if err != nil {
 		t.Fatal(err)
 	}

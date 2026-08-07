@@ -87,6 +87,25 @@ Android refuses to save `vpn_only_selected` with nothing selected; so does this.
 > same `.exe` name cannot be told apart. Say so in the dialog rather than
 > letting a user discover it.
 
+**How it reaches the engine, and the weeks it did not.** Both rows above were
+marked done while the setting was stored, validated and shown and *nothing
+outside the model ever read it*. A user could add a program to the bypass list,
+save it, and watch the site it was meant to reach still see the VPN, because
+every byte still went through the tunnel. A user reported exactly that. It is
+the same shape as IP fronting before it was wired — and a control that changes
+nothing is worse than one that is missing, because the missing one does not lie.
+
+It is `PROCESS-NAME` rules now, written ahead of the catch-all because mihomo
+takes the first rule that fits. Bypass sends the named programs to `DIRECT`;
+vpn-only sends them to the group and replaces the catch-all with `MATCH,DIRECT`,
+rather than adding a second one that could never fire. `find-process-mode`
+follows whether any rule needs it — looking up which program owns a connection
+costs something per connection, and `off` is right when nothing asks.
+
+Naming nothing leaves the routing alone in both modes. Read literally, vpn-only
+with an empty list says *send nothing through the tunnel*, which would turn the
+VPN off while the interface still said Connected.
+
 ## 2. Settings — section order matches Android exactly
 
 ### 2.1 TLS integrity (`tls_integrity_section`)

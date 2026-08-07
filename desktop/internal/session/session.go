@@ -66,6 +66,10 @@ type Options struct {
 	// that makes Automatic work at all.
 	Exclude []string
 
+	// SplitTunnel routes named programs around the tunnel, or only them through
+	// it. Empty means everything goes through it.
+	SplitTunnel mihomoconf.SplitTunnel
+
 	// FrontingIP reaches every eligible node through this address instead of the
 	// one its name resolves to, while still presenting the name. Empty means the
 	// nodes are reached directly.
@@ -645,7 +649,7 @@ func PrepareConfig(opts Options) (string, []string, error) {
 		}
 		// Share links, which is what the WhiteDNS catalogue is. They carry nodes
 		// only, so the groups and rule have to be generated around them.
-		document, buildErr := mihomoconf.BuildProxiesYAML(proxies)
+		document, buildErr := mihomoconf.BuildProxiesYAML(proxies, opts.SplitTunnel)
 		if buildErr != nil {
 			return "", nil, buildErr
 		}
@@ -688,6 +692,7 @@ func PrepareConfig(opts Options) (string, []string, error) {
 		DoTEndpoint: opts.DoTEndpoint,
 		ProxyGroup:  group,
 		Tun:         opts.Tun,
+		SplitTunnel: opts.SplitTunnel,
 	})
 	return document, candidates, nil
 }

@@ -69,6 +69,7 @@ var (
 		"log-level":                 true,
 		"ipv6":                      true,
 		"unified-delay":             true,
+		"find-process-mode":         true,
 		"global-client-fingerprint": true,
 		"dns":                       true,
 		"tun":                       true,
@@ -168,12 +169,17 @@ type Options struct {
 	ProxyGroup string
 
 	Tun TunOptions
+
+	// SplitTunnel decides whether the engine has to work out which program a
+	// connection belongs to. It is here only so `find-process-mode` can follow
+	// it; the rules themselves are built with the proxies.
+	SplitTunnel SplitTunnel
 }
 
 // BuildProxiesYAML renders proxies plus the two default groups and a catch-all
 // rule, which is what a link-based subscription needs: links carry nodes and
 // nothing else, so without this there is nothing for traffic to match.
-func BuildProxiesYAML(proxies []Proxy) (string, error) {
+func BuildProxiesYAML(proxies []Proxy, split SplitTunnel) (string, error) {
 	if len(proxies) == 0 {
 		return "", fmt.Errorf("mihomoconf: no proxies to build a config from")
 	}
@@ -214,7 +220,9 @@ func BuildProxiesYAML(proxies []Proxy) (string, error) {
 				"proxies":   names,
 			},
 		},
-		"rules": []string{"MATCH," + SelectGroup},
+		// Split-tunnel rules first, because mihomo takes the first rule that
+		// fits: a catch-all above them means nothing below is ever reached.
+		"rules": append(split.Rules(SelectGroup), catchAllRules(split)...),
 	}
 
 	encoded, err := yaml.Marshal(document)
@@ -222,6 +230,19 @@ func BuildProxiesYAML(proxies []Proxy) (string, error) {
 		return "", err
 	}
 	return string(encoded), nil
+}
+
+// catchAllRules is what everything not matched already does.
+//
+// Empty when the split tunnel has written its own catch-all, because two would
+// mean the second is dead — and the dead one would be the one saying everything
+// goes through the tunnel, which is exactly the line someone reading the config
+// to answer "why is this not tunnelled" would stop at.
+func catchAllRules(split SplitTunnel) []string {
+	if split.Catches() {
+		return nil
+	}
+	return []string{"MATCH," + SelectGroup}
 }
 
 // toNodes puts the identifying fields first so a config is readable when someone
@@ -294,6 +315,15 @@ func Render(subscriptionYAML string, opts Options) string {
 	out.WriteString("log-level: warning\n")
 	fmt.Fprintf(&out, "ipv6: %t\n", opts.Tun.IPv6)
 	out.WriteString("unified-delay: true\n")
+	// Which program a connection belongs to costs a lookup per connection, so it
+	// is only asked for when a rule needs the answer. `strict` is mihomo's own
+	// default and means exactly that; `off` stops it entirely, which is worth
+	// saying rather than leaving to the default in case that default moves.
+	if opts.SplitTunnel.Active() {
+		out.WriteString("find-process-mode: strict\n")
+	} else {
+		out.WriteString("find-process-mode: off\n")
+	}
 	// global-client-fingerprint is deliberately not written. mihomo removed it,
 	// and this engine logs an error and ignores it. Nothing is lost: the
 	// converter already sets client-fingerprint on every proxy that carries TLS,
