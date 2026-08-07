@@ -53,6 +53,24 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev
 
+      # main.go embeds frontend/dist, which is a build artifact and is not in the
+      # repository — so `go build` fails on a fresh checkout for want of a
+      # directory that only exists after the frontend has been built. It passed
+      # on the machine this was written on because that machine had one left
+      # over, which is the exact class of thing CI is for, and this was the first
+      # thing it caught.
+      #
+      # A placeholder rather than a real frontend build: this job compiles Go and
+      # runs Go tests, and what is inside the bundle makes no difference to
+      # either. The frontend job below builds it properly, and the release
+      # workflow ships what that produces.
+      - name: Placeholder for the embedded frontend
+        working-directory: desktop
+        shell: bash
+        run: |
+          mkdir -p frontend/dist
+          echo '<!doctype html><title>ci placeholder</title>' > frontend/dist/index.html
+
       - name: Build
         working-directory: desktop
         run: go build ./...
