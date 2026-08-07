@@ -915,6 +915,11 @@ function App() {
           runtimeLogFlushTimerRef.current = window.setTimeout(flushRuntimeLogs, 250);
         }
       }),
+      // Connecting retries the subscriptions the network had been blocking, so
+      // the rows showing that failure are stale the moment it succeeds.
+      onRuntimeEvent<unknown>("subscriptions:changed", () => {
+        void backend.getAppState().then(applyState);
+      }),
       onRuntimeEvent<WhiteVPNNode>("nodes:test", (node) => {
         setNodes((current) => current.map((entry) => (entry.name === node.name ? node : entry)));
       }),
