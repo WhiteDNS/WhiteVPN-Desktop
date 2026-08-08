@@ -60,7 +60,26 @@ func (a *App) startTray() {
 		systray.Register(a.onTrayReady, a.onTrayExit)
 		return
 	}
-	go systray.Run(a.onTrayReady, a.onTrayExit)
+	go func() {
+		// The icon's window and the loop that pumps its messages have to stay on
+		// one OS thread. Windows delivers a window's messages only to the thread
+		// that created it, and GetMessage reads the calling thread's queue — so a
+		// goroutine the scheduler moves between threads creates the window on one
+		// and then listens on another, where nothing ever arrives.
+		//
+		// systray locks the thread in its own init(), which covers a Run() on the
+		// main goroutine. Starting one with `go` steps outside that: the icon
+		// still appears, because it is created once, and then every click,
+		// every menu open and Quit itself go into a queue nobody reads. What the
+		// user sees is an icon that does nothing and an app that can only be
+		// ended from Task Manager.
+		//
+		// Not unlocked afterwards: the goroutine only returns once the tray has
+		// quit, and letting the thread die with it is better than handing a
+		// thread that owned a window back for general use.
+		runtime.LockOSThread()
+		systray.Run(a.onTrayReady, a.onTrayExit)
+	}()
 }
 
 func (a *App) onTrayReady() {
