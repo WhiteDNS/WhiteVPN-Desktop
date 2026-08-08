@@ -155,6 +155,77 @@ verify_linuxdeploy() {
   fi
 }
 
+# linuxdeploy copies libwebkit2gtk into the AppDir but leaves WebKitWebProcess on the
+# host. On newer distros the system helpers speak a different IPC dialect than the
+# bundled library, which produces a blank window and:
+#   Received invalid message: 'WebPage_SetActivityStateReply'
+# Ship the matching helpers next to the bundled library and point WEBKIT_EXEC_PATH at them.
+bundle_webkit_helpers() {
+  appdir="$1"
+  helper_src=""
+  for candidate in \
+    "/usr/lib/x86_64-linux-gnu/webkit2gtk-$webkit" \
+    "/usr/lib/aarch64-linux-gnu/webkit2gtk-$webkit" \
+    "/usr/lib64/webkit2gtk-$webkit" \
+    "/usr/lib/webkit2gtk-$webkit"
+  do
+    if [ -x "$candidate/WebKitWebProcess" ]; then
+      helper_src="$candidate"
+      break
+    fi
+  done
+
+  if [ -z "$helper_src" ]; then
+    printf 'Warning: WebKitGTK %s helpers not found on the build host; AppImage may show a blank window on newer distros.\n' "$webkit" >&2
+    return 0
+  fi
+
+  helper_dest="$appdir/usr/lib/webkit2gtk-$webkit"
+  mkdir -p "$helper_dest"
+  for helper in WebKitWebProcess WebKitNetworkProcess WebKitGPUProcess; do
+    if [ -e "$helper_src/$helper" ]; then
+      cp -a "$helper_src/$helper" "$helper_dest/"
+    fi
+  done
+  if [ -d "$helper_src/injected-bundle" ]; then
+    rm -rf "$helper_dest/injected-bundle"
+    cp -a "$helper_src/injected-bundle" "$helper_dest/"
+  fi
+  printf 'Bundled WebKitGTK %s helpers from %s\n' "$webkit" "$helper_src"
+}
+
+write_appimage_apprun() {
+  appdir="$1"
+  cat > "$appdir/AppRun" <<EOF
+#!/bin/sh
+appdir="\${APPDIR:-\$(dirname "\$(readlink -f "\$0")")}"
+
+# Prefer the WebKit helpers that match the libraries linuxdeploy bundled.
+for webkit_dir in "\$appdir/usr/lib/webkit2gtk-4.1" "\$appdir/usr/lib/webkit2gtk-4.0"; do
+  if [ -x "\$webkit_dir/WebKitWebProcess" ]; then
+    export WEBKIT_EXEC_PATH="\$webkit_dir"
+    break
+  fi
+done
+
+# Keep bundled libraries ahead of the host so the UI process and helpers match.
+for libdir in "\$appdir/usr/lib" "\$appdir/usr/lib/x86_64-linux-gnu" "\$appdir/usr/lib64"; do
+  if [ -d "\$libdir" ]; then
+    LD_LIBRARY_PATH="\$libdir\${LD_LIBRARY_PATH:+:\$LD_LIBRARY_PATH}"
+  fi
+done
+export LD_LIBRARY_PATH
+
+# Avoid loading host GVFS modules against the bundled GLib (undefined symbols).
+if [ -z "\${GIO_MODULE_DIR+x}" ]; then
+  export GIO_MODULE_DIR=/dev/null
+fi
+
+exec "\$appdir/usr/bin/$package_name" "\$@"
+EOF
+  chmod 755 "$appdir/AppRun"
+}
+
 if format_enabled deb; then
   if ! command -v dpkg-deb >/dev/null 2>&1; then
     printf 'dpkg-deb is required to build Debian packages\n' >&2
@@ -173,7 +244,7 @@ Priority: optional
 Architecture: $deb_arch
 Maintainer: $maintainer
 Installed-Size: $installed_size
-Depends: ca-certificates, libgtk-3-0, $deb_webkit_dep
+Depends: ca-certificates, libgtk-3-0 | libgtk-3-0t64, $deb_webkit_dep
 Description: $description
  Managed desktop client for WhiteDNS and StormDNS.
 EOF
@@ -266,12 +337,7 @@ if format_enabled appimage; then
   chmod 755 "$appimage_bin_dir/$package_name"
   cp "$icon_source" "$appimage_icon"
 
-  cat > "$appimage_root/AppRun" <<EOF
-#!/bin/sh
-appdir="\${APPDIR:-\$(dirname "\$(readlink -f "\$0")")}"
-exec "\$appdir/usr/bin/$package_name" "\$@"
-EOF
-  chmod 755 "$appimage_root/AppRun"
+  write_appimage_apprun "$appimage_root"
 
   cat > "$appimage_desktop" <<EOF
 [Desktop Entry]
@@ -286,6 +352,22 @@ StartupNotify=true
 X-AppImage-Version=$version
 EOF
 
+  # Deploy shared libraries first, then attach matching WebKit helpers and AppRun
+  # before packaging. linuxdeploy copies libwebkit2gtk but not WebKitWebProcess.
+  (
+    cd "$appimage_output_dir"
+    ARCH=x86_64 \
+      APPIMAGE_EXTRACT_AND_RUN=1 \
+      "$linuxdeploy" \
+        --appdir "$appimage_root" \
+        --executable "$appimage_bin_dir/$package_name" \
+        --desktop-file "$appimage_desktop" \
+        --icon-file "$appimage_icon"
+  )
+
+  bundle_webkit_helpers "$appimage_root"
+  write_appimage_apprun "$appimage_root"
+
   (
     cd "$appimage_output_dir"
     ARCH=x86_64 \
@@ -293,9 +375,6 @@ EOF
       VERSION="$version" \
       "$linuxdeploy" \
         --appdir "$appimage_root" \
-        --executable "$appimage_bin_dir/$package_name" \
-        --desktop-file "$appimage_desktop" \
-        --icon-file "$appimage_icon" \
         --output appimage
   )
 
