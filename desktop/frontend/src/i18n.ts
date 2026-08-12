@@ -624,6 +624,10 @@ const strings = {
     en: "A virtual network adapter carries everything, including programs that ignore proxy settings. Needs Administrator on Windows.",
     fa: "یک کارت شبکهٔ مجازی همه چیز را حمل می‌کند، حتی برنامه‌هایی که تنظیمات پراکسی را نادیده می‌گیرند. روی ویندوز نیاز به دسترسی Administrator دارد.",
   },
+  "settings.routing.tun.unavailable": {
+    en: "Tunnel (TUN) mode is available on Windows only for now. It needs to run the engine with administrator rights, and that is not implemented on this platform yet.",
+    fa: "حالت تونل (TUN) فعلاً فقط روی ویندوز در دسترس است. این حالت باید موتور را با دسترسی مدیر اجرا کند و این کار هنوز روی این سیستم‌عامل پیاده‌سازی نشده است.",
+  },
   "settings.routing.port": { en: "Local proxy port", fa: "پورت پراکسی محلی" },
   "settings.routing.port.description": {
     en: "Point your program at {endpoint} — it accepts both HTTP and SOCKS5. If another program already holds this port, connecting will say so rather than quietly moving to another one, which would leave whatever you configured pointing at nothing.",

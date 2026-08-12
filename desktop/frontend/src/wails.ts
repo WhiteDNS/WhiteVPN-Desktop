@@ -79,6 +79,7 @@ type AppApi = {
   OpenValidatorResultFile(name: string): Promise<void>;
   DeleteValidatorResultFile(name: string): Promise<ValidatorResultFile[]>;
   GetWhiteVPNSettings(): Promise<WhiteVPNSettings>;
+  TunnelSupported(): Promise<boolean>;
   SaveWhiteVPNSettings(settings: WhiteVPNSettings): Promise<AppState>;
   GetPrivacyPolicyVersion(): Promise<number>;
   AcceptPrivacyPolicy(): Promise<AppState>;
@@ -177,6 +178,7 @@ export const backend = {
   openValidatorResultFile: (name: string) => app().OpenValidatorResultFile(name),
   deleteValidatorResultFile: (name: string) => app().DeleteValidatorResultFile(name),
   getWhiteVpnSettings: () => app().GetWhiteVPNSettings(),
+  tunnelSupported: () => app().TunnelSupported(),
   saveWhiteVpnSettings: (settings: WhiteVPNSettings) => app().SaveWhiteVPNSettings(settings),
   getPrivacyPolicyVersion: () => app().GetPrivacyPolicyVersion(),
   acceptPrivacyPolicy: () => app().AcceptPrivacyPolicy(),
