@@ -203,9 +203,15 @@ func (a *App) quitFromTray() {
 
 // hideInsteadOfClosing is Wails' OnBeforeClose. Returning true keeps the window.
 func (a *App) hideInsteadOfClosing(ctx context.Context) bool {
-	if !a.tray.running() {
-		// No icon to come back from: closing the window has to mean quitting,
-		// or the app becomes something only Task Manager can end.
+	// No icon to come back from: closing the window has to mean quitting, or the
+	// app becomes something only a process manager can end.
+	//
+	// Both halves are needed. running() says the library started; it does not say
+	// anything is drawing the result, and on Linux it always says yes — systray
+	// fires its ready callback before it has so much as opened the session bus.
+	// A GNOME user without an AppIndicator extension closed the window, watched
+	// the app vanish with no icon anywhere, and had to kill it from htop.
+	if !a.tray.running() || !trayIconIsDisplayed() {
 		return false
 	}
 	wailsruntime.WindowHide(ctx)
