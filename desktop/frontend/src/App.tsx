@@ -2565,6 +2565,11 @@ function NodesPage({
   const [request, setRequest] = useState<NodeTestRequest>(defaultNodeTest);
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [shareNode, setShareNode] = useState<WhiteVPNNode | null>(null);
+  const [exportOpen, setExportOpen] = useState(false);
+  // Base64 of the whole list is what a subscription URL serves, and several
+  // clients take it pasted straight in. Plain links are what everything takes,
+  // so that is the default and this is the option.
+  const [exportBase64, setExportBase64] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [importText, setImportText] = useState("");
   const [importing, setImporting] = useState(false);
@@ -2716,6 +2721,38 @@ function NodesPage({
     }
     setPending({ nodes: new Set(targets), tests: request });
     onRunTest({ ...request, nodes: targets });
+  }
+
+  // What a bulk export covers: the selection when there is one, everything on
+  // screen when there is not — the same rule the test buttons follow, so the
+  // filters someone narrowed the list with carry over to this too.
+  const exportNodes = useMemo(
+    () => (selectedNames.length ? visible.filter((node) => selected.has(node.name)) : visible),
+    [visible, selected, selectedNames],
+  );
+  const exportLinks = useMemo(() => exportNodes.map((node) => node.link).filter(Boolean), [exportNodes]);
+  // A subscription served as a mihomo document has no share link per node, so
+  // some rows cannot be exported. Counted and said, rather than a shorter list
+  // than the one that was selected appearing with no explanation.
+  const exportSkipped = exportNodes.length - exportLinks.length;
+  const exportText = useMemo(() => {
+    const plain = exportLinks.join("\n");
+    if (!exportBase64 || !plain) {
+      return plain;
+    }
+    // btoa is Latin-1; a node name can carry a flag emoji or Persian, both of
+    // which are outside it. Encode the bytes, not the code points.
+    return btoa(String.fromCharCode(...new TextEncoder().encode(plain)));
+  }, [exportLinks, exportBase64]);
+  const exportFilename = `whitevpn-${exportLinks.length}-configs${exportBase64 ? "-base64" : ""}.txt`;
+
+  async function copyExport() {
+    try {
+      await navigator.clipboard?.writeText(exportText);
+      onSuccess(t("servers.export.copied", { count: exportLinks.length }));
+    } catch (err) {
+      onError(messageFromError(err));
+    }
   }
 
   async function copyLink(node: WhiteVPNNode) {
@@ -2896,6 +2933,14 @@ function NodesPage({
             <Button variant="outline" onClick={() => void setHidden(selectedHideable, true)} disabled={hidingBusy}>
               <EyeOff />
               {t("servers.hideSelected", { count: selectedHideable.length })}
+            </Button>
+          )}
+          {exportLinks.length > 0 && (
+            <Button variant="outline" onClick={() => setExportOpen(true)}>
+              <Download />
+              {selectedNames.length
+                ? t("servers.exportSelected", { count: exportLinks.length })
+                : t("servers.exportAll", { count: exportLinks.length })}
             </Button>
           )}
           {hiddenCount > 0 && (
@@ -3384,6 +3429,48 @@ function NodesPage({
         </DialogContent>
       </Dialog>
 
+      {/* Exporting what a test run selected. The reason this exists is to carry
+          the survivors of a test to another device — a phone, a television —
+          and doing that one share dialog at a time is why it was asked for. */}
+      <Dialog open={exportOpen} onOpenChange={setExportOpen}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>{t("servers.export")}</DialogTitle>
+            <DialogDescription>
+              {t("servers.export.description", { count: exportLinks.length })}
+              {exportSkipped > 0 && ` ${t("servers.export.skipped", { count: exportSkipped })}`}
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            readOnly
+            value={exportText}
+            className="h-64 min-h-0 resize-none overflow-auto font-mono text-xs leading-relaxed [field-sizing:fixed]"
+          />
+          <DialogFooter className="sm:justify-between">
+            <label className="flex items-center gap-2 text-sm sm:me-auto">
+              <Switch checked={exportBase64} onCheckedChange={setExportBase64} />
+              {t("servers.export.base64")}
+            </label>
+            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <Button variant="outline" onClick={() => setExportOpen(false)}>
+                {t("common.close")}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => downloadTextFile(exportFilename, exportText)}
+                disabled={!exportText}
+              >
+                <Download />
+                {t("servers.export.download")}
+              </Button>
+              <Button onClick={() => void copyExport()} disabled={!exportText}>
+                <Copy />
+                {t("servers.copy")}
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <Dialog open={Boolean(shareNode)} onOpenChange={(open) => !open && setShareNode(null)}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
@@ -6131,6 +6218,19 @@ function WhiteVPNSettingsPage({
               {t("settings.routing.port.description", { endpoint: `127.0.0.1:${draft.listenPort || 2080}` })}
             </FieldDescription>
           </Field>
+        )}
+
+        <SettingSwitchRow
+          label={t("settings.allowLan")}
+          checked={draft.allowLan}
+          onCheckedChange={(allowLan) => patch({ allowLan })}
+        />
+        <FieldDescription>{t("settings.allowLan.description")}</FieldDescription>
+        {draft.allowLan && (
+          <Alert>
+            <AlertCircle />
+            <AlertDescription>{t("settings.allowLan.warning")}</AlertDescription>
+          </Alert>
         )}
 
         <SettingSwitchRow

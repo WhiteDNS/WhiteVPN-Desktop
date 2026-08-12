@@ -629,6 +629,29 @@ const strings = {
     en: "Point your program at {endpoint} — it accepts both HTTP and SOCKS5. If another program already holds this port, connecting will say so rather than quietly moving to another one, which would leave whatever you configured pointing at nothing.",
     fa: "برنامه‌تان را به {endpoint} وصل کنید — هم HTTP و هم SOCKS5 را می‌پذیرد. اگر برنامهٔ دیگری این پورت را گرفته باشد، هنگام اتصال همین را می‌گوید و بی‌سروصدا پورت دیگری انتخاب نمی‌کند، چون آن‌وقت چیزی که تنظیم کرده‌اید به جای خالی وصل می‌ماند.",
   },
+  "servers.export": { en: "Export configs", fa: "خروجی گرفتن از کانفیگ‌ها" },
+  "servers.exportSelected": { en: "Export selected ({count})", fa: "خروجی انتخاب‌شده‌ها ({count})" },
+  "servers.exportAll": { en: "Export all ({count})", fa: "خروجی همه ({count})" },
+  "servers.export.description": {
+    en: "{count} configs, one link per line. Paste or import these into another device.",
+    fa: "{count} کانفیگ، هر خط یک لینک. این‌ها را در دستگاه دیگری وارد یا الصاق کنید.",
+  },
+  "servers.export.skipped": {
+    en: "{count} were left out — this subscription does not give them share links.",
+    fa: "{count} مورد کنار گذاشته شد — این اشتراک برای آن‌ها لینک اشتراک‌گذاری نمی‌دهد.",
+  },
+  "servers.export.base64": { en: "Base64", fa: "Base64" },
+  "servers.export.download": { en: "Save to file", fa: "ذخیره در فایل" },
+  "servers.export.copied": { en: "{count} configs copied", fa: "{count} کانفیگ کپی شد" },
+  "settings.allowLan": { en: "Share on the local network", fa: "اشتراک روی شبکهٔ محلی" },
+  "settings.allowLan.description": {
+    en: "Let other devices on this network use this connection — a phone or a television on the same wifi or hotspot. Point them at the address shown on the dashboard once connected.",
+    fa: "بگذارید دستگاه‌های دیگر روی این شبکه از این اتصال استفاده کنند — گوشی یا تلویزیون روی همان وای‌فای یا هات‌اسپات. بعد از اتصال، آن‌ها را به آدرسی که در صفحهٔ اصلی نشان داده می‌شود وصل کنید.",
+  },
+  "settings.allowLan.warning": {
+    en: "Anyone else on this network can use it too — nothing asks them for a password. Turn this on for a hotspot or a home network you trust, not for wifi you are a guest on.",
+    fa: "هر کس دیگری هم که روی این شبکه باشد می‌تواند از آن استفاده کند — از کسی رمز پرسیده نمی‌شود. این را برای هات‌اسپات خودتان یا شبکهٔ خانگی مورد اعتماد روشن کنید، نه روی وای‌فایی که مهمان آن هستید.",
+  },
   "settings.tunnel": { en: "Tunnel (TUN)", fa: "تونل (TUN)" },
   "settings.tunnel.description": {
     en: "The tunnel carries every program on the machine. Turning it on asks for Administrator when connecting, because creating the network adapter needs it. Left off, only programs pointed at the local proxy are carried.",

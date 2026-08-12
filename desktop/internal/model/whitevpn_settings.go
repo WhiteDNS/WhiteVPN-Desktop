@@ -137,6 +137,16 @@ type WhiteVPNSettings struct {
 	// the removed Xray path and nothing reads it.
 	SetSystemProxy bool `json:"setSystemProxy"`
 
+	// AllowLAN opens the local proxy to the rest of the network rather than to
+	// this machine alone, so another device — a phone on the same hotspot, a
+	// television — can use this desktop's connection.
+	//
+	// Off by default and deliberately not remembered as a general preference the
+	// way the others are: nothing authenticates a client, so whoever else is on
+	// that network can use the tunnel too. On a hotspot the user owns that is the
+	// point; on a café's wifi it is a stranger's free VPN.
+	AllowLAN bool `json:"allowLan"`
+
 	// ListenPort is where the engine's local proxy listens, serving HTTP and
 	// SOCKS5 on the one port.
 	//
