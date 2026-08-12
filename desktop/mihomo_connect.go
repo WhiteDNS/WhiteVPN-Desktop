@@ -74,7 +74,12 @@ func (a *App) startWhiteDNSVPNWithMihomo() (model.AppState, error) {
 	homeDir := filepath.Join(a.configDir, "mihomo")
 
 	a.mu.Lock()
-	settings := model.NormalizeWhiteVPNSettings(a.state.WhiteVPN)
+	// settingsForThisMachine, not just Normalize: a settings file carried over
+	// from Windows, or written before the interface stopped offering the tunnel
+	// here, still says it is on. Connecting on that would ask the engine to raise
+	// a core it has no way to raise, and the user would be told their connection
+	// failed because of an unimplemented function.
+	settings := settingsForThisMachine(model.NormalizeWhiteVPNSettings(a.state.WhiteVPN))
 	a.mu.Unlock()
 
 	// The dashboard's choices are applied here, against the catalogue this

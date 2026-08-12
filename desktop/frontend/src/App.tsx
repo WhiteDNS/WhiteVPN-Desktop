@@ -6095,6 +6095,17 @@ function WhiteVPNSettingsPage({
 }) {
   const stored = state.whiteVpn;
   const [draft, setDraft] = useState<WhiteVPNSettings>(stored);
+  // Tunnel mode needs the core raised to root, and that is implemented on
+  // Windows only. Asked of the backend rather than guessed from the interface,
+  // so the day another platform gains it this needs no change here.
+  const [tunnelAvailable, setTunnelAvailable] = useState(true);
+  useEffect(() => {
+    void backend
+      .tunnelSupported()
+      .then(setTunnelAvailable)
+      .catch(() => setTunnelAvailable(false));
+  }, []);
+
   const [frontingDraft, setFrontingDraft] = useState("");
   const [processDraft, setProcessDraft] = useState("");
   const [saving, setSaving] = useState(false);
@@ -6194,10 +6205,15 @@ function WhiteVPNSettingsPage({
             <SelectContent position="popper">
               <SelectItem value="systemProxy">{t("settings.routing.systemProxy")}</SelectItem>
               <SelectItem value="proxyOnly">{t("settings.routing.proxyOnly")}</SelectItem>
-              <SelectItem value="tun">{t("settings.routing.tun")}</SelectItem>
+              {/* Offered only where it can run. A mode that always fails is
+                  worse than one that is absent — the missing one does not waste
+                  somebody's evening on an error about an unimplemented
+                  function. */}
+              {tunnelAvailable && <SelectItem value="tun">{t("settings.routing.tun")}</SelectItem>}
             </SelectContent>
           </Select>
           <FieldDescription>{t(`settings.routing.${routingMode(draft)}.description`)}</FieldDescription>
+          {!tunnelAvailable && <FieldDescription>{t("settings.routing.tun.unavailable")}</FieldDescription>}
         </Field>
 
         {/* Only in proxy-only mode. Everywhere else the port is an
