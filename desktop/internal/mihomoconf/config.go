@@ -158,6 +158,15 @@ type Options struct {
 	ControlPort int
 	Secret      string
 
+	// AllowLAN opens the local proxy to the rest of the network rather than to
+	// this machine alone.
+	//
+	// It is what lets a phone on the same hotspot use this desktop's connection,
+	// and it is also what lets anyone else on that network use it. Nothing
+	// authenticates a client, so the only thing standing between the two is
+	// whether the network is one the user trusts.
+	AllowLAN bool
+
 	DNSPrivacy  DNSPrivacyMode
 	DoHURL      string
 	DoTEndpoint string
@@ -310,7 +319,12 @@ func Render(subscriptionYAML string, opts Options) string {
 	fmt.Fprintf(&out, "mixed-port: %d\n", opts.MixedPort)
 	fmt.Fprintf(&out, "external-controller: %s:%d\n", controllerHost, opts.ControlPort)
 	fmt.Fprintf(&out, "secret: %s\n", quoteYAML(opts.Secret))
-	out.WriteString("allow-lan: false\n")
+	fmt.Fprintf(&out, "allow-lan: %t\n", opts.AllowLAN)
+	if opts.AllowLAN {
+		// Said explicitly rather than left to the engine's default for it, so
+		// that what the listener binds is decided here and stays decided.
+		out.WriteString("bind-address: \"*\"\n")
+	}
 	out.WriteString("mode: rule\n")
 	out.WriteString("log-level: warning\n")
 	fmt.Fprintf(&out, "ipv6: %t\n", opts.Tun.IPv6)

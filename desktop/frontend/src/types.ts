@@ -748,6 +748,7 @@ export type WhiteVPNSettings = {
   language: string;
   tunEnabled: boolean;
   setSystemProxy: boolean;
+  allowLan: boolean;
   listenPort: number;
   acceptedPrivacyPolicyVersion: number;
 };

@@ -6134,6 +6134,19 @@ function WhiteVPNSettingsPage({
         )}
 
         <SettingSwitchRow
+          label={t("settings.allowLan")}
+          checked={draft.allowLan}
+          onCheckedChange={(allowLan) => patch({ allowLan })}
+        />
+        <FieldDescription>{t("settings.allowLan.description")}</FieldDescription>
+        {draft.allowLan && (
+          <Alert>
+            <AlertCircle />
+            <AlertDescription>{t("settings.allowLan.warning")}</AlertDescription>
+          </Alert>
+        )}
+
+        <SettingSwitchRow
           label={t("settings.killSwitch")}
           checked={draft.killSwitch.enabled}
           disabled

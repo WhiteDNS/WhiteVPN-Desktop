@@ -32,6 +32,10 @@ type Options struct {
 	MixedPort   int
 	ControlPort int
 
+	// AllowLAN opens the local proxy to the rest of the network, which is how a
+	// phone on the same hotspot reaches this desktop's connection.
+	AllowLAN bool
+
 	DNSPrivacy  mihomoconf.DNSPrivacyMode
 	DoHURL      string
 	DoTEndpoint string
@@ -721,6 +725,7 @@ func PrepareConfig(opts Options) (string, []string, error) {
 	document := mihomoconf.Render(proxiesYAML, mihomoconf.Options{
 		MixedPort:   opts.MixedPort,
 		ControlPort: opts.ControlPort,
+		AllowLAN:    opts.AllowLAN,
 		Secret:      secret,
 		DNSPrivacy:  opts.DNSPrivacy,
 		DoHURL:      opts.DoHURL,

@@ -113,6 +113,7 @@ func (a *App) startWhiteDNSVPNWithMihomo() (model.AppState, error) {
 		CorePath:     corePath,
 		HomeDir:      homeDir,
 		MixedPort:    mixedPort,
+		AllowLAN:     settings.AllowLAN,
 		Subscription: subscription,
 		Prefer:       prefer,
 		// Nodes the user hid never reach the configuration, so the engine cannot
@@ -146,11 +147,28 @@ func (a *App) startWhiteDNSVPNWithMihomo() (model.AppState, error) {
 		return a.GetAppState(), nil
 	}
 
+	// Shared over the network, the address another device needs is this machine's
+	// on the LAN. PublicProxyIP is the field for it — documented as exactly that
+	// and never filled in until now — and the dashboard already prefers it, so
+	// what gets copied off the screen is what a phone can actually be pointed at.
+	sharedAddress := ""
+	if settings.AllowLAN {
+		if sharedAddress = lanAddress(); sharedAddress != "" {
+			a.appendRuntimeLog(fmt.Sprintf(
+				"shared on the network: other devices can use %s:%d", sharedAddress, connected.MixedPort()))
+		} else {
+			// Listening on every interface and not one of them reachable. Said
+			// plainly rather than leaving a switch that appears to have worked.
+			a.appendRuntimeLog("sharing is on, but this machine has no local network address to share on")
+		}
+	}
+
 	a.mu.Lock()
 	a.state.Runtime.ListenIP = "127.0.0.1"
 	a.state.Runtime.ListenPort = connected.MixedPort()
 	a.state.Runtime.ProxyProtocol = "mixed"
 	a.state.Runtime.LocalProxyIP = "127.0.0.1"
+	a.state.Runtime.PublicProxyIP = sharedAddress
 	a.mu.Unlock()
 	a.recordConnectedNode(connected.Selected())
 	if proxyOnly(settings) {
