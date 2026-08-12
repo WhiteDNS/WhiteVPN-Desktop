@@ -1,3 +1,26 @@
+# Dependency updates.
+#
+# Everything is grouped, so a week's worth of updates arrives as one pull
+# request per ecosystem rather than thirty. That is only safe while the contents
+# are the kind of change a group can carry.
+#
+# It was not. The first frontend group to come through bundled twenty-one
+# updates including React 18 to 19, TypeScript 5 to 7, Vite 6 to 8 and its React
+# plugin 4 to 6 — five major versions and a framework migration, 2,572 lines,
+# under a heading that reads like routine maintenance. React 19 changes ref
+# handling and effect semantics under StrictMode; the interface is one very large
+# component that leans on both. It could typecheck, build, ship, and be wrong at
+# runtime, and the frontend is embedded in the binary so a regression there is
+# something users find rather than something a build fails on.
+#
+# So groups now carry minor and patch updates only. Majors still arrive — they
+# are not ignored, and a version left behind is its own risk — but one package
+# per pull request, which is a size a person can actually review and revert.
+#
+# Security updates are a separate mechanism and are not affected by any of this.
+# Dependabot opens those regardless of the grouping and scheduling here, so
+# nothing below delays a fix for a known vulnerability.
+
 version: 2
 updates:
   - package-ecosystem: gomod
@@ -7,6 +30,7 @@ updates:
     groups:
       go-dependencies:
         patterns: ["*"]
+        update-types: ["minor", "patch"]
 
   - package-ecosystem: gomod
     directory: /WhitednsTC/engine
@@ -15,6 +39,7 @@ updates:
     groups:
       engine-dependencies:
         patterns: ["*"]
+        update-types: ["minor", "patch"]
 
   - package-ecosystem: npm
     directory: /desktop/frontend
@@ -23,7 +48,11 @@ updates:
     groups:
       frontend-dependencies:
         patterns: ["*"]
+        update-types: ["minor", "patch"]
 
+  # Actions are pinned by major tag by convention (actions/checkout@v4), so a
+  # major here is a deliberate move to a new tag rather than a version bump, and
+  # is worth seeing on its own for the same reason as the rest.
   - package-ecosystem: github-actions
     directory: /
     schedule:
@@ -31,3 +60,4 @@ updates:
     groups:
       actions:
         patterns: ["*"]
+        update-types: ["minor", "patch"]
