@@ -104,3 +104,6 @@ desktop/cores/*
 **/*.tgz
 **/*.7z
 **/*.sha256
+
+# Agent working notes, not project source.
+memory.md
