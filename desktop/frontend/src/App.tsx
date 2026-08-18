@@ -2525,7 +2525,33 @@ type NodeSort = { column: NodeSortColumn; direction: "asc" | "desc" };
 // Mirrors session.DefaultSpeedURL. Ten megabytes: enough that a fast node is
 // not measuring its own start-up, small enough that a slow one is not still
 // going when the budget runs out.
-const defaultSpeedTestURL = "https://speed.cloudflare.com/__down?bytes=10000000";
+// The speed test asks Cloudflare for a file of a given size, so the size is the
+// only part worth exposing. One megabyte is enough to rank nodes and is what the
+// Android client settled on; the old ten-megabyte default cost a hundred times
+// more traffic across a full run for no better ordering.
+const speedTestURLPrefix = "https://speed.cloudflare.com/__down?bytes=";
+const defaultSpeedTestMegabytes = 1;
+const minSpeedTestMegabytes = 1;
+const maxSpeedTestMegabytes = 100;
+const bytesPerMegabyte = 1_000_000;
+
+function speedTestURLFor(megabytes: number): string {
+  const size = Math.min(Math.max(Math.round(megabytes), minSpeedTestMegabytes), maxSpeedTestMegabytes);
+  return `${speedTestURLPrefix}${size * bytesPerMegabyte}`;
+}
+
+// A URL the field did not write - a custom target from an older build - reads
+// back as the default rather than as a nonsense size.
+function megabytesFromSpeedTestURL(url: string): number {
+  if (!url.startsWith(speedTestURLPrefix)) {
+    return defaultSpeedTestMegabytes;
+  }
+  const bytes = Number(url.slice(speedTestURLPrefix.length));
+  if (!Number.isFinite(bytes) || bytes < bytesPerMegabyte) {
+    return defaultSpeedTestMegabytes;
+  }
+  return Math.round(bytes / bytesPerMegabyte);
+}
 
 const defaultNodeTest: NodeTestRequest = {
   nodes: [],
@@ -2538,7 +2564,7 @@ const defaultNodeTest: NodeTestRequest = {
   delayWorkers: 16,
   delayUrl: "",
   speedBudgetMs: 8000,
-  speedUrl: defaultSpeedTestURL,
+  speedUrl: speedTestURLFor(defaultSpeedTestMegabytes),
 };
 
 function formatRate(bytesPerSecond: number): string {
@@ -3132,11 +3158,12 @@ function NodesPage({
                 max={60000}
                 onChange={(value) => setRequest({ ...request, speedBudgetMs: value })}
               />
-              <TextField
-                label={t("servers.option.speedUrl")}
-                value={request.speedUrl}
-                placeholder="https://speed.cloudflare.com/__down?bytes=10000000"
-                onChange={(value) => setRequest({ ...request, speedUrl: value })}
+              <NumberField
+                label={t("servers.option.speedSize")}
+                value={megabytesFromSpeedTestURL(request.speedUrl)}
+                min={minSpeedTestMegabytes}
+                max={maxSpeedTestMegabytes}
+                onChange={(value) => setRequest({ ...request, speedUrl: speedTestURLFor(value) })}
               />
               <FieldDescription className="md:col-span-3">{t("servers.option.hint")}</FieldDescription>
             </FieldGroup>
