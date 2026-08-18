@@ -82,6 +82,12 @@ import {
   FieldSet,
   FieldTitle,
 } from "@/components/ui/field";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import {
   Item,
@@ -1580,6 +1586,23 @@ function countryName(code: string, language: Language, unknown: string): string 
 
 type CountryOption = { code: string; count: number; name: string };
 
+// Nothing ticked means everything, which is what the single-select "All" entry
+// used to mean. Keeping that shape avoids a state where the list is empty
+// because the user has narrowed it to nothing without noticing.
+function toggleFilter(selected: string[], value: string): string[] {
+  return selected.includes(value) ? selected.filter((entry) => entry !== value) : [...selected, value];
+}
+
+function filterSummary(selected: string[], all: string): string {
+  if (selected.length === 0) {
+    return all;
+  }
+  if (selected.length === 1) {
+    return selected[0];
+  }
+  return `${selected.length}`;
+}
+
 function countryOptions(nodes: WhiteVPNNode[], language: Language, unknown: string): CountryOption[] {
   const counts = new Map<string, number>();
   for (const node of nodes) {
@@ -2558,8 +2581,8 @@ function NodesPage({
   t: TranslateFn;
 }) {
   const [search, setSearch] = useState("");
-  const [country, setCountry] = useState("");
-  const [protocol, setProtocol] = useState("");
+  const [selectedCountries, setSelectedCountries] = useState<string[]>([]);
+  const [selectedProtocols, setSelectedProtocols] = useState<string[]>([]);
   const [sort, setSort] = useState<NodeSort | null>({ column: "label", direction: "asc" });
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [request, setRequest] = useState<NodeTestRequest>(defaultNodeTest);
@@ -2601,10 +2624,10 @@ function NodesPage({
       if (node.hidden && !showHidden) {
         return false;
       }
-      if (country && node.countryCode !== country) {
+      if (selectedCountries.length > 0 && !selectedCountries.includes(node.countryCode)) {
         return false;
       }
-      if (protocol && node.type !== protocol) {
+      if (selectedProtocols.length > 0 && !selectedProtocols.includes(node.type)) {
         return false;
       }
       if (!needle) {
@@ -2649,7 +2672,7 @@ function NodesPage({
       return left - right;
     });
     return sort.direction === "desc" ? sorted.reverse() : sorted;
-  }, [nodes, search, country, protocol, sort, language, unknown, showHidden]);
+  }, [nodes, search, selectedCountries, selectedProtocols, sort, language, unknown, showHidden]);
 
   const hiddenCount = useMemo(() => nodes.filter((node) => node.hidden).length, [nodes]);
   const selectedNames = useMemo(() => visible.filter((node) => selected.has(node.name)).map((node) => node.name), [visible, selected]);
@@ -3008,32 +3031,48 @@ function NodesPage({
               <Search className="pointer-events-none absolute start-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t("vpn.search")} className="ps-8" />
             </div>
-            <Select value={country || "all"} onValueChange={(value) => setCountry(value === "all" ? "" : value)}>
-              <SelectTrigger className="w-44">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent position="popper">
-                <SelectItem value="all">{t("vpn.location")}: {t("vpn.types.all")}</SelectItem>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" className="w-44 justify-between font-normal">
+                  <span className="truncate">
+                    {t("vpn.location")}: {filterSummary(selectedCountries, t("vpn.types.all"))}
+                  </span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="max-h-72 w-56 overflow-y-auto">
                 {countries.map((entry) => (
-                  <SelectItem key={entry.code} value={entry.code}>
+                  <DropdownMenuCheckboxItem
+                    key={entry.code}
+                    checked={selectedCountries.includes(entry.code)}
+                    onCheckedChange={() => setSelectedCountries(toggleFilter(selectedCountries, entry.code))}
+                    onSelect={(event) => event.preventDefault()}
+                  >
                     {flagFromCountryCode(entry.code)} {entry.name} ({entry.count})
-                  </SelectItem>
+                  </DropdownMenuCheckboxItem>
                 ))}
-              </SelectContent>
-            </Select>
-            <Select value={protocol || "all"} onValueChange={(value) => setProtocol(value === "all" ? "" : value)}>
-              <SelectTrigger className="w-40">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent position="popper">
-                <SelectItem value="all">{t("vpn.types")}: {t("vpn.types.all")}</SelectItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" className="w-40 justify-between font-normal">
+                  <span className="truncate">
+                    {t("vpn.types")}: {filterSummary(selectedProtocols, t("vpn.types.all"))}
+                  </span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="max-h-72 w-48 overflow-y-auto">
                 {protocols.map((type) => (
-                  <SelectItem key={type} value={type}>
+                  <DropdownMenuCheckboxItem
+                    key={type}
+                    checked={selectedProtocols.includes(type)}
+                    onCheckedChange={() => setSelectedProtocols(toggleFilter(selectedProtocols, type))}
+                    onSelect={(event) => event.preventDefault()}
+                  >
                     {type}
-                  </SelectItem>
+                  </DropdownMenuCheckboxItem>
                 ))}
-              </SelectContent>
-            </Select>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
 
           <div className="flex flex-wrap items-center gap-3 rounded-md border bg-background/60 px-3 py-2">
