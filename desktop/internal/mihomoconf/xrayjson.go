@@ -3,6 +3,7 @@ package mihomoconf
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -52,6 +53,12 @@ func ParseXrayJSON(body string) ([]Proxy, error) {
 }
 
 func appendXrayOutbounds(into []Proxy, config map[string]any, remarks string, names *nameRegistry) []Proxy {
+	// WARP configurations hold several real outbounds rather than one, so they
+	// are read whole before the one-server-per-configuration rule below applies.
+	if wireGuard := xrayWireGuardProxies(config, remarks, names); len(wireGuard) > 0 {
+		return append(into, wireGuard...)
+	}
+
 	outbounds, _ := config["outbounds"].([]any)
 	for _, entry := range outbounds {
 		outbound, ok := entry.(map[string]any)
@@ -256,4 +263,210 @@ func firstMap(value any) map[string]any {
 	}
 	first, _ := list[0].(map[string]any)
 	return first
+}
+
+// WireGuard, which Xray carries differently enough to need its own path.
+//
+// A normal Xray config holds one server and a handful of freedom/blackhole
+// outbounds, so appendXrayOutbounds keeps the first that converts and stops. A
+// WARP config breaks that rule: it holds two wireguard outbounds that are both
+// real, the second dialing through the first via sockopt.dialerProxy — the
+// "WoW" chain that routes one WARP hop through another. Keeping only the first
+// would silently drop half of what the user imported, so both survive here and
+// the chain is rebuilt as mihomo's dialer-proxy.
+func xrayWireGuardProxies(config map[string]any, remarks string, names *nameRegistry) []Proxy {
+	outbounds, _ := config["outbounds"].([]any)
+
+	type candidate struct {
+		tag    string
+		dialer string
+		proxy  Proxy
+	}
+	var found []candidate
+	for _, raw := range outbounds {
+		outbound, ok := raw.(map[string]any)
+		if !ok || strings.ToLower(jsonString(outbound, "protocol")) != "wireguard" {
+			continue
+		}
+		proxy, ok := xrayWireGuardProxy(outbound)
+		if !ok {
+			continue
+		}
+		sockopt := firstMapValue(outbound, "streamSettings", "sockopt")
+		found = append(found, candidate{
+			tag:    strings.TrimSpace(jsonString(outbound, "tag")),
+			dialer: strings.TrimSpace(jsonString(sockopt, "dialerProxy")),
+			proxy:  proxy,
+		})
+	}
+	if len(found) == 0 {
+		return nil
+	}
+
+	// The remarks names the configuration, and with two hops in it there are two
+	// nodes to tell apart, so the second onward is qualified by its tag.
+	base := strings.TrimSpace(remarks)
+	byTag := make(map[string]string, len(found))
+	for index := range found {
+		name := base
+		if name == "" {
+			name = found[index].tag
+		} else if index > 0 {
+			qualifier := found[index].tag
+			if qualifier == "" {
+				qualifier = fmt.Sprintf("%d", index+1)
+			}
+			name = fmt.Sprintf("%s (%s)", base, qualifier)
+		}
+		if name == "" {
+			name = fmt.Sprintf("%v:%v", found[index].proxy["server"], found[index].proxy["port"])
+		}
+		name = names.register(name)
+		found[index].proxy["name"] = name
+		if found[index].tag != "" {
+			byTag[found[index].tag] = name
+		}
+	}
+
+	proxies := make([]Proxy, 0, len(found))
+	for _, entry := range found {
+		if entry.dialer != "" {
+			target, ok := byTag[entry.dialer]
+			if !ok {
+				// The hop it dials through is missing or unreadable, so this one
+				// cannot carry traffic either. Offering it would look like a
+				// working node and fail on the first packet.
+				continue
+			}
+			entry.proxy["dialer-proxy"] = target
+		}
+		proxies = append(proxies, entry.proxy)
+	}
+	return proxies
+}
+
+// xrayWireGuardProxy converts one wireguard outbound, without naming it.
+func xrayWireGuardProxy(outbound map[string]any) (Proxy, bool) {
+	settings, _ := outbound["settings"].(map[string]any)
+	if settings == nil {
+		return nil, false
+	}
+	// One peer is what every WARP feed in the wild emits. Mihomo has a full
+	// multi-peer `peers` syntax, but guessing at a mapping for a shape nobody
+	// has sent us would be inventing behaviour rather than supporting it.
+	peers, _ := settings["peers"].([]any)
+	if len(peers) != 1 {
+		return nil, false
+	}
+	peer := firstMap(settings["peers"])
+	if peer == nil {
+		return nil, false
+	}
+
+	privateKey := strings.TrimSpace(jsonString(settings, "secretKey"))
+	publicKey := strings.TrimSpace(jsonString(peer, "publicKey"))
+	if privateKey == "" || publicKey == "" {
+		return nil, false
+	}
+	host, port, ok := splitWireGuardEndpoint(jsonString(peer, "endpoint"))
+	if !ok {
+		return nil, false
+	}
+
+	proxy := Proxy{
+		"type":        "wireguard",
+		"server":      host,
+		"port":        port,
+		"private-key": privateKey,
+		"public-key":  publicKey,
+		"udp":         true,
+	}
+
+	// The tunnel's own addresses arrive as CIDRs and split by family, the same
+	// way parseWireGuard splits them for links.
+	for _, address := range jsonStrings(settings, "address") {
+		value := strings.TrimSpace(strings.SplitN(address, "/", 2)[0])
+		if value == "" {
+			continue
+		}
+		key := "ip"
+		if strings.Contains(value, ":") {
+			key = "ipv6"
+		}
+		if _, taken := proxy[key]; !taken {
+			proxy[key] = value
+		}
+	}
+	if _, ok := proxy["ip"]; !ok {
+		// Without a v4 address inside the tunnel there is nothing to source from.
+		return nil, false
+	}
+
+	if allowed := jsonStrings(peer, "allowedIPs"); len(allowed) > 0 {
+		proxy["allowed-ips"] = allowed
+	}
+	if presharedKey := strings.TrimSpace(jsonString(peer, "preSharedKey")); presharedKey != "" {
+		proxy["pre-shared-key"] = presharedKey
+	}
+	if keepalive := jsonInt(peer, "keepAlive", 0); keepalive > 0 {
+		proxy["persistent-keepalive"] = keepalive
+	}
+	if mtu := jsonInt(settings, "mtu", 0); mtu > 0 {
+		proxy["mtu"] = mtu
+	}
+	if reserved, ok := xrayWireGuardReserved(settings["reserved"]); ok {
+		proxy["reserved"] = reserved
+	}
+	return proxy, true
+}
+
+// xrayWireGuardReserved reads the three WARP reserved bytes.
+//
+// Three or none: a partial or out-of-range set is a config we do not understand,
+// and passing it through would put the tunnel on the wrong session.
+func xrayWireGuardReserved(value any) ([]int, bool) {
+	entries, _ := value.([]any)
+	if len(entries) != 3 {
+		return nil, false
+	}
+	values := make([]int, 0, 3)
+	for _, entry := range entries {
+		number, ok := entry.(float64)
+		if !ok || number != float64(int(number)) || number < 0 || number > 255 {
+			return nil, false
+		}
+		values = append(values, int(number))
+	}
+	return values, true
+}
+
+// splitWireGuardEndpoint splits "host:port", including the [v6]:port form.
+func splitWireGuardEndpoint(value string) (string, int, bool) {
+	endpoint := strings.TrimSpace(value)
+	if endpoint == "" {
+		return "", 0, false
+	}
+	index := strings.LastIndex(endpoint, ":")
+	if index <= 0 {
+		return "", 0, false
+	}
+	host := strings.TrimSpace(endpoint[:index])
+	host = strings.TrimSuffix(strings.TrimPrefix(host, "["), "]")
+	port, err := strconv.Atoi(strings.TrimSpace(endpoint[index+1:]))
+	if host == "" || err != nil || port < 1 || port > 65535 {
+		return "", 0, false
+	}
+	return host, port, true
+}
+
+// firstMapValue walks a chain of nested objects, returning nil if any is absent.
+func firstMapValue(values map[string]any, keys ...string) map[string]any {
+	current := values
+	for _, key := range keys {
+		if current == nil {
+			return nil
+		}
+		current, _ = current[key].(map[string]any)
+	}
+	return current
 }

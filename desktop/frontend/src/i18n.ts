@@ -532,7 +532,7 @@ const strings = {
   "servers.option.delayTimeout": { en: "Delay timeout (ms)", fa: "مهلت تأخیر (ms)" },
   "servers.option.delayWorkers": { en: "Delay at once", fa: "همزمانی تأخیر" },
   "servers.option.speedBudget": { en: "Speed budget (ms)", fa: "بودجهٔ سرعت (ms)" },
-  "servers.option.speedUrl": { en: "Speed test file", fa: "فایل آزمون سرعت" },
+  "servers.option.speedSize": { en: "Speed test size (MB)", fa: "حجم آزمون سرعت (مگابایت)" },
   "servers.option.hint": {
     en: "Reachable dials the address directly, without the VPN and without an engine — so a node blocked from where you are fails it while still working through the engine. Delay and speed run on an engine of their own, so they never disturb a live connection, and speed is one node at a time, so it is capped at 25.",
     fa: "«در دسترس» آدرس را مستقیم می‌زند، بدون وی‌پی‌ان و بدون موتور — پس سروری که از محل شما مسدود است در این آزمون رد می‌شود، در حالی که از راه موتور کاملاً کار می‌کند. تأخیر و سرعت روی موتور جداگانه‌ای اجرا می‌شوند و هرگز اتصال زنده را مختل نمی‌کنند، و سرعت هر بار یک سرور است، پس تا ۲۵ مورد محدود می‌شود.",

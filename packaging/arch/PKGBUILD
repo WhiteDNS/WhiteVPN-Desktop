@@ -1,0 +1,68 @@
+# Maintainer: WhiteDNS <https://t.me/whitedns>
+#
+# Arch and its derivatives have no use for the .deb and .rpm the release
+# publishes, so this builds from the release tarball instead.
+#
+# The engine binary inside the package is the same mihomo build every other
+# platform gets, so a node that works on the phone works here.
+
+pkgname=whitevpn-desktop
+pkgver=1.0.0
+pkgrel=1
+pkgdesc="WhiteVPN desktop client"
+arch=('x86_64' 'aarch64')
+url="https://github.com/WhiteDNS/WhiteVPN-Desktop"
+license=('GPL3')
+
+# webkit2gtk-4.1 and gtk3 are what the window itself is drawn with; without them
+# the binary starts and then fails to open a window, which reads as a crash.
+depends=('webkit2gtk-4.1' 'gtk3')
+# polkit provides pkexec, which is how the engine is given the rights to create
+# a tunnel device. Without it the app still runs — the local proxy needs no
+# privileges — so this is optional rather than a hard requirement.
+optdepends=('polkit: needed for tunnel (TUN) mode; the local proxy works without it')
+
+options=('!strip')
+
+source_x86_64=("$pkgname-$pkgver-x86_64.tar.gz::$url/releases/download/v$pkgver/WhiteVPN-Desktop-$pkgver-linux-amd64.tar.gz")
+source_aarch64=("$pkgname-$pkgver-aarch64.tar.gz::$url/releases/download/v$pkgver/WhiteVPN-Desktop-$pkgver-linux-arm64.tar.gz")
+
+# Filled in per release. 'SKIP' would let a tampered download install silently,
+# which is not a trade worth making for a program that carries someone's traffic.
+sha256sums_x86_64=('0000000000000000000000000000000000000000000000000000000000000000')
+sha256sums_aarch64=('0000000000000000000000000000000000000000000000000000000000000000')
+
+package() {
+  cd "$srcdir"
+
+  install -Dm755 "WhiteVPN Desktop" "$pkgdir/usr/lib/$pkgname/WhiteVPN Desktop"
+
+  # The engine and its geodata sit beside the binary because that is where the
+  # app looks for them, and they are read at runtime rather than installed as
+  # separate programs.
+  if [ -d cores ]; then
+    install -dm755 "$pkgdir/usr/lib/$pkgname/cores"
+    install -Dm755 cores/* "$pkgdir/usr/lib/$pkgname/cores/"
+  fi
+
+  install -dm755 "$pkgdir/usr/bin"
+  ln -s "/usr/lib/$pkgname/WhiteVPN Desktop" "$pkgdir/usr/bin/$pkgname"
+
+  install -Dm644 /dev/stdin "$pkgdir/usr/share/applications/$pkgname.desktop" <<EOF
+[Desktop Entry]
+Type=Application
+Name=WhiteVPN
+Comment=$pkgdesc
+Exec=$pkgname
+Icon=$pkgname
+Terminal=false
+Categories=Network;
+EOF
+
+  for size in 64 128 256; do
+    if [ -f "build/appicon-\${size}.png" ]; then
+      install -Dm644 "build/appicon-\${size}.png" \
+        "$pkgdir/usr/share/icons/hicolor/\${size}x\${size}/apps/$pkgname.png"
+    fi
+  done
+}

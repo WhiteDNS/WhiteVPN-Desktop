@@ -49,7 +49,7 @@ import {
   AlertTitle,
 } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -82,6 +82,12 @@ import {
   FieldSet,
   FieldTitle,
 } from "@/components/ui/field";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import {
   Item,
@@ -1580,6 +1586,23 @@ function countryName(code: string, language: Language, unknown: string): string 
 
 type CountryOption = { code: string; count: number; name: string };
 
+// Nothing ticked means everything, which is what the single-select "All" entry
+// used to mean. Keeping that shape avoids a state where the list is empty
+// because the user has narrowed it to nothing without noticing.
+function toggleFilter(selected: string[], value: string): string[] {
+  return selected.includes(value) ? selected.filter((entry) => entry !== value) : [...selected, value];
+}
+
+function filterSummary(selected: string[], all: string): string {
+  if (selected.length === 0) {
+    return all;
+  }
+  if (selected.length === 1) {
+    return selected[0];
+  }
+  return `${selected.length}`;
+}
+
 function countryOptions(nodes: WhiteVPNNode[], language: Language, unknown: string): CountryOption[] {
   const counts = new Map<string, number>();
   for (const node of nodes) {
@@ -2502,7 +2525,33 @@ type NodeSort = { column: NodeSortColumn; direction: "asc" | "desc" };
 // Mirrors session.DefaultSpeedURL. Ten megabytes: enough that a fast node is
 // not measuring its own start-up, small enough that a slow one is not still
 // going when the budget runs out.
-const defaultSpeedTestURL = "https://speed.cloudflare.com/__down?bytes=10000000";
+// The speed test asks Cloudflare for a file of a given size, so the size is the
+// only part worth exposing. One megabyte is enough to rank nodes and is what the
+// Android client settled on; the old ten-megabyte default cost a hundred times
+// more traffic across a full run for no better ordering.
+const speedTestURLPrefix = "https://speed.cloudflare.com/__down?bytes=";
+const defaultSpeedTestMegabytes = 1;
+const minSpeedTestMegabytes = 1;
+const maxSpeedTestMegabytes = 100;
+const bytesPerMegabyte = 1_000_000;
+
+function speedTestURLFor(megabytes: number): string {
+  const size = Math.min(Math.max(Math.round(megabytes), minSpeedTestMegabytes), maxSpeedTestMegabytes);
+  return `${speedTestURLPrefix}${size * bytesPerMegabyte}`;
+}
+
+// A URL the field did not write - a custom target from an older build - reads
+// back as the default rather than as a nonsense size.
+function megabytesFromSpeedTestURL(url: string): number {
+  if (!url.startsWith(speedTestURLPrefix)) {
+    return defaultSpeedTestMegabytes;
+  }
+  const bytes = Number(url.slice(speedTestURLPrefix.length));
+  if (!Number.isFinite(bytes) || bytes < bytesPerMegabyte) {
+    return defaultSpeedTestMegabytes;
+  }
+  return Math.round(bytes / bytesPerMegabyte);
+}
 
 const defaultNodeTest: NodeTestRequest = {
   nodes: [],
@@ -2515,7 +2564,7 @@ const defaultNodeTest: NodeTestRequest = {
   delayWorkers: 16,
   delayUrl: "",
   speedBudgetMs: 8000,
-  speedUrl: defaultSpeedTestURL,
+  speedUrl: speedTestURLFor(defaultSpeedTestMegabytes),
 };
 
 function formatRate(bytesPerSecond: number): string {
@@ -2558,8 +2607,8 @@ function NodesPage({
   t: TranslateFn;
 }) {
   const [search, setSearch] = useState("");
-  const [country, setCountry] = useState("");
-  const [protocol, setProtocol] = useState("");
+  const [selectedCountries, setSelectedCountries] = useState<string[]>([]);
+  const [selectedProtocols, setSelectedProtocols] = useState<string[]>([]);
   const [sort, setSort] = useState<NodeSort | null>({ column: "label", direction: "asc" });
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [request, setRequest] = useState<NodeTestRequest>(defaultNodeTest);
@@ -2601,10 +2650,10 @@ function NodesPage({
       if (node.hidden && !showHidden) {
         return false;
       }
-      if (country && node.countryCode !== country) {
+      if (selectedCountries.length > 0 && !selectedCountries.includes(node.countryCode)) {
         return false;
       }
-      if (protocol && node.type !== protocol) {
+      if (selectedProtocols.length > 0 && !selectedProtocols.includes(node.type)) {
         return false;
       }
       if (!needle) {
@@ -2649,7 +2698,7 @@ function NodesPage({
       return left - right;
     });
     return sort.direction === "desc" ? sorted.reverse() : sorted;
-  }, [nodes, search, country, protocol, sort, language, unknown, showHidden]);
+  }, [nodes, search, selectedCountries, selectedProtocols, sort, language, unknown, showHidden]);
 
   const hiddenCount = useMemo(() => nodes.filter((node) => node.hidden).length, [nodes]);
   const selectedNames = useMemo(() => visible.filter((node) => selected.has(node.name)).map((node) => node.name), [visible, selected]);
@@ -3008,32 +3057,48 @@ function NodesPage({
               <Search className="pointer-events-none absolute start-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t("vpn.search")} className="ps-8" />
             </div>
-            <Select value={country || "all"} onValueChange={(value) => setCountry(value === "all" ? "" : value)}>
-              <SelectTrigger className="w-44">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent position="popper">
-                <SelectItem value="all">{t("vpn.location")}: {t("vpn.types.all")}</SelectItem>
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                className={cn(buttonVariants({ variant: "outline" }), "w-44 justify-between font-normal")}
+              >
+                <span className="truncate">
+                  {t("vpn.location")}: {filterSummary(selectedCountries, t("vpn.types.all"))}
+                </span>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="max-h-72 w-56 overflow-y-auto">
                 {countries.map((entry) => (
-                  <SelectItem key={entry.code} value={entry.code}>
+                  <DropdownMenuCheckboxItem
+                    key={entry.code}
+                    checked={selectedCountries.includes(entry.code)}
+                    onCheckedChange={() => setSelectedCountries(toggleFilter(selectedCountries, entry.code))}
+                    onSelect={(event) => event.preventDefault()}
+                  >
                     {flagFromCountryCode(entry.code)} {entry.name} ({entry.count})
-                  </SelectItem>
+                  </DropdownMenuCheckboxItem>
                 ))}
-              </SelectContent>
-            </Select>
-            <Select value={protocol || "all"} onValueChange={(value) => setProtocol(value === "all" ? "" : value)}>
-              <SelectTrigger className="w-40">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent position="popper">
-                <SelectItem value="all">{t("vpn.types")}: {t("vpn.types.all")}</SelectItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                className={cn(buttonVariants({ variant: "outline" }), "w-40 justify-between font-normal")}
+              >
+                <span className="truncate">
+                  {t("vpn.types")}: {filterSummary(selectedProtocols, t("vpn.types.all"))}
+                </span>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="max-h-72 w-48 overflow-y-auto">
                 {protocols.map((type) => (
-                  <SelectItem key={type} value={type}>
+                  <DropdownMenuCheckboxItem
+                    key={type}
+                    checked={selectedProtocols.includes(type)}
+                    onCheckedChange={() => setSelectedProtocols(toggleFilter(selectedProtocols, type))}
+                    onSelect={(event) => event.preventDefault()}
+                  >
                     {type}
-                  </SelectItem>
+                  </DropdownMenuCheckboxItem>
                 ))}
-              </SelectContent>
-            </Select>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
 
           <div className="flex flex-wrap items-center gap-3 rounded-md border bg-background/60 px-3 py-2">
@@ -3093,11 +3158,12 @@ function NodesPage({
                 max={60000}
                 onChange={(value) => setRequest({ ...request, speedBudgetMs: value })}
               />
-              <TextField
-                label={t("servers.option.speedUrl")}
-                value={request.speedUrl}
-                placeholder="https://speed.cloudflare.com/__down?bytes=10000000"
-                onChange={(value) => setRequest({ ...request, speedUrl: value })}
+              <NumberField
+                label={t("servers.option.speedSize")}
+                value={megabytesFromSpeedTestURL(request.speedUrl)}
+                min={minSpeedTestMegabytes}
+                max={maxSpeedTestMegabytes}
+                onChange={(value) => setRequest({ ...request, speedUrl: speedTestURLFor(value) })}
               />
               <FieldDescription className="md:col-span-3">{t("servers.option.hint")}</FieldDescription>
             </FieldGroup>
