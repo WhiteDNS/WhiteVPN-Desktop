@@ -49,7 +49,7 @@ import {
   AlertTitle,
 } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -3058,12 +3058,12 @@ function NodesPage({
               <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t("vpn.search")} className="ps-8" />
             </div>
             <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" className="w-44 justify-between font-normal">
-                  <span className="truncate">
-                    {t("vpn.location")}: {filterSummary(selectedCountries, t("vpn.types.all"))}
-                  </span>
-                </Button>
+              <DropdownMenuTrigger
+                className={cn(buttonVariants({ variant: "outline" }), "w-44 justify-between font-normal")}
+              >
+                <span className="truncate">
+                  {t("vpn.location")}: {filterSummary(selectedCountries, t("vpn.types.all"))}
+                </span>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="max-h-72 w-56 overflow-y-auto">
                 {countries.map((entry) => (
@@ -3079,12 +3079,12 @@ function NodesPage({
               </DropdownMenuContent>
             </DropdownMenu>
             <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" className="w-40 justify-between font-normal">
-                  <span className="truncate">
-                    {t("vpn.types")}: {filterSummary(selectedProtocols, t("vpn.types.all"))}
-                  </span>
-                </Button>
+              <DropdownMenuTrigger
+                className={cn(buttonVariants({ variant: "outline" }), "w-40 justify-between font-normal")}
+              >
+                <span className="truncate">
+                  {t("vpn.types")}: {filterSummary(selectedProtocols, t("vpn.types.all"))}
+                </span>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="max-h-72 w-48 overflow-y-auto">
                 {protocols.map((type) => (
