@@ -58,7 +58,10 @@ type measureState struct {
 // followed by one answer.
 func (a *App) StartNodeTest(request model.NodeTestRequest) error {
 	request = model.NormalizeNodeTestRequest(request)
-	if len(request.Nodes) == 0 {
+	// A run covering every subscription names no nodes on purpose: the names on
+	// the page it was started from say nothing about the other lists, so each
+	// one contributes its own.
+	if len(request.Nodes) == 0 && !request.AllSubscriptions {
 		return fmt.Errorf("no nodes to test")
 	}
 
@@ -96,11 +99,74 @@ func (a *App) CancelNodeTest() {
 }
 
 func (a *App) runNodeTest(ctx context.Context, request model.NodeTestRequest) {
+	if request.AllSubscriptions {
+		a.runNodeTestEverywhere(ctx, request)
+		return
+	}
+
 	subscriptionID := request.SubscriptionID
 	if subscriptionID == "" {
 		subscriptionID = a.selectedSubscriptionID()
 	}
-	nodes := a.nodesByName(subscriptionID, request.Nodes)
+	a.runNodeTestFor(ctx, subscriptionID, a.nodesByName(subscriptionID, request.Nodes), request)
+}
+
+// runNodeTestEverywhere walks the subscriptions in turn.
+//
+// One at a time because each needs a measuring engine built from its own body,
+// and because the speed test measures bandwidth — several running at once would
+// be measuring each other.
+//
+// One subscription failing does not stop the rest. A provider that is down, or
+// an address that cannot be fetched, is a reason to skip that list rather than
+// to abandon the two the user could have had an answer for.
+func (a *App) runNodeTestEverywhere(ctx context.Context, request model.NodeTestRequest) {
+	for _, subscriptionID := range a.subscriptionIDsForTesting() {
+		if ctx.Err() != nil {
+			return
+		}
+		// Every node in each list: the names on the page the user started from
+		// say nothing about the other subscriptions.
+		list, err := a.ListSubscriptionNodes(subscriptionID, false)
+		if err != nil {
+			a.appendRuntimeLog(fmt.Sprintf("skipping %q while testing every subscription: %v", subscriptionID, err))
+			continue
+		}
+		nodes := make([]model.WhiteVPNNode, 0, len(list.Nodes))
+		for _, node := range list.Nodes {
+			// Hidden nodes are out of the way rather than out of reach, but a
+			// node the user took out of the list is not one they are asking to
+			// have measured.
+			if !node.Hidden {
+				nodes = append(nodes, node)
+			}
+		}
+		a.runNodeTestFor(ctx, subscriptionID, nodes, request)
+	}
+}
+
+// subscriptionIDsForTesting is every list that has nodes to measure.
+func (a *App) subscriptionIDsForTesting() []string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	ids := make([]string, 0, len(a.state.V2RaySubscriptions)+1)
+	for _, subscription := range a.state.V2RaySubscriptions {
+		ids = append(ids, subscription.ID)
+	}
+	// Manually added configs are a source like any other here. They are the one
+	// list a user assembled by hand, so leaving them out of "test everything"
+	// would be leaving out the nodes they care most about.
+	for _, profile := range a.state.V2RayProfiles {
+		if profile.SubscriptionID == "" {
+			ids = append(ids, model.ManualServerSourceID)
+			break
+		}
+	}
+	return ids
+}
+
+func (a *App) runNodeTestFor(ctx context.Context, subscriptionID string, nodes []model.WhiteVPNNode, request model.NodeTestRequest) {
 	if len(nodes) == 0 {
 		return
 	}
@@ -117,6 +183,13 @@ func (a *App) runNodeTest(ctx context.Context, request model.NodeTestRequest) {
 
 	measurer, err := a.startMeasurer(ctx, subscriptionID)
 	if err != nil {
+		if request.AllSubscriptions {
+			// One list of several. The interface reads nodes:test-error as the
+			// run being over, so reporting it that way would stop the spinner
+			// and the error banner on the two subscriptions still to come.
+			a.appendRuntimeLog(fmt.Sprintf("could not measure %q: %v", subscriptionID, err))
+			return
+		}
 		a.emit("nodes:test-error", err.Error())
 		return
 	}
@@ -307,6 +380,10 @@ func (a *App) recordNodeMeasurement(subscriptionID, name string, apply func(*mod
 	}
 	a.nodesMu.Unlock()
 	if found {
-		a.emit("nodes:test", updated)
+		// Which subscription this belongs to travels with it. Node names come
+		// from providers, so two subscriptions can both hold a "Germany 01",
+		// and a result matched on the name alone would land on whichever one
+		// the page happens to be showing.
+		a.emit("nodes:test", model.NodeMeasurement{SubscriptionID: subscriptionID, Node: updated})
 	}
 }
