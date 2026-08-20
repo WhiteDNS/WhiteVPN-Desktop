@@ -189,6 +189,11 @@ type Options struct {
 // rule, which is what a link-based subscription needs: links carry nodes and
 // nothing else, so without this there is nothing for traffic to match.
 func BuildProxiesYAML(proxies []Proxy, split SplitTunnel) (string, error) {
+	return BuildProxiesYAMLWithChain(proxies, split, Chain{})
+}
+
+// BuildProxiesYAMLWithChain is BuildProxiesYAML, and optionally a second hop.
+func BuildProxiesYAMLWithChain(proxies []Proxy, split SplitTunnel, chain Chain) (string, error) {
 	if len(proxies) == 0 {
 		return "", fmt.Errorf("mihomoconf: no proxies to build a config from")
 	}
@@ -212,13 +217,28 @@ func BuildProxiesYAML(proxies []Proxy, split SplitTunnel) (string, error) {
 		return "", fmt.Errorf("mihomoconf: no proxies with usable names")
 	}
 
+	// Where traffic leaves. Without a chain that is the selection group itself;
+	// with one it is the exit proxy, which reaches its own server through that
+	// group — so the group stays the first hop and Automatic keeps working.
+	exitTarget := SelectGroup
+	firstHopNames := names
+	if chain.Active() {
+		exit, allowed, err := buildChain(unique, names, chain)
+		if err != nil {
+			return "", err
+		}
+		unique = append(unique, exit)
+		firstHopNames = allowed
+		exitTarget = ChainExitName
+	}
+
 	document := map[string]any{
 		"proxies": toNodes(unique),
 		"proxy-groups": []any{
 			map[string]any{
 				"name":    SelectGroup,
 				"type":    "select",
-				"proxies": append([]string{AutoGroup}, names...),
+				"proxies": append([]string{AutoGroup}, firstHopNames...),
 			},
 			map[string]any{
 				"name":      AutoGroup,
@@ -226,12 +246,12 @@ func BuildProxiesYAML(proxies []Proxy, split SplitTunnel) (string, error) {
 				"url":       DelayTestURL,
 				"interval":  autoInterval,
 				"tolerance": autoTolerance,
-				"proxies":   names,
+				"proxies":   firstHopNames,
 			},
 		},
 		// Split-tunnel rules first, because mihomo takes the first rule that
 		// fits: a catch-all above them means nothing below is ever reached.
-		"rules": append(split.Rules(SelectGroup), catchAllRules(split)...),
+		"rules": append(split.Rules(exitTarget), catchAllRules(split, exitTarget)...),
 	}
 
 	encoded, err := yaml.Marshal(document)
@@ -247,11 +267,11 @@ func BuildProxiesYAML(proxies []Proxy, split SplitTunnel) (string, error) {
 // mean the second is dead — and the dead one would be the one saying everything
 // goes through the tunnel, which is exactly the line someone reading the config
 // to answer "why is this not tunnelled" would stop at.
-func catchAllRules(split SplitTunnel) []string {
+func catchAllRules(split SplitTunnel, target string) []string {
 	if split.Catches() {
 		return nil
 	}
-	return []string{"MATCH," + SelectGroup}
+	return []string{"MATCH," + target}
 }
 
 // toNodes puts the identifying fields first so a config is readable when someone
