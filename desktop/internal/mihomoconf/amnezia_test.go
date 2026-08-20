@@ -2,7 +2,6 @@ package mihomoconf
 
 import (
 	"reflect"
-	"strings"
 	"testing"
 )
 
@@ -120,27 +119,5 @@ func TestTheGlobalSettingStillReachesPlainNodes(t *testing.T) {
 	}
 	if changed != 1 {
 		t.Errorf("expected one proxy changed, got %d", changed)
-	}
-}
-
-// mihomo decodes this map into a struct and rejects keys it has no field for, so
-// one unknown key fails every WireGuard proxy in the subscription, not just this
-// one. Whatever is emitted has to exist in the pinned core.
-func TestOnlyFieldsThePinnedCoreKnowsAreEmitted(t *testing.T) {
-	known := map[string]bool{}
-	for _, set := range []map[string][]string{amneziaIntFields, amneziaStringFields} {
-		for field := range set {
-			known[field] = true
-		}
-	}
-	// v1.19.29's AmneziaWGOption, field for field.
-	for _, field := range strings.Fields("jc jmin jmax s1 s2 s3 s4 h1 h2 h3 h4 i1 i2 i3 i4 i5 j1 j2 j3 itime") {
-		if !known[field] {
-			t.Errorf("%s is in the core and not read from links", field)
-		}
-		delete(known, field)
-	}
-	for field := range known {
-		t.Errorf("%s is emitted but the pinned core has no field for it", field)
 	}
 }

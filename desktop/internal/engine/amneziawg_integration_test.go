@@ -22,7 +22,10 @@ func TestTheEngineReadsAmneziaWGv3(t *testing.T) {
 	link := "wireguard://cHJpdmF0ZS1rZXktMzItYnl0ZXMtZm9yLXRlc3Rz@a.example.com:51820" +
 		"?publickey=cHVibGljLWtleS0zMi1ieXRlcy1mb3ItdGVzdHM&address=10.0.0.2/32" +
 		"&jc=4&jmin=40&jmax=70&s1=15&s2=25&s3=5&s4=5" +
-		"&h1=1111111111&h2=2222222222&h3=3333333333&h4=4444444444#AmneziaWG"
+		"&h1=1111111111&h2=2222222222&h3=3333333333&h4=4444444444" +
+		"&version=3&header-protection-key=c2VjcmV0LWtleS0zMi1ieXRlcw&content-padding-addition=16" +
+		"&rekey-after-time=120&rekey-timeout=5&reject-after-time=180" +
+		"&keepalive-timeout=25&max-handshake-attempts=5&random-trailers=true&disable-cookies=true#AmneziaWG"
 
 	proxies, err := mihomoconf.ConvertLinks(link)
 	if err != nil {
@@ -32,9 +35,9 @@ func TestTheEngineReadsAmneziaWGv3(t *testing.T) {
 	if !ok {
 		t.Fatalf("the link parser emitted no Amnezia options: %#v", proxies[0])
 	}
-	// Written here rather than by the parser: `version` arrives with the core
-	// that has the field, and this is the test that says the core does.
-	options["version"] = 3
+	if options["version"] != 3 {
+		t.Fatalf("the link declared version 3 and the parser did not carry it: %#v", options)
+	}
 
 	proxiesYAML, err := mihomoconf.BuildProxiesYAML(proxies, mihomoconf.SplitTunnel{})
 	if err != nil {
