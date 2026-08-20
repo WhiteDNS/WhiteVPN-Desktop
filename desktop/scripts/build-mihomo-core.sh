@@ -15,7 +15,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 THIRD_PARTY_DIR="${MIHOMO_THIRD_PARTY_DIR:-${ROOT_DIR}/third_party}"
 CORE_DIR="${THIRD_PARTY_DIR}/flclash/core"
-MIHOMO_TAG="v1.19.29"
+MIHOMO_TAG="v1.19.30"
 
 TARGET_GOOS="${TARGET_GOOS:-$(go env GOOS)}"
 TARGET_GOARCH="${TARGET_GOARCH:-$(go env GOARCH)}"
