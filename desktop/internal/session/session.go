@@ -36,6 +36,15 @@ type Options struct {
 	// phone on the same hotspot reaches this desktop's connection.
 	AllowLAN bool
 
+	// Chain sends traffic through a second node before the internet. Empty means
+	// one hop, which is the ordinary case.
+	//
+	// Only the link-based path honours it. A subscription that arrives as a whole
+	// mihomo document brings its own groups and rules, and rewriting somebody
+	// else's routing to insert a hop is a different and much larger promise than
+	// the one this makes.
+	Chain mihomoconf.Chain
+
 	DNSPrivacy  mihomoconf.DNSPrivacyMode
 	DoHURL      string
 	DoTEndpoint string
@@ -688,15 +697,16 @@ func PrepareConfig(opts Options) (string, []string, error) {
 		}
 		// Share links, which is what the WhiteDNS catalogue is. They carry nodes
 		// only, so the groups and rule have to be generated around them.
-		document, buildErr := mihomoconf.BuildProxiesYAML(proxies, opts.SplitTunnel)
+		document, firstHop, buildErr := mihomoconf.BuildProxiesYAMLWithChain(proxies, opts.SplitTunnel, opts.Chain)
 		if buildErr != nil {
 			return "", nil, buildErr
 		}
 		proxiesYAML = document
-		candidates = make([]string, 0, len(proxies))
-		for _, proxy := range proxies {
-			candidates = append(candidates, proxy.Name())
-		}
+		// What the first hop may be, which is not every node once a chain is in
+		// play: the exit's own is taken out so both ends cannot be one machine,
+		// and a datagram exit narrows it to nodes that can carry UDP. Selecting
+		// outside this would name a proxy the group does not contain.
+		candidates = append([]string(nil), firstHop...)
 		if len(opts.Prefer) > 0 {
 			preferred := intersect(candidates, opts.Prefer)
 			if len(preferred) == 0 {

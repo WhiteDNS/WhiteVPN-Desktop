@@ -608,6 +608,25 @@ const strings = {
     en: "How traffic reaches your machine.",
     fa: "اینکه ترافیک چطور به دستگاه شما می‌رسد.",
   },
+  "settings.chain.title": { en: "Connection chaining", fa: "زنجیره کردن اتصال" },
+  "settings.chain.description": {
+    en: "Send traffic through a second node before it reaches the internet. The connection chosen on the VPN page becomes the first hop; the node chosen here becomes the one traffic leaves from.",
+    fa: "ترافیک را قبل از رسیدن به اینترنت از یک سرور دوم رد کنید. اتصالی که در صفحهٔ وی‌پی‌ان انتخاب کرده‌اید هاپ اول می‌شود و سروری که اینجا انتخاب می‌کنید جایی است که ترافیک از آن خارج می‌شود.",
+  },
+  "settings.chain.exit": { en: "Second hop", fa: "هاپ دوم" },
+  "settings.chain.off": { en: "Off — one hop", fa: "خاموش — یک هاپ" },
+  "settings.chain.off.description": {
+    en: "Traffic leaves from the connection chosen on the VPN page, as usual.",
+    fa: "ترافیک مثل همیشه از اتصالی که در صفحهٔ وی‌پی‌ان انتخاب شده خارج می‌شود.",
+  },
+  "settings.chain.on.description": {
+    en: "Two hops are slower than one, and every node has to carry the traffic of the one after it. If the second hop uses WireGuard or Hysteria2, only nodes that can carry UDP are offered as the first — the rest could not carry it at all.",
+    fa: "دو هاپ کندتر از یکی است و هر سرور باید ترافیک سرور بعدی را هم حمل کند. اگر هاپ دوم WireGuard یا Hysteria2 باشد، فقط سرورهایی به‌عنوان هاپ اول پیشنهاد می‌شوند که بتوانند UDP را حمل کنند — بقیه اصلاً نمی‌توانند.",
+  },
+  "settings.chain.missing": {
+    en: "\"{name}\" is not in this subscription any more. Choose another second hop, or turn chaining off — connecting will refuse until then.",
+    fa: "«{name}» دیگر در این اشتراک نیست. هاپ دوم دیگری انتخاب کنید یا زنجیره را خاموش کنید — تا آن موقع اتصال برقرار نمی‌شود.",
+  },
   "settings.routing.mode": { en: "How traffic reaches the tunnel", fa: "ترافیک چطور به تونل برسد" },
   "settings.routing.systemProxy": { en: "System proxy — the whole machine", fa: "پراکسی سیستم — کل دستگاه" },
   "settings.routing.proxyOnly": { en: "Proxy only — nothing is redirected", fa: "فقط پراکسی — چیزی تغییر نمی‌کند" },

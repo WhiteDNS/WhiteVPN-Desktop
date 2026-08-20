@@ -20,7 +20,7 @@ func chainProxies() []Proxy {
 
 func renderChain(t *testing.T, chain Chain) map[string]any {
 	t.Helper()
-	out, err := BuildProxiesYAMLWithChain(chainProxies(), SplitTunnel{}, chain)
+	out, _, err := BuildProxiesYAMLWithChain(chainProxies(), SplitTunnel{}, chain)
 	if err != nil {
 		t.Fatalf("build: %v", err)
 	}
@@ -121,7 +121,7 @@ func TestTheFirstHopCannotChooseTheExitsServer(t *testing.T) {
 // beneath them has to be able to carry those.
 func TestAUDPExitOnlyGetsFirstHopsThatCanCarryUDP(t *testing.T) {
 	for _, exitNode := range []string{"Wire One", "UDP One"} {
-		out, err := BuildProxiesYAMLWithChain(chainProxies(), SplitTunnel{}, Chain{ExitNode: exitNode})
+		out, _, err := BuildProxiesYAMLWithChain(chainProxies(), SplitTunnel{}, Chain{ExitNode: exitNode})
 		if err != nil {
 			t.Fatalf("%s: %v", exitNode, err)
 		}
@@ -143,7 +143,7 @@ func TestAUDPExitWithNoUDPCapableHopIsRefused(t *testing.T) {
 		{"name": "TCP One", "type": "vless", "server": "a.example.com", "port": 443},
 		{"name": "Wire One", "type": "wireguard", "server": "d.example.com", "port": 51820, "udp": true},
 	}
-	_, err := BuildProxiesYAMLWithChain(tcpOnly, SplitTunnel{}, Chain{ExitNode: "Wire One"})
+	_, _, err := BuildProxiesYAMLWithChain(tcpOnly, SplitTunnel{}, Chain{ExitNode: "Wire One"})
 	if err == nil {
 		t.Fatal("a chain that cannot carry its own traffic should be refused")
 	}
@@ -158,7 +158,7 @@ func TestAUDPExitWithNoUDPCapableHopIsRefused(t *testing.T) {
 
 // A node chosen as the exit and then removed from the subscription.
 func TestAnExitThatIsGoneIsReported(t *testing.T) {
-	_, err := BuildProxiesYAMLWithChain(chainProxies(), SplitTunnel{}, Chain{ExitNode: "Not Here"})
+	_, _, err := BuildProxiesYAMLWithChain(chainProxies(), SplitTunnel{}, Chain{ExitNode: "Not Here"})
 	if err == nil {
 		t.Fatal("choosing a node that no longer exists should be refused")
 	}
@@ -170,7 +170,7 @@ func TestAnExitThatIsGoneIsReported(t *testing.T) {
 // One node cannot be both ends of its own chain.
 func TestASubscriptionOfOneCannotBeChained(t *testing.T) {
 	one := []Proxy{{"name": "Only", "type": "vless", "server": "a.example.com", "port": 443}}
-	_, err := BuildProxiesYAMLWithChain(one, SplitTunnel{}, Chain{ExitNode: "Only"})
+	_, _, err := BuildProxiesYAMLWithChain(one, SplitTunnel{}, Chain{ExitNode: "Only"})
 	if err == nil {
 		t.Fatal("a chain needs two nodes")
 	}
@@ -198,7 +198,7 @@ func TestAProxyThatDoesNotRelayUDPIsNotOfferedAsAUDPHop(t *testing.T) {
 		{"name": "No UDP", "type": "wireguard", "server": "a.example.com", "port": 51820, "udp": false},
 		{"name": "Wire One", "type": "wireguard", "server": "d.example.com", "port": 51820, "udp": true},
 	}
-	out, err := BuildProxiesYAMLWithChain(proxies, SplitTunnel{}, Chain{ExitNode: "Wire One"})
+	out, _, err := BuildProxiesYAMLWithChain(proxies, SplitTunnel{}, Chain{ExitNode: "Wire One"})
 	if err == nil {
 		t.Fatalf("the only other node cannot carry UDP, so this chain has no first hop:\n%s", out)
 	}

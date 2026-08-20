@@ -189,13 +189,20 @@ type Options struct {
 // rule, which is what a link-based subscription needs: links carry nodes and
 // nothing else, so without this there is nothing for traffic to match.
 func BuildProxiesYAML(proxies []Proxy, split SplitTunnel) (string, error) {
-	return BuildProxiesYAMLWithChain(proxies, split, Chain{})
+	document, _, err := BuildProxiesYAMLWithChain(proxies, split, Chain{})
+	return document, err
 }
 
 // BuildProxiesYAMLWithChain is BuildProxiesYAML, and optionally a second hop.
-func BuildProxiesYAMLWithChain(proxies []Proxy, split SplitTunnel, chain Chain) (string, error) {
+//
+// It also returns the names the first hop may be chosen from, which is not the
+// full list once a chain is in play: the exit's own node is taken out, and a
+// datagram exit narrows it further to nodes that can carry UDP. A caller
+// selecting a proxy has to select from these, or it would name one the group
+// does not contain.
+func BuildProxiesYAMLWithChain(proxies []Proxy, split SplitTunnel, chain Chain) (string, []string, error) {
 	if len(proxies) == 0 {
-		return "", fmt.Errorf("mihomoconf: no proxies to build a config from")
+		return "", nil, fmt.Errorf("mihomoconf: no proxies to build a config from")
 	}
 
 	// Names are the engine's key for a proxy, so a duplicate silently replaces
@@ -214,7 +221,7 @@ func BuildProxiesYAMLWithChain(proxies []Proxy, split SplitTunnel, chain Chain) 
 		names = append(names, name)
 	}
 	if len(unique) == 0 {
-		return "", fmt.Errorf("mihomoconf: no proxies with usable names")
+		return "", nil, fmt.Errorf("mihomoconf: no proxies with usable names")
 	}
 
 	// Where traffic leaves. Without a chain that is the selection group itself;
@@ -225,7 +232,7 @@ func BuildProxiesYAMLWithChain(proxies []Proxy, split SplitTunnel, chain Chain) 
 	if chain.Active() {
 		exit, allowed, err := buildChain(unique, names, chain)
 		if err != nil {
-			return "", err
+			return "", nil, err
 		}
 		unique = append(unique, exit)
 		firstHopNames = allowed
@@ -256,9 +263,9 @@ func BuildProxiesYAMLWithChain(proxies []Proxy, split SplitTunnel, chain Chain) 
 
 	encoded, err := yaml.Marshal(document)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
-	return string(encoded), nil
+	return string(encoded), firstHopNames, nil
 }
 
 // catchAllRules is what everything not matched already does.

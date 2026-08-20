@@ -427,6 +427,7 @@ Things the phone has no equivalent for, added because a desktop needs them.
 | Runs in the background | Closing the window hides it; the app keeps carrying traffic | `[x]` |
 | Sets the system proxy | In proxy mode, points Windows at the local proxy and puts back what it found | `[x]` |
 | Proxy-only mode | No phone equivalent. The engine listens and nothing on the machine is redirected | `[+]` |
+| Connection chaining | Two hops, as v1.6.0 added on the phone — built differently, see below | `[~]` |
 
 Closing a VPN's window means "get out of my way", not "stop protecting my
 traffic". But hiding is only offered once there is an icon to come back from:
@@ -448,6 +449,31 @@ browser extension or Telegram routed — and the rest of the machine left alone 
 had nothing to reach for. There is now a third mode, **proxy-only**, where both
 are off: the engine listens on its mixed port, serving HTTP and SOCKS5, and
 nothing on the machine is touched.
+
+### Connection chaining
+
+The phone resolves the first hop to a fixed node before rendering, and writes
+only the chosen chain into the config. The desktop does not have to: mihomo
+keeps proxy groups in the same map it looks proxies up in —
+`proxies[groupName] = adapter.NewProxy(group)` — so `dialer-proxy` may name a
+group, and the first hop stays the ordinary selection group. Automatic goes on
+working without being resolved to a node beforehand, and a first hop that fails
+is replaced by the group rather than by a reconnect.
+
+The exit is a copy of the chosen node under a fixed name, because the original
+stays where the first hop draws from and one proxy cannot be both ends of a
+chain. The original is then removed from the group, or it could be picked as the
+first hop and both ends would be one machine.
+
+Where the exit needs a dialer that carries UDP — WireGuard, Hysteria2, TUIC,
+anything over QUIC — the group is narrowed to nodes that can. The phone
+validates the same thing and reports it as an error on a fixed pair; here the
+choice is a group, so narrowing it is what the same rule looks like. A TCP-only
+first hop under a datagram exit builds, connects and carries nothing.
+
+Only the link-based path honours it. A subscription arriving as a whole mihomo
+document brings its own groups and rules, and rewriting somebody else's routing
+to insert a hop is a larger promise than this makes.
 
 The three are one choice in the interface rather than two switches, because they
 are mutually exclusive at connect — with the tunnel up the system proxy is
