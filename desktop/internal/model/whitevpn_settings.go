@@ -118,6 +118,16 @@ type WhiteVPNSettings struct {
 	// shown Persian will assume the app is broken.
 	Language string `json:"language"`
 
+	// ChainExitNode sends traffic through a second node before it leaves.
+	//
+	// The node named here becomes the exit; the connection chosen on the VPN
+	// page becomes the hop beneath it, Automatic included. Empty means one hop,
+	// which is what everybody gets until they ask for otherwise.
+	//
+	// A name rather than an index, because a subscription refresh reorders the
+	// list and an index would quietly come to mean a different server.
+	ChainExitNode string `json:"chainExitNode"`
+
 	// Tunnel. Not a phone setting: there, VpnService always provides the tunnel.
 	// Here it can be turned off, and off is the only mode that works without
 	// Administrator.
@@ -278,6 +288,7 @@ func NormalizeWhiteVPNSettings(settings WhiteVPNSettings) WhiteVPNSettings {
 	settings.Connection.Node = strings.TrimSpace(settings.Connection.Node)
 	settings.Connection.Types = nonEmptyStrings(lowered(settings.Connection.Types))
 	settings.Language = strings.TrimSpace(settings.Language)
+	settings.ChainExitNode = strings.TrimSpace(settings.ChainExitNode)
 
 	// A port outside the range, or one of the reserved low ones no ordinary
 	// program may bind, becomes the default rather than reaching the engine and

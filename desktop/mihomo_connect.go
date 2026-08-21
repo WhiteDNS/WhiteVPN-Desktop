@@ -119,6 +119,7 @@ func (a *App) startWhiteDNSVPNWithMihomo() (model.AppState, error) {
 		HomeDir:      homeDir,
 		MixedPort:    mixedPort,
 		AllowLAN:     settings.AllowLAN,
+		Chain:        mihomoconf.Chain{ExitNode: settings.ChainExitNode},
 		Subscription: subscription,
 		Prefer:       prefer,
 		// Nodes the user hid never reach the configuration, so the engine cannot

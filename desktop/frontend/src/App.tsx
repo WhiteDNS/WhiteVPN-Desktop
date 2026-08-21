@@ -6172,6 +6172,19 @@ function WhiteVPNSettingsPage({
       .catch(() => setTunnelAvailable(false));
   }, []);
 
+  // The nodes a second hop can be chosen from: the selected subscription's, the
+  // list the connection itself is built from. Loaded here rather than passed in,
+  // because this is the only page that needs them and a settings page that
+  // waits on the Servers page having been opened would be a settings page that
+  // sometimes offers nothing.
+  const [chainNodes, setChainNodes] = useState<WhiteVPNNode[]>([]);
+  useEffect(() => {
+    void backend
+      .listWhiteVpnNodes(false)
+      .then((list) => setChainNodes((list.nodes || []).filter((node) => !node.hidden)))
+      .catch(() => setChainNodes([]));
+  }, [state.selectedSubscriptionId]);
+
   const [frontingDraft, setFrontingDraft] = useState("");
   const [processDraft, setProcessDraft] = useState("");
   const [saving, setSaving] = useState(false);
@@ -6248,6 +6261,40 @@ function WhiteVPNSettingsPage({
         </>
       }
     >
+      <SettingsSection title={t("settings.chain.title")} description={t("settings.chain.description")}>
+        <Field>
+          <FieldLabel>{t("settings.chain.exit")}</FieldLabel>
+          <Select
+            value={draft.chainExitNode || "off"}
+            onValueChange={(value) => patch({ chainExitNode: value === "off" ? "" : value })}
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent position="popper">
+              <SelectItem value="off">{t("settings.chain.off")}</SelectItem>
+              {chainNodes.map((node) => (
+                <SelectItem key={node.name} value={node.name}>
+                  {node.label || node.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <FieldDescription>
+            {draft.chainExitNode ? t("settings.chain.on.description") : t("settings.chain.off.description")}
+          </FieldDescription>
+        </Field>
+        {/* The chosen node may have left the subscription since it was picked,
+            which the connect path refuses rather than works around — so it is
+            said here, where it can still be changed. */}
+        {draft.chainExitNode && !chainNodes.some((node) => node.name === draft.chainExitNode) && (
+          <Alert variant="destructive">
+            <AlertCircle />
+            <AlertDescription>{t("settings.chain.missing", { name: draft.chainExitNode })}</AlertDescription>
+          </Alert>
+        )}
+      </SettingsSection>
+
       <SettingsSection title={t("settings.connection.title")} description={t("settings.connection.description")}>
         {/* One choice rather than two switches. The tunnel and the system proxy
             are mutually exclusive at connect — with the tunnel up the system

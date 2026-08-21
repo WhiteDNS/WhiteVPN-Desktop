@@ -746,6 +746,8 @@ export type WhiteVPNSettings = {
   dnsPrivacy: DNSPrivacySettings;
   killSwitch: KillSwitchSettings;
   language: string;
+  // The node traffic leaves from when chaining. Empty means one hop.
+  chainExitNode: string;
   tunEnabled: boolean;
   setSystemProxy: boolean;
   allowLan: boolean;
