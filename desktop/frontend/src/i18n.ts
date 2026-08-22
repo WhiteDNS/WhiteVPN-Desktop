@@ -644,8 +644,16 @@ const strings = {
     fa: "یک کارت شبکهٔ مجازی همه چیز را حمل می‌کند، حتی برنامه‌هایی که تنظیمات پراکسی را نادیده می‌گیرند. روی ویندوز نیاز به دسترسی Administrator دارد.",
   },
   "settings.routing.tun.unavailable": {
-    en: "Tunnel (TUN) mode is available on Windows only for now. It needs to run the engine with administrator rights, and that is not implemented on this platform yet.",
-    fa: "حالت تونل (TUN) فعلاً فقط روی ویندوز در دسترس است. این حالت باید موتور را با دسترسی مدیر اجرا کند و این کار هنوز روی این سیستم‌عامل پیاده‌سازی نشده است.",
+    en: "Tunnel (TUN) mode is not available on this machine yet. The reason above says what would change that.",
+    fa: "حالت تونل (TUN) فعلاً روی این دستگاه در دسترس نیست. توضیح بالا می‌گوید چه چیزی آن را تغییر می‌دهد.",
+  },
+  "settings.routing.tun.experimental": {
+    en: "experimental",
+    fa: "آزمایشی",
+  },
+  "settings.routing.manual": {
+    en: "Nothing on this machine can be configured automatically — point your applications at the local proxy port yourself.",
+    fa: "هیچ بخشی از این دستگاه نمی‌تواند خودکار تنظیم شود — برنامه‌هایتان را خودتان به پورت پراکسی محلی وصل کنید.",
   },
   "settings.routing.port": { en: "Local proxy port", fa: "پورت پراکسی محلی" },
   "settings.routing.port.description": {

@@ -9,6 +9,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // The core's non-Windows entry point treats a numeric argument as a TCP port on
@@ -21,7 +22,19 @@ func generateEndpoint() (string, error) {
 	if _, err := rand.Read(suffix[:]); err != nil {
 		return "", err
 	}
-	return filepath.Join(os.TempDir(), fmt.Sprintf("whitevpn-engine-%s.sock", hex.EncodeToString(suffix[:]))), nil
+	return filepath.Join(runtimeDir(), fmt.Sprintf("whitevpn-engine-%s.sock", hex.EncodeToString(suffix[:]))), nil
+}
+
+// runtimeDir prefers the user's own runtime directory: it is what the
+// privileged helper checks ownership of, and on a systemd system it is
+// per-user and mounted noexec. Falling back to TempDir keeps development and
+// unusual sessions working — including sessions where XDG_RUNTIME_DIR is set
+// to something that is not a usable absolute path.
+func runtimeDir() string {
+	if dir := strings.TrimSpace(os.Getenv("XDG_RUNTIME_DIR")); filepath.IsAbs(dir) {
+		return dir
+	}
+	return os.TempDir()
 }
 
 func listen(endpoint, _ string) (net.Listener, error) {

@@ -242,6 +242,9 @@ func Connect(ctx context.Context, opts Options) (*Session, error) {
 		// it follows the tunnel setting rather than being a separate choice.
 		Elevated:           opts.Tun.Enabled,
 		SecurityDescriptor: opts.PipeSecurityDescriptor,
+		// The privileged launcher on Linux cleans this app's own leftover
+		// interface before starting; it needs the name the core will use.
+		ElevatedTunDevice: opts.Tun.Device,
 	})
 	if err != nil {
 		return nil, err

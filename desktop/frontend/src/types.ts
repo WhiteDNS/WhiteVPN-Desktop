@@ -340,6 +340,33 @@ export interface FirewallStatus {
   message: string;
 }
 
+// Where the tunnel stands on this machine, with the reason it is not simply
+// "available" when it is not. The statuses come from the backend's
+// capability package: available, experimental, requiresApproval,
+// helperMissing, unsupported.
+export interface TunnelCapability {
+  status: string;
+  reason: string;
+  requiresApproval: boolean;
+  experimental: boolean;
+}
+
+export interface SystemProxyCapability {
+  status: string;
+  // How much of the machine follows the setting: "machine", "desktop" (only
+  // programs that honour GNOME/KDE preferences) or "manual" (nothing here can
+  // be changed for you).
+  scope: string;
+  backends: string[];
+  reason: string;
+}
+
+export interface RoutingCapabilities {
+  platform: string;
+  tunnel: TunnelCapability;
+  systemProxy: SystemProxyCapability;
+}
+
 export interface AppState {
   selectedConnectionProfileId: string;
   selectedResolverProfileId: string;

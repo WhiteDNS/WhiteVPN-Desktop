@@ -53,17 +53,32 @@ func Apply(state State) error {
 	if len(services) == 0 {
 		return fmt.Errorf("sysproxy: this machine has no network services to configure")
 	}
+	for _, service := range services {
+		if err := applyService(service, state); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 
+// applyService points one network service at the proxy.
+//
+// One service at a time is what the snapshot needs — each is captured and put
+// back independently, because a laptop moves between services that never had
+// the same settings to begin with. The commands still run through one
+// administrator approval, exactly as before; it is the record-keeping that
+// became per-service, not the prompting.
+func applyService(service string, state State) error {
 	host, port := splitEndpoint(state.Server)
-	script := proxyScript(services, state, host, port)
+	script := strings.Join(serviceCommands(service, state, host, port), " && ")
 	command := exec.Command("/usr/bin/osascript", "-e",
 		"do shell script "+strconv.Quote(script)+" with administrator privileges")
 	if out, err := command.CombinedOutput(); err != nil {
 		detail := strings.TrimSpace(string(out))
 		if detail == "" {
-			return fmt.Errorf("sysproxy: administrator approval failed: %w", err)
+			return fmt.Errorf("sysproxy: %s: administrator approval failed: %w", service, err)
 		}
-		return fmt.Errorf("sysproxy: administrator approval failed: %w: %s", err, detail)
+		return fmt.Errorf("sysproxy: %s: administrator approval failed: %w: %s", service, err, detail)
 	}
 	return nil
 }
@@ -102,7 +117,7 @@ func verifyServices(services []string, want State, read func(string) (State, err
 	return nil
 }
 
-func proxyScript(services []string, state State, host, port string) string {
+func serviceCommands(service string, state State, host, port string) []string {
 	// Web and secure-web are the HTTP and HTTPS proxies; SOCKS is set as well
 	// because the engine's mixed port serves all three and some applications
 	// reach for SOCKS first.
@@ -112,22 +127,28 @@ func proxyScript(services []string, state State, host, port string) string {
 		{"-setsocksfirewallproxy", "-setsocksfirewallproxystate"},
 	}
 	var commands []string
-	for _, service := range services {
-		for _, kind := range kinds {
-			if state.Enabled {
-				commands = append(commands, shellCommand(networksetup, kind.set, service, host, port))
-				continue
-			}
-			commands = append(commands, shellCommand(networksetup, kind.state, service, "off"))
+	for _, kind := range kinds {
+		if state.Enabled {
+			commands = append(commands, shellCommand(networksetup, kind.set, service, host, port))
+			continue
 		}
-		if state.Enabled && state.Override != "" {
-			// Bypass entries are separate arguments, not one semicolon-joined
-			// string as on Windows.
-			args := append([]string{networksetup, "-setproxybypassdomains", service}, bypassDomains(state.Override)...)
-			commands = append(commands, shellCommand(args...))
-		}
+		commands = append(commands, shellCommand(networksetup, kind.state, service, "off"))
 	}
-	return strings.Join(commands, " && ")
+	if state.Enabled && state.Override != "" {
+		// Bypass entries are separate arguments, not one semicolon-joined
+		// string as on Windows.
+		args := append([]string{networksetup, "-setproxybypassdomains", service}, bypassDomains(state.Override)...)
+		commands = append(commands, shellCommand(args...))
+	}
+	return commands
+}
+
+func proxyScript(services []string, state State, host, port string) string {
+	var all []string
+	for _, service := range services {
+		all = append(all, serviceCommands(service, state, host, port)...)
+	}
+	return strings.Join(all, " && ")
 }
 
 func shellCommand(args ...string) string {

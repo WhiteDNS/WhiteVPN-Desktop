@@ -1,7 +1,46 @@
 # TUN and Linux proxy support plan
 
-Status: proposed  
+Status: milestone 1–4 implemented, rollout pending  
 Source audit: 2026-08-22
+
+## Implementation status (2026-08-23)
+
+What has landed since this plan was written:
+
+- **Workstream A — done.** `GetRoutingCapabilities` reports tunnel and
+  system-proxy state with actionable reasons; `TunnelSupported` remains as a
+  compatibility wrapper. Proxy backups are versioned (`SnapshotVersion 2`) and
+  per-target: Windows' WinINET, Linux's GNOME/KDE backends probed for real
+  (schema/session answers, not just PATH checks), macOS's network services.
+  Apply is transactional: capture everything → persist → apply and verify each
+  target → roll back on any failure, keeping the on-disk record true after
+  every single change so a crash mid-transaction restores exactly what was
+  touched. The legacy single-state backup migrates on read.
+- **Workstream B — built, behind the flag.** `cmd/whitevpn-helper` accepts only
+  `start-tunnel`, resolves its own fixed root-owned core (symlinks,
+  non-root ownership and group/world-writable files are refused), validates the
+  control socket against the asking user's identity (PID plus start time, so a
+  recycled PID is worthless), clears its environment, supervises the core
+  (SIGTERM → grace → kill when the UI or its listener disappears), and recovers
+  leftovers by executable path and tuntap attributes only. Route verification
+  reads `/proc/net/route` and `/proc/net/ipv6_route` through
+  `internal/routeparse`. `.deb`/`.rpm`/AUR packaging installs the helper, core
+  and polkit action root-owned; AppImage/tar stay proxy-only; package
+  inspection lives in `packaging/linux/test-packages.sh`. Linux TUN reports
+  itself only when the helper is installed AND `WHITEVPN_EXPERIMENTAL_TUN=1`.
+- **Workstream C — built, needs signing credentials to run.** The launch daemon
+  (`desktop/daemons/macos`) speaks XPC over libxpc, validates every caller's
+  audit token against the team's designated requirement, launches only the
+  bundled signature-verified core, and stops it when the controlling connection
+  dies. The Go side (`internal/macossvc`) reaches SMAppService without linking
+  the macOS 13 SDK and maps registration states onto capability reporting.
+  macOS route verification discovers whichever utun actually carries the
+  defaults instead of trusting a configured name. Bundle layout, nested signing
+  order and team-ID baking are wired into `make macos-daemon` / `macos-sign`.
+
+What remains before the flags come off is exactly what the delivery table says:
+the live matrices (GNOME/KDE sessions, Ubuntu/Fedora/Arch, macOS 13+ Intel and
+Apple Silicon), the abuse review, and one release of field diagnostics.
 
 ## Outcome
 

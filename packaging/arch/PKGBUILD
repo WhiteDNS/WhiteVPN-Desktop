@@ -17,9 +17,9 @@ license=('GPL3')
 # webkit2gtk-4.1 and gtk3 are what the window itself is drawn with; without them
 # the binary starts and then fails to open a window, which reads as a crash.
 depends=('webkit2gtk-4.1' 'gtk3')
-# polkit provides pkexec, which is how the engine is given the rights to create
-# a tunnel device. Without it the app still runs — the local proxy needs no
-# privileges — so this is optional rather than a hard requirement.
+# polkit provides pkexec and the agent that asks for the password. The tunnel
+# needs it only when the privileged helper ships in the source tree; without
+# either, the package still installs and runs as a local proxy.
 optdepends=('polkit: needed for tunnel (TUN) mode; the local proxy works without it')
 
 options=('!strip')
@@ -43,6 +43,20 @@ package() {
   if [ -d cores ]; then
     install -dm755 "$pkgdir/usr/lib/$pkgname/cores"
     install -Dm755 cores/* "$pkgdir/usr/lib/$pkgname/cores/"
+  fi
+
+  # The privileged pieces, when this source tree carries them: a root-owned
+  # helper and core at fixed paths plus the polkit action that names them.
+  # Ownership is makepkg's (everything is packaged as root); only modes are
+  # set here. A tarball or AppImage cannot provide this — which is exactly
+  # why tunnel mode reports itself unavailable from those artifacts.
+  if [ -f whitevpn-helper ] && [ -f org.whitevpn.desktop.policy ]; then
+    _core="mihomo-linux-amd64"
+    case "$CARCH" in aarch64) _core="mihomo-linux-arm64" ;; esac
+    install -Dm755 whitevpn-helper "$pkgdir/usr/libexec/whitevpn-desktop/whitevpn-helper"
+    install -Dm755 "$_core" "$pkgdir/usr/libexec/whitevpn-desktop/mihomo"
+    install -Dm644 org.whitevpn.desktop.policy \
+      "$pkgdir/usr/share/polkit-1/actions/org.whitevpn.desktop.policy"
   fi
 
   install -dm755 "$pkgdir/usr/bin"

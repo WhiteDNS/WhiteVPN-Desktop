@@ -350,6 +350,71 @@ type FirewallStatus struct {
 	Message   string `json:"message"`
 }
 
+// Capability statuses for routing features. They are deliberately distinct:
+// "unsupported", "helper missing", "approval required" and "available" lead to
+// different actions by whoever reads them, and collapsing them into one boolean
+// is how a switch that can only fail ended up being offered.
+const (
+	// CapabilityAvailable means the feature can run here right now.
+	CapabilityAvailable = "available"
+	// CapabilityExperimental means it can run here but is rolled out behind an
+	// explicit experimental gate for one release.
+	CapabilityExperimental = "experimental"
+	// CapabilityRequiresApproval means installed and ready, and the next start
+	// will prompt for elevation or administrator approval.
+	CapabilityRequiresApproval = "requiresApproval"
+	// CapabilityHelperMissing means the privileged component this platform needs
+	// is not installed (or needs upgrading). Installing or upgrading it is the
+	// action this status leads to.
+	CapabilityHelperMissing = "helperMissing"
+	// CapabilityUnsupported means this platform cannot offer the feature at all;
+	// no install changes that.
+	CapabilityUnsupported = "unsupported"
+)
+
+// TunnelCapability says whether tunnel (TUN) mode can run on this machine, and
+// if not, what would change that.
+type TunnelCapability struct {
+	Status string `json:"status"`
+	// Reason explains the status in one actionable sentence. Empty when the
+	// status needs no explanation.
+	Reason string `json:"reason"`
+	// RequiresApproval is true when starting the tunnel prompts for elevation
+	// (UAC on Windows, polkit on Linux, the macOS approval flow). It is part of
+	// the ordinary path on every platform that has a tunnel at all.
+	RequiresApproval bool `json:"requiresApproval"`
+	// Experimental marks a feature that works but is newly enabled and should
+	// say so wherever it is offered.
+	Experimental bool `json:"experimental"`
+}
+
+// SystemProxyCapability says whether the machine's proxy settings can be
+// pointed here, and where they live.
+type SystemProxyCapability struct {
+	Status string `json:"status"`
+	// Scope is how much of the machine follows the setting: "machine" where one
+	// setting governs everything (Windows WinINET, macOS network services),
+	// "desktop" where well-behaved desktop programs follow it (GNOME, KDE), and
+	// "manual" where nothing on the machine can be changed and pointing a
+	// program here is the user's own work.
+	Scope string `json:"scope"`
+	// Backends names the places that hold the setting and were found working:
+	// "gnome", "kde6", "kde5" on Linux, or the enabled network service names on
+	// macOS. Empty means none were found.
+	Backends []string `json:"backends"`
+	Reason   string   `json:"reason"`
+}
+
+// RoutingCapabilities answers, with reasons, what ways of moving traffic this
+// machine offers. One structured answer replaces the boolean the frontend used
+// to interrogate, so a Settings page can say why something is absent instead of
+// only hiding it.
+type RoutingCapabilities struct {
+	Platform    string                `json:"platform"`
+	Tunnel      TunnelCapability      `json:"tunnel"`
+	SystemProxy SystemProxyCapability `json:"systemProxy"`
+}
+
 type AppState struct {
 	SelectedConnectionProfileID string `json:"selectedConnectionProfileId"`
 	SelectedResolverProfileID   string `json:"selectedResolverProfileId"`
