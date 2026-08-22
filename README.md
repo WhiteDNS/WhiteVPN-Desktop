@@ -65,21 +65,26 @@ them here.
 
 | | Windows | macOS | Linux |
 |---|:---:|:---:|:---:|
-| Proxy mode | ✅ | ✅ | ⚠️ |
-| System proxy set automatically | ✅ | ✅ | ❌ |
+| Proxy mode | ✅ | ✅ | ✅ |
+| System proxy set automatically | ✅ | ✅ | ⚠️ |
 | TUN mode (whole-machine tunnel) | ✅ | ❌ | ❌ |
 | Signed / notarised binaries | ❌ | ❌ | ❌ |
 
-- **TUN is Windows-only.** Elsewhere the tunnel needs a privileged helper that
-  is not written yet — `SMJobBless` or launchd on macOS. Proxy mode works on
-  all three.
-- **The system proxy is not set on Linux.** GNOME, KDE and a bare window
-  manager keep that setting in three different places and none of them binds
-  anything that is not already asking, so the app declines rather than
-  pretending. Point your browser at `127.0.0.1:2080` by hand.
+- **TUN is exposed on Windows only.** A Linux `pkexec` launcher exists, but TUN
+  remains disabled until its privileged executable path, cleanup, route
+  verification and real-machine behaviour are hardened and tested. macOS still
+  needs a signed privileged service. Proxy mode works on all three.
+- **Linux system-proxy support is desktop-specific.** The app writes and
+  verifies GNOME-compatible `gsettings` and KDE's `kioslaverc`. A bare window
+  manager has no shared setting to write, and applications are free to ignore
+  desktop proxy preferences. In either case, point the application at
+  `127.0.0.1:2080` manually.
 - **Nothing is code-signed.** macOS will refuse to open the app until you allow
   it in System Settings → Privacy & Security; Windows SmartScreen will warn.
 - **The kill switch is not implemented** on any platform.
+
+The implementation and rollout work needed to remove the first two limitations
+is tracked in [`docs/PLATFORM_SUPPORT_PLAN.md`](docs/PLATFORM_SUPPORT_PLAN.md).
 
 ## Building
 
