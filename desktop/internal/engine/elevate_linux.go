@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strconv"
+
+	"whitevpn-desktop/internal/helper"
 )
 
 // Running the engine as root on Linux.
@@ -28,7 +31,7 @@ import (
 // password" is actionable where "the engine did not start" is not.
 const pkexecDeclined = 126
 
-func startElevatedChild(corePath, endpoint, workingDir string) (childProcess, error) {
+func startElevatedChild(corePath, endpoint, workingDir, tunDevice string) (childProcess, error) {
 	if os.Geteuid() == 0 {
 		// Already root — asking again would be theatre, and starting it directly
 		// keeps the engine's output, which the pkexec path cannot capture.
@@ -48,6 +51,38 @@ func startElevatedChild(corePath, endpoint, workingDir string) (childProcess, er
 				"Install polkit, or turn the tunnel off and use the local proxy instead")
 	}
 
+	// The installed helper is the whole point of this platform's story: a
+	// root-owned supervisor that resolves its own fixed core, validates the
+	// control socket, clears its environment, and owns the tunnel's lifetime.
+	// The core path argument is deliberately NOT forwarded — what runs as root
+	// is the package's choice, never WHITEVPN_MIHOMO_BIN or an extracted copy
+	// in user-writable space. Those stay available to unelevated proxy-mode
+	// development only.
+	if install, err := helper.Detect(); err == nil {
+		args := []string{
+			install.HelperPath,
+			"start-tunnel",
+			"--socket", endpoint,
+			"--ui-pid", strconv.Itoa(os.Getpid()),
+			"--ui-start-time", strconv.FormatUint(helper.SelfStartTime(), 10),
+		}
+		if tunDevice != "" {
+			args = append(args, "--device", tunDevice)
+		}
+		cmd := exec.Command(pkexecPath, args...)
+		cmd.Dir = workingDir
+		configureCommand(cmd)
+		if err := cmd.Start(); err != nil {
+			return nil, fmt.Errorf("engine: start %s through pkexec: %w", install.HelperPath, err)
+		}
+		return pkexecChild{cmd: cmd}, nil
+	}
+
+	// No helper installed — the portable-build fallback starts the core
+	// directly under pkexec, exactly as before helpers existed. Capability
+	// reporting does not offer TUN here; this path remains for developers who
+	// know what they are doing and for the day the helper is missing but a
+	// packaged core is present.
 	cmd := exec.Command(pkexecPath, corePath, endpoint)
 	cmd.Dir = workingDir
 	configureCommand(cmd)

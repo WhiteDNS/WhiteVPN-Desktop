@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"whitevpn-desktop/internal/helper"
 	"whitevpn-desktop/internal/mihomoconf"
 	"whitevpn-desktop/internal/model"
 	"whitevpn-desktop/internal/session"
@@ -56,10 +57,31 @@ func (a *App) startWhiteDNSVPNWithMihomo() (model.AppState, error) {
 	ctx, cancel := a.beginConnect()
 	defer cancel()
 
+	// The machine's answer about the tunnel decides both whether an elevated
+	// start will happen at all and which executable may be raised. Read once,
+	// before anything else consults it: a settings file carried over from
+	// Windows, or written before the interface stopped offering the tunnel
+	// here, still says it is on, and connecting on that would ask the engine to
+	// raise a core it has no way to raise.
+	a.mu.Lock()
+	settings := settingsForThisMachine(model.NormalizeWhiteVPNSettings(a.state.WhiteVPN))
+	a.mu.Unlock()
+
 	corePath, err := findMihomoCore()
 	if err != nil {
 		a.reportConnectFailure(ctx, err.Error())
 		return a.GetAppState(), err
+	}
+	// Tunnel mode on Linux runs the package's own root-owned core through the
+	// privileged helper, and nothing else. The environment override above is
+	// for unelevated development; an executable chosen by it must never be what
+	// gets raised — which is only possible at all when the helper exists,
+	// because without one this platform's capability gate has already turned
+	// settings.TunEnabled off.
+	if settings.TunEnabled && runtime.GOOS == "linux" {
+		if install, detectErr := helper.Detect(); detectErr == nil {
+			corePath = install.CorePath
+		}
 	}
 
 	a.setMihomoRuntimeType()
@@ -72,15 +94,6 @@ func (a *App) startWhiteDNSVPNWithMihomo() (model.AppState, error) {
 	}
 
 	homeDir := filepath.Join(a.configDir, "mihomo")
-
-	a.mu.Lock()
-	// settingsForThisMachine, not just Normalize: a settings file carried over
-	// from Windows, or written before the interface stopped offering the tunnel
-	// here, still says it is on. Connecting on that would ask the engine to raise
-	// a core it has no way to raise, and the user would be told their connection
-	// failed because of an unimplemented function.
-	settings := settingsForThisMachine(model.NormalizeWhiteVPNSettings(a.state.WhiteVPN))
-	a.mu.Unlock()
 
 	// The dashboard's choices are applied here, against the catalogue this
 	// attempt is about to use, so a node that has left the catalogue is caught

@@ -65,21 +65,35 @@ them here.
 
 | | Windows | macOS | Linux |
 |---|:---:|:---:|:---:|
-| Proxy mode | ✅ | ✅ | ⚠️ |
-| System proxy set automatically | ✅ | ✅ | ❌ |
-| TUN mode (whole-machine tunnel) | ✅ | ❌ | ❌ |
-| Signed / notarised binaries | ❌ | ❌ | ❌ |
+| Proxy mode | ✅ | ✅ | ✅ |
+| System proxy set automatically | ✅ | ✅ | ⚠️ |
+| TUN mode (whole-machine tunnel) | ✅ | 🚧 | 🚧 experimental |
+| Signed / notarised binaries | ❌ | ❌ | n/a (root-owned packages) |
 
-- **TUN is Windows-only.** Elsewhere the tunnel needs a privileged helper that
-  is not written yet — `SMJobBless` or launchd on macOS. Proxy mode works on
-  all three.
-- **The system proxy is not set on Linux.** GNOME, KDE and a bare window
-  manager keep that setting in three different places and none of them binds
-  anything that is not already asking, so the app declines rather than
-  pretending. Point your browser at `127.0.0.1:2080` by hand.
-- **Nothing is code-signed.** macOS will refuse to open the app until you allow
+- **TUN ships on Windows; Linux and macOS are built but gated.** The
+  privileged plumbing now exists on all three — a root-owned `whitevpn-helper`
+  with polkit action for packaged Linux installs, an `SMAppService` launch
+  daemon for macOS 13+ — and every tunnel start is verified against the kernel's
+  own routing tables before it reports connected. Linux requires installing
+  from `.deb`/`.rpm`/AUR plus starting the app once with
+  `WHITEVPN_EXPERIMENTAL_TUN=1`; portable artifacts stay proxy-only by design.
+  macOS needs a signed bundle (`MACOS_TEAM_ID` + `MACOS_SIGN_IDENTITY`) before
+  its daemon will run anything. Both remain behind the experimental flag until
+  the live matrices in [`docs/PLATFORM_SUPPORT_PLAN.md`](docs/PLATFORM_SUPPORT_PLAN.md)
+  have been run. Proxy mode works everywhere.
+- **Linux system-proxy support is desktop-specific.** The app probes, writes
+  and restores GNOME-compatible `gsettings` and KDE's `kioslaverc`
+  independently — each backend is captured and put back separately, so one
+  refusing desktop never blocks another. A bare window manager has no shared
+  setting to write; the interface says so plainly and applications are pointed
+  at the local port manually.
+- **Nothing is code-signed** on Windows; macOS bundles are ad-hoc signed until
+  release credentials exist. macOS will refuse to open the app until you allow
   it in System Settings → Privacy & Security; Windows SmartScreen will warn.
 - **The kill switch is not implemented** on any platform.
+
+The implementation and rollout work needed to remove the first two limitations
+is tracked in [`docs/PLATFORM_SUPPORT_PLAN.md`](docs/PLATFORM_SUPPORT_PLAN.md).
 
 ## Building
 

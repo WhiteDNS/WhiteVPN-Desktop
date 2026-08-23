@@ -3,6 +3,7 @@ import type {
   CloudflarePingResult,
   FirewallStatus,
   ProxyCountryLookupResult,
+  RoutingCapabilities,
   RuntimeType,
   V2RayDuplicateRemovalResult,
   V2RayWhiteIPGenerateResult,
@@ -80,6 +81,7 @@ type AppApi = {
   DeleteValidatorResultFile(name: string): Promise<ValidatorResultFile[]>;
   GetWhiteVPNSettings(): Promise<WhiteVPNSettings>;
   TunnelSupported(): Promise<boolean>;
+  GetRoutingCapabilities(): Promise<RoutingCapabilities>;
   SaveWhiteVPNSettings(settings: WhiteVPNSettings): Promise<AppState>;
   GetPrivacyPolicyVersion(): Promise<number>;
   AcceptPrivacyPolicy(): Promise<AppState>;
@@ -179,6 +181,7 @@ export const backend = {
   deleteValidatorResultFile: (name: string) => app().DeleteValidatorResultFile(name),
   getWhiteVpnSettings: () => app().GetWhiteVPNSettings(),
   tunnelSupported: () => app().TunnelSupported(),
+  routingCapabilities: () => app().GetRoutingCapabilities(),
   saveWhiteVpnSettings: (settings: WhiteVPNSettings) => app().SaveWhiteVPNSettings(settings),
   getPrivacyPolicyVersion: () => app().GetPrivacyPolicyVersion(),
   acceptPrivacyPolicy: () => app().AcceptPrivacyPolicy(),

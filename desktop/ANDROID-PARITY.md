@@ -670,11 +670,12 @@ Measured 2026-08-05, from Windows:
   preferences well-behaved programs read, and a program that ignores them is not
   reached by anything short of a tunnel. Say that rather than promise more.
 
-  **Tunnel mode does not work on Linux.** `engine.startElevatedChild` is
-  implemented on Windows only, so the core cannot be raised to create an
-  adapter. That is why the system proxy failing used to leave a Linux user with
-  no usable mode at all, and why it is now a notice rather than a failed
-  connection.
+  **Tunnel mode is not exposed on Linux.** A `pkexec` implementation now exists
+  in `engine.startElevatedChild`, but `tunnelSupported()` still admits Windows
+  only. The Linux path also lacks live route verification and must not elevate
+  a development override or user-writable extracted core. The hardening and
+  rollout gates are recorded in `docs/PLATFORM_SUPPORT_PLAN.md`. Until those
+  pass, proxy mode remains the supported Linux path.
 - **macOS** — **cannot be built from Windows.** Without CGO it does not compile
   at all: `fyne.io/systray` needs Cocoa. With CGO it needs the macOS SDK. It has
   to run on a Mac, or on a macOS CI runner.
@@ -712,9 +713,10 @@ uploaded or cached between runs.
 **What is not ready on macOS yet.** The build will produce an app; two things
 inside it are Windows-only:
 
-- **The tunnel.** `startElevatedChild` refuses off Windows, so TUN mode cannot
-  start. macOS needs a privileged helper — `SMJobBless` or a launchd daemon —
-  and that is a notarisation-shaped problem, not a code-shaped one.
+- **The tunnel.** `startElevatedChild` refuses on macOS, so TUN mode cannot
+  start. macOS needs a signed privileged service. `SMJobBless` is deprecated;
+  the current minimum-change design is a launch daemon registered through
+  `SMAppService`, as detailed in `docs/PLATFORM_SUPPORT_PLAN.md`.
 - **The kill switch**, which is not written for any platform yet.
 
 The system proxy *is* implemented (`sysproxy_darwin.go`, `networksetup`), which

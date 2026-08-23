@@ -56,9 +56,14 @@ type SpawnOptions struct {
 	// a tunnel adapter. The user is prompted once per start.
 	//
 	// Only the core is elevated. The interface stays as the user, which is where
-	// it belongs, and the two still meet on the same pipe because the core is the
-	// side that dials.
+	// it belongs, and the two still meet on the same pipe because the core is
+	// the side that dials.
 	Elevated bool
+
+	// ElevatedTunDevice names the tunnel adapter the elevated core will create,
+	// so the privileged launcher on Linux can clean this app's own leftovers
+	// before starting. Unused elsewhere.
+	ElevatedTunDevice string
 }
 
 // childProcess is the running core, however it was started. The elevated path
@@ -141,7 +146,7 @@ func Spawn(ctx context.Context, opts SpawnOptions) (*Process, error) {
 
 	var child childProcess
 	if opts.Elevated {
-		elevated, err := startElevatedChild(opts.CorePath, endpoint, opts.WorkingDir)
+		elevated, err := startElevatedChild(opts.CorePath, endpoint, opts.WorkingDir, opts.ElevatedTunDevice)
 		if err != nil {
 			_ = listener.Close()
 			cleanupEndpoint(endpoint)

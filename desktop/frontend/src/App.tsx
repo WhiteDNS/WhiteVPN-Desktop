@@ -139,6 +139,7 @@ import type {
   DNSPrivacyMode,
   SplitTunnelMode,
   FirewallStatus,
+  RoutingCapabilities,
   ImportType,
   RuntimeLogEntry,
   RuntimeStatus,
@@ -6161,16 +6162,20 @@ function WhiteVPNSettingsPage({
 }) {
   const stored = state.whiteVpn;
   const [draft, setDraft] = useState<WhiteVPNSettings>(stored);
-  // Tunnel mode needs the core raised to root, and that is implemented on
-  // Windows only. Asked of the backend rather than guessed from the interface,
-  // so the day another platform gains it this needs no change here.
-  const [tunnelAvailable, setTunnelAvailable] = useState(true);
+  // Tunnel mode needs a privileged helper, and whether one exists — and what
+  // to do about it when it does not — is answered by the backend's capability
+  // report rather than guessed here. The reason text is shown verbatim: it is
+  // written to be actionable ("install the package", "approve in System
+  // Settings") and translating it twice would only blur it.
+  const [caps, setCaps] = useState<RoutingCapabilities | null>(null);
   useEffect(() => {
     void backend
-      .tunnelSupported()
-      .then(setTunnelAvailable)
-      .catch(() => setTunnelAvailable(false));
+      .routingCapabilities()
+      .then(setCaps)
+      .catch(() => setCaps(null));
   }, []);
+  const tunnelSelectable =
+    caps !== null && (caps.tunnel.status === "available" || caps.tunnel.status === "experimental");
 
   // The nodes a second hop can be chosen from: the selected subscription's, the
   // list the connection itself is built from. Loaded here rather than passed in,
@@ -6318,15 +6323,29 @@ function WhiteVPNSettingsPage({
             <SelectContent position="popper">
               <SelectItem value="systemProxy">{t("settings.routing.systemProxy")}</SelectItem>
               <SelectItem value="proxyOnly">{t("settings.routing.proxyOnly")}</SelectItem>
-              {/* Offered only where it can run. A mode that always fails is
-                  worse than one that is absent — the missing one does not waste
-                  somebody's evening on an error about an unimplemented
-                  function. */}
-              {tunnelAvailable && <SelectItem value="tun">{t("settings.routing.tun")}</SelectItem>}
+              {/* Offered only where it can run, and marked as what it is when
+                  that is "new". A mode that always fails is worse than one
+                  that is absent; a mode that works but is young says so. */}
+              {tunnelSelectable && (
+                <SelectItem value="tun">
+                  {t("settings.routing.tun")}
+                  {caps?.tunnel.experimental ? ` (${t("settings.routing.tun.experimental")})` : ""}
+                </SelectItem>
+              )}
             </SelectContent>
           </Select>
           <FieldDescription>{t(`settings.routing.${routingMode(draft)}.description`)}</FieldDescription>
-          {!tunnelAvailable && <FieldDescription>{t("settings.routing.tun.unavailable")}</FieldDescription>}
+          {caps !== null && caps.systemProxy.status !== "available" && (
+            // A bare window manager, or a machine whose desktop cannot be
+            // reached: system proxy would change nothing, so the honest text
+            // is the manual endpoint instruction.
+            <FieldDescription>{caps.systemProxy.reason || t("settings.routing.manual")}</FieldDescription>
+          )}
+          {!tunnelSelectable && (
+            <FieldDescription>
+              {caps?.tunnel.reason || t("settings.routing.tun.unavailable")}
+            </FieldDescription>
+          )}
         </Field>
 
         {/* Only in proxy-only mode. Everywhere else the port is an

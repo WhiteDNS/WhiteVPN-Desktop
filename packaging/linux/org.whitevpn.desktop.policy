@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+	What lets WhiteVPN raise its tunnel without handing out blanket root.
+
+	pkexec's default action asks for the administrator password every time and
+	labels the prompt with the bare program name. This action names the helper,
+	keeps "authenticate as yourself" for active sessions, and holds the grant
+	for a few minutes so reconnecting does not nag. It authorises exactly one
+	binary — the annotation below is what makes pkexec match this action only
+	for /usr/libexec/whitevpn-desktop/whitevpn-helper — and that binary takes
+	no instruction about what to run, so approving it approves nothing beyond
+	starting the packaged core under supervision.
+-->
+<!DOCTYPE policyconfig PUBLIC
+ "-//freedesktop//DTD POLKIT POLICY CONFIGURATION 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<policyconfig>
+
+  <action id="com.whitevpn.desktop.tunnel">
+    <description gettext-domain="whitevpn-desktop">Run the WhiteVPN tunnel helper</description>
+    <message gettext-domain="whitevpn-desktop">WhiteVPN needs administrator rights to create its secure tunnel device.</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/libexec/whitevpn-desktop/whitevpn-helper</annotate>
+    <annotate key="org.freedesktop.policykit.exec.allow_gui">false</annotate>
+  </action>
+
+</policyconfig>

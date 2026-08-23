@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!--
+	The launchd metadata for WhiteVPN's privileged daemon.
+
+	SMAppService only accepts a daemon described by a plist that lives inside
+	the signed application bundle — this file is installed at
+	Contents/Library/LaunchDaemons/ by the packaging step precisely so that
+	what the user approves in System Settings IS this bundle's identity, and a
+	stray copy anywhere else is not the helper no matter what it claims.
+
+	MachServices makes launchd start the daemon on demand the first time the
+	app opens its mach endpoint; BundleProgram keeps the executable inside the
+	bundle so its signature travels with everything else.
+-->
+<dict>
+	<key>Label</key>
+	<string>com.whitevpn.vpn.daemon</string>
+	<key>BundleProgram</key>
+	<string>Contents/MacOS/WhiteVPNDaemon</string>
+	<key>MachServices</key>
+	<dict>
+		<key>com.whitevpn.vpn.daemon</key>
+		<true/>
+	</dict>
+	<!-- Root is required for the tunnel device; there is nothing smaller. -->
+	<key>UserName</key>
+	<string>root</string>
+</dict>
+</plist>

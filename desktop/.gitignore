@@ -96,3 +96,6 @@ frontend/package.json.md5
 *.tgz
 *.7z
 *.sha256
+
+# Generated at build time from MACOS_TEAM_ID (see Makefile macos-daemon).
+daemons/macos/Sources/WhiteVPNDaemon/TeamID.swift

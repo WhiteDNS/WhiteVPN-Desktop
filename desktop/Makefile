@@ -115,7 +115,7 @@ $(error --version requires a value; use `make all -- --version 1.0.0`)
 endif
 endif
 
-.PHONY: help deps frontend-deps tidy dev build build-mac build-windows build-linux build-all all check-linux-builder frontend-build backend-build prepare-package prepare-macos-go-env prepare-embedded-core prepare-embedded-platform prepare-embedded-platforms prepare-embedded-macos-cores macos-app-bundle validate-version package package-mac package-windows package-linux package-linux-distros package-linux-all-docker package-linux-fedora-rpm-docker package-all stage-artifacts archive-artifacts package-helper package-assets test test-backend test-frontend xray-core xray-core-all xray-core-target mihomo-core mihomo-core-setup clean --version
+.PHONY: help deps frontend-deps tidy dev build-mac-daemon macos-daemon macos-sign build-mac build-windows build-linux build-all all check-linux-builder frontend-build backend-build prepare-package prepare-macos-go-env prepare-embedded-core prepare-embedded-platform prepare-embedded-platforms prepare-embedded-macos-cores macos-app-bundle validate-version package package-mac package-windows package-linux package-linux-distros package-linux-all-docker package-linux-fedora-rpm-docker package-all stage-artifacts archive-artifacts package-helper package-assets test test-backend test-frontend xray-core xray-core-all xray-core-target mihomo-core mihomo-core-setup clean --version
 ifneq ($(VERSION_FROM_ARGS),)
 .PHONY: $(VERSION_FROM_ARGS)
 endif
@@ -351,7 +351,9 @@ package-mac: validate-version prepare-macos-go-env frontend-build
 			MACOSX_DEPLOYMENT_TARGET="$$deployment_target" GOENV="$(GO_ENV_FILE)" GOOS=darwin GOARCH="$$target_arch" CGO_ENABLED=1 go build -buildvcs=false -trimpath -tags "$(MACOS_GO_TAGS)" -ldflags "$(MACOS_GO_LDFLAGS)" -o "build/bin/$(APP_NAME)" .; \
 			;; \
 	esac
+	$(MAKE) macos-daemon
 	$(MAKE) macos-app-bundle
+	$(MAKE) macos-sign
 	$(MAKE) package-assets
 
 macos-app-bundle:
@@ -377,6 +379,65 @@ macos-app-bundle:
 	} > "$(MACOS_APP_INFO_PLIST)"
 	cp "build/appicon.icns" "$(MACOS_APP_RESOURCES_DIR)/appicon.icns"
 	rm -f "build/bin/$(APP_NAME)"
+	@# The privileged daemon and its launchd metadata, when they were built.
+	@# SMAppService only accepts a daemon whose plist lives at
+	@# Contents/Library/LaunchDaemons inside this bundle, so the copy is not
+	@# optional for tunnel mode — but its absence must not break proxy-only
+	@# builds, which is why every step is guarded rather than fatal.
+	if [ -f build/bin/WhiteVPNDaemon ]; then \
+		cp build/bin/WhiteVPNDaemon "$(MACOS_APP_BIN_DIR)/WhiteVPNDaemon"; \
+		chmod 755 "$(MACOS_APP_BIN_DIR)/WhiteVPNDaemon"; \
+		mkdir -p "build/bin/$(APP_NAME).app/Contents/Library/LaunchDaemons"; \
+		cp daemons/macos/com.whitevpn.vpn.daemon.plist \
+			"build/bin/$(APP_NAME).app/Contents/Library/LaunchDaemons/com.whitevpn.vpn.daemon.plist"; \
+	fi
+	if [ -d cores ] && [ -f build/bin/WhiteVPNDaemon ]; then \
+		mkdir -p "$(MACOS_APP_RESOURCES_DIR)/cores"; \
+		for f in cores/mihomo-darwin-*; do \
+			[ -f "$$f" ] && cp "$$f" "$(MACOS_APP_RESOURCES_DIR)/cores/" || true; \
+		done; \
+	fi
+
+# The signing team baked into the daemon. Both the peer check (who may talk to
+# it) and the core check (what it may run) compare against this identifier, so
+# a release built without setting it offers no tunnel mode: the daemon refuses
+# every connection by design rather than trust an unknown team.
+MACOS_TEAM_ID ?= REPLACE_WITH_SIGNING_TEAM_ID
+MACOS_SIGN_IDENTITY ?= -
+
+macos-daemon:
+	@if ! command -v swiftc >/dev/null 2>&1; then \
+		printf 'swiftc is not available; building without the privileged daemon (tunnel mode will report helperMissing)\n' >&2; \
+		exit 0; \
+	fi
+	@mkdir -p build/bin build/daemon
+	@# The team identifier is compiled in rather than read from the environment:
+	@# launchd starts this daemon with no environment to speak of, and a trust
+	@# decision that could be changed by one is no trust decision at all.
+	printf 'let expectedTeamID = "%s"\n' '$(MACOS_TEAM_ID)' > daemons/macos/Sources/WhiteVPNDaemon/TeamID.swift
+	swiftc -O -target arm64-apple-macos13 -o build/daemon/WhiteVPNDaemon-arm64 daemons/macos/Sources/WhiteVPNDaemon/*.swift
+	swiftc -O -target x86_64-apple-macos13 -o build/daemon/WhiteVPNDaemon-x86_64 daemons/macos/Sources/WhiteVPNDaemon/*.swift
+	lipo -create -output build/bin/WhiteVPNDaemon \
+		build/daemon/WhiteVPNDaemon-arm64 build/daemon/WhiteVPNDaemon-x86_64
+
+# Nested code signing, in dependency order, once an identity exists. Without
+# one this is skipped: ad-hoc local builds run in proxy mode, and Gatekeeper
+# questions about unsigned bundles are a release-distribution concern, not a
+# development blocker.
+macos-sign:
+	@if [ "$(MACOS_SIGN_IDENTITY)" = "-" ]; then \
+		printf 'MACOS_SIGN_IDENTITY not set; skipping code signing\n' >&2; \
+		exit 0; \
+	fi
+	set -e; \
+	codesign --force --options runtime --timestamp --identifier com.whitevpn.vpn.daemon \
+		--sign "$(MACOS_SIGN_IDENTITY)" "$(MACOS_APP_BIN_DIR)/WhiteVPNDaemon"; \
+	for core in "$(MACOS_APP_RESOURCES_DIR)"/cores/*; do \
+		[ -f "$$core" ] && codesign --force --options runtime --timestamp \
+			--sign "$(MACOS_SIGN_IDENTITY)" "$$core" || true; \
+	done; \
+	codesign --force --options runtime --timestamp \
+		--sign "$(MACOS_SIGN_IDENTITY)" "build/bin/$(APP_NAME).app"
 
 package-windows: validate-version prepare-package
 	$(MAKE) prepare-embedded-core TARGET_GOOS=windows TARGET_GOARCH="$(WINDOWS_CLIENT_ARCH)"
@@ -390,6 +451,8 @@ package-linux: validate-version prepare-package
 	fi
 	$(MAKE) prepare-embedded-core TARGET_GOOS=linux TARGET_GOARCH="$(LINUX_CLIENT_ARCH)"
 	@$(call wails_build_with_version,GOCACHE="$(GO_BUILD_CACHE)" $(WAILS) build -clean $(WAILS_RELEASE_FLAGS) $(LINUX_WAILS_TAG_FLAGS) $(WAILS_OPTIONAL_UPX_FLAGS) -platform $(LINUX_PLATFORMS))
+	GOCACHE="$(GO_BUILD_CACHE)" CGO_ENABLED=0 GOOS=linux GOARCH="$(LINUX_CLIENT_ARCH)" go build -buildvcs=false -trimpath -ldflags "$(HELPER_GO_LDFLAGS)" -o build/bin/whitevpn-helper ./cmd/whitevpn-helper
+	cp ../packaging/linux/org.whitevpn.desktop.policy build/bin/
 	$(MAKE) package-assets
 
 package-linux-distros: package-linux

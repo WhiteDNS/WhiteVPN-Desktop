@@ -70,6 +70,25 @@ mkdir -p "$install_dir" "$bin_dir" "$apps_dir" "$icons_dir"
 cp -R "$source_dir"/. "$install_dir"/
 chmod 755 "$install_dir/$app_name"
 
+# The privileged pieces. Only a native package can install them: they must be
+# root-owned at fixed paths before anything will ever be run as root, which an
+# AppImage or a tarball cannot honestly claim. Ownership is the package
+# manager's job (--root-owner-group / rpmbuild); here only modes are set.
+helper_dir="/usr/libexec/whitevpn-desktop"
+policy_dir="/usr/share/polkit-1/actions"
+tun_enabled=0
+policy_source="$source_dir/org.whitevpn.desktop.policy"
+if [ ! -f "$policy_source" ] && [ -f "$(dirname "$0")/../../packaging/linux/org.whitevpn.desktop.policy" ]; then
+  policy_source="$(dirname "$0")/../../packaging/linux/org.whitevpn.desktop.policy"
+fi
+if [ -f "$source_dir/whitevpn-helper" ] && [ -f "$source_dir/mihomo-linux-$arch" ] && [ -f "$policy_source" ]; then
+  tun_enabled=1
+  mkdir -p "$payload_root$helper_dir" "$payload_root$policy_dir"
+  install -m 755 "$source_dir/whitevpn-helper" "$payload_root$helper_dir/whitevpn-helper"
+  install -m 755 "$source_dir/mihomo-linux-$arch" "$payload_root$helper_dir/mihomo"
+  install -m 644 "$policy_source" "$payload_root$policy_dir/org.whitevpn.desktop.policy"
+fi
+
 cat > "$bin_dir/$package_name" <<EOF
 #!/bin/sh
 exec "/opt/$package_name/$app_name" "\$@"
@@ -173,7 +192,7 @@ Priority: optional
 Architecture: $deb_arch
 Maintainer: $maintainer
 Installed-Size: $installed_size
-Depends: ca-certificates, libgtk-3-0, $deb_webkit_dep
+Depends: ca-certificates, libgtk-3-0, $deb_webkit_dep$(if [ "$tun_enabled" = 1 ]; then printf ', policykit-1'; fi)
 Description: $description
  Managed desktop client for WhiteDNS and StormDNS.
 EOF
@@ -209,7 +228,7 @@ Version: $rpm_version
 Release: $rpm_release%{?dist}
 Summary: $description
 License: $license
-Requires: ca-certificates
+Requires: ca-certificates$(if [ "$tun_enabled" = 1 ]; then printf ', polkit'; fi)
 
 %description
 Managed desktop client for WhiteDNS and StormDNS.
@@ -228,6 +247,13 @@ cp -a %{_payload_dir}/. %{buildroot}/
 /usr/share/applications/$package_name.desktop
 /usr/share/icons/hicolor/512x512/apps/$package_name.png
 EOF
+  if [ "$tun_enabled" = 1 ]; then
+    cat >> "$spec_path" <<EOF
+$helper_dir/whitevpn-helper
+$helper_dir/mihomo
+$policy_dir/org.whitevpn.desktop.policy
+EOF
+  fi
 
   rpmbuild \
     --target "$rpm_arch" \

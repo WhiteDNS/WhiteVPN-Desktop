@@ -169,7 +169,7 @@ func isElevated() bool {
 // If this process is already elevated there is nothing to ask for, and starting
 // normally is better: it keeps the engine's output, which the elevation prompt
 // path cannot.
-func startElevatedChild(corePath, endpoint, workingDir string) (childProcess, error) {
+func startElevatedChild(corePath, endpoint, workingDir, _ string) (childProcess, error) {
 	if isElevated() {
 		cmd := exec.Command(corePath, endpoint)
 		cmd.Dir = workingDir
