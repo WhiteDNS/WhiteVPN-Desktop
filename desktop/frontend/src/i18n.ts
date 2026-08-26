@@ -608,6 +608,14 @@ const strings = {
     en: "How traffic reaches your machine.",
     fa: "اینکه ترافیک چطور به دستگاه شما می‌رسد.",
   },
+  "vpn.systemProxy.stranded": {
+    en: "This machine's proxy settings were not put back",
+    fa: "تنظیمات پراکسی این دستگاه به حالت قبل برنگشت",
+  },
+  "vpn.systemProxy.stranded.description": {
+    en: "The connection has stopped, but this desktop is still pointed at it, so nothing here can reach the internet. Connecting again will fix it, and so will restarting the app — on macOS both ask for your administrator password, which is what has to be approved for the settings to go back.",
+    fa: "اتصال قطع شده، ولی این دستگاه هنوز به آن اشاره می‌کند و برای همین هیچ برنامه‌ای به اینترنت نمی‌رسد. اتصال دوباره این را درست می‌کند، راه‌اندازی مجدد برنامه هم همین‌طور — روی مک هر دو رمز مدیر را می‌پرسند، و همان چیزی است که باید تأیید شود تا تنظیمات برگردد.",
+  },
   "settings.chain.title": { en: "Connection chaining", fa: "زنجیره کردن اتصال" },
   "settings.chain.description": {
     en: "Send traffic through a second node before it reaches the internet. The connection chosen on the VPN page becomes the first hop; the node chosen here becomes the one traffic leaves from.",

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"testing"
 
@@ -50,5 +51,147 @@ func TestRestoringWithNoBackupChangesNothing(t *testing.T) {
 	app.restoreSystemProxy()
 	if !app.state.Runtime.SystemProxy {
 		t.Fatal("with no backup there is nothing to restore, and nothing to report")
+	}
+}
+
+// The failure this file exists for.
+//
+// A restore that did not happen leaves the machine pointed at this app and the
+// backup on disk. Connecting again must not read that back and file it as "what
+// was there before": the only record of the user's real settings would become a
+// local port, and every restore after it would put the machine back to a proxy
+// nothing is listening on and then delete the evidence.
+func TestConnectingAgainDoesNotOverwriteAnUnusedBackup(t *testing.T) {
+	app := &App{state: model.DefaultAppState(), configDir: t.TempDir()}
+
+	original := sysproxy.State{Enabled: true, Server: "proxy.corp.example:8080", Override: "<local>"}
+	if err := app.writeSystemProxyBackup(original); err != nil {
+		t.Fatal(err)
+	}
+
+	// What the machine holds now is this app's own proxy, left behind by a
+	// restore that failed.
+	defer swapSystemProxyCalls(t,
+		func() (sysproxy.State, error) {
+			return sysproxy.State{Enabled: true, Server: "127.0.0.1:2080"}, nil
+		},
+		func(sysproxy.State) error { return nil },
+		func(sysproxy.State) error { return nil },
+	)()
+
+	if err := app.captureSystemProxy(2080); err != nil {
+		t.Fatal(err)
+	}
+
+	got, ok := app.readSystemProxyBackup()
+	if !ok {
+		t.Fatal("the backup was removed by a capture that should not have touched it")
+	}
+	if !got.SameAs(original) {
+		t.Fatalf("the user's settings were overwritten with this app's own proxy: got %#v, want %#v", got, original)
+	}
+}
+
+// A restore the machine refused is not a restore. The backup is what makes
+// another attempt possible, so it stays, and the state says the machine is
+// still pointed somewhere that has stopped answering.
+func TestRefusedRestoreKeepsTheBackupAndSaysSo(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		apply  func(sysproxy.State) error
+		verify func(sysproxy.State) error
+	}{
+		{
+			// macOS asks for an administrator password here. Dismissing it is
+			// the ordinary way this fails.
+			name:   "the machine refused the change",
+			apply:  func(sysproxy.State) error { return errors.New("administrator approval failed") },
+			verify: func(sysproxy.State) error { return nil },
+		},
+		{
+			// osascript reports whether it managed to ask, not whether anything
+			// changed, so success has to be read back rather than believed.
+			name:   "the change was accepted but did not stick",
+			apply:  func(sysproxy.State) error { return nil },
+			verify: func(sysproxy.State) error { return errors.New("Wi-Fi did not stick") },
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			app := &App{state: model.DefaultAppState(), configDir: t.TempDir()}
+			var notices []string
+			app.emitHook = func(name string, payload any) {
+				if name == "runtime:notice" {
+					notices = append(notices, payload.(string))
+				}
+			}
+			original := sysproxy.State{Enabled: false}
+			if err := app.writeSystemProxyBackup(original); err != nil {
+				t.Fatal(err)
+			}
+			defer swapSystemProxyCalls(t, nil, tc.apply, tc.verify)()
+
+			app.restoreSystemProxy()
+
+			if _, ok := app.readSystemProxyBackup(); !ok {
+				t.Fatal("the backup was deleted, so nothing can ever put these settings back")
+			}
+			if !app.state.Runtime.SystemProxyStranded {
+				t.Fatal("the machine is still pointed at a stopped proxy and the state does not say so")
+			}
+			if !app.state.Runtime.SystemProxy {
+				t.Fatal("the proxy is still set on the machine, so the state must not claim otherwise")
+			}
+			if len(notices) == 0 {
+				t.Fatal("a user whose network has stopped working was told nothing")
+			}
+		})
+	}
+}
+
+// The ordinary case, which has to keep working: the settings go back, they read
+// back as gone, and the record of them is no longer needed.
+func TestConfirmedRestoreClearsTheBackupAndTheWarning(t *testing.T) {
+	app := &App{state: model.DefaultAppState(), configDir: t.TempDir()}
+	app.state.Runtime.SystemProxy = true
+	app.state.Runtime.SystemProxyStranded = true
+	if err := app.writeSystemProxyBackup(sysproxy.State{Enabled: false}); err != nil {
+		t.Fatal(err)
+	}
+	defer swapSystemProxyCalls(t, nil,
+		func(sysproxy.State) error { return nil },
+		func(sysproxy.State) error { return nil },
+	)()
+
+	app.restoreSystemProxy()
+
+	if _, ok := app.readSystemProxyBackup(); ok {
+		t.Fatal("a confirmed restore has nothing left to put back, so the backup should be gone")
+	}
+	if app.state.Runtime.SystemProxy || app.state.Runtime.SystemProxyStranded {
+		t.Fatal("the machine was given back, so neither flag should still be set")
+	}
+}
+
+// swapSystemProxyCalls puts test doubles in front of the machine and returns the
+// function that puts the real ones back. A nil double keeps the current one.
+func swapSystemProxyCalls(
+	t *testing.T,
+	current func() (sysproxy.State, error),
+	apply func(sysproxy.State) error,
+	verify func(sysproxy.State) error,
+) func() {
+	t.Helper()
+	previousCurrent, previousApply, previousVerify := systemProxyCurrent, systemProxyApply, systemProxyVerify
+	if current != nil {
+		systemProxyCurrent = current
+	}
+	if apply != nil {
+		systemProxyApply = apply
+	}
+	if verify != nil {
+		systemProxyVerify = verify
+	}
+	return func() {
+		systemProxyCurrent, systemProxyApply, systemProxyVerify = previousCurrent, previousApply, previousVerify
 	}
 }

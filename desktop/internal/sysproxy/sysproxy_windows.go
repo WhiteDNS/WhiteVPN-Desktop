@@ -123,7 +123,7 @@ func Verify(want State) error {
 	if err != nil {
 		return err
 	}
-	if !got.SameAs(want) {
+	if !got.Satisfies(want) {
 		return fmt.Errorf("sysproxy: the settings did not stick — asked for %q (enabled=%t), found %q (enabled=%t)",
 			want.Server, want.Enabled, got.Server, got.Enabled)
 	}

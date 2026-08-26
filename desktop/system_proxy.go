@@ -9,6 +9,16 @@ import (
 	"whitevpn-desktop/internal/sysproxy"
 )
 
+// The machine-facing calls, as variables so the paths that go wrong can be
+// tested. Restoring badly is the failure that matters here, and reproducing it
+// against the real ones would mean a test that reconfigures the developer's own
+// network.
+var (
+	systemProxyCurrent = sysproxy.Current
+	systemProxyApply   = sysproxy.Apply
+	systemProxyVerify  = sysproxy.Verify
+)
+
 // The machine's proxy settings, as they were before this app changed them.
 //
 // On disk, because a crash is exactly when they matter: the process that would
@@ -36,29 +46,42 @@ func (a *App) captureSystemProxy(port int) error {
 	if err != nil {
 		return err
 	}
-	previous, err := sysproxy.Current()
-	if err != nil {
-		return err
-	}
 
-	// The record of what was there goes down before anything is changed. A
-	// failure after this point leaves a machine that can be put back; a failure
-	// before it changes nothing.
-	if err := a.writeSystemProxyBackup(previous); err != nil {
-		return fmt.Errorf("could not record the current settings first: %w", err)
+	// A backup already on disk is the last run's, and it is left alone.
+	//
+	// Its presence means the machine was never given back: a restore that
+	// failed, a dismissed administrator prompt, a process that died. What the
+	// machine holds now is this app's own proxy, so reading it and filing it as
+	// "what was there before" would overwrite the only record of the user's real
+	// settings with a local port. Every restore after that would put the machine
+	// back to 127.0.0.1, delete the record, and report success — which is how a
+	// disconnect came to leave macOS pointed at a proxy nothing was listening on.
+	previous, held := a.readSystemProxyBackup()
+	if !held {
+		// The record of what was there goes down before anything is changed. A
+		// failure after this point leaves a machine that can be put back; a
+		// failure before it changes nothing.
+		previous, err = systemProxyCurrent()
+		if err != nil {
+			return err
+		}
+		if err := a.writeSystemProxyBackup(previous); err != nil {
+			return fmt.Errorf("could not record the current settings first: %w", err)
+		}
 	}
-	if err := sysproxy.Apply(next); err != nil {
+	if err := systemProxyApply(next); err != nil {
 		return err
 	}
 	// Read back rather than assume. Another program can be writing the same
 	// key, and a badge claiming the machine uses this proxy when it does not is
 	// worse than no badge.
-	if err := sysproxy.Verify(next); err != nil {
+	if err := systemProxyVerify(next); err != nil {
 		return err
 	}
 
 	a.mu.Lock()
 	a.state.Runtime.SystemProxy = true
+	a.state.Runtime.SystemProxyStranded = false
 	a.mu.Unlock()
 	a.appendRuntimeLog(fmt.Sprintf(
 		"system proxy set to %s, replacing %q (enabled=%t)", endpoint, previous.Server, previous.Enabled))
@@ -72,17 +95,49 @@ func (a *App) restoreSystemProxy() {
 	if !ok {
 		return
 	}
-	if err := sysproxy.Apply(previous); err != nil {
+	if err := systemProxyApply(previous); err != nil {
 		// The backup stays: a restore that failed is one that still has to
 		// happen, and the next start will try again.
-		a.appendRuntimeLog(fmt.Sprintf("could not restore the system proxy: %v", err))
+		a.strandedSystemProxy(fmt.Sprintf("could not restore the system proxy: %v", err))
+		return
+	}
+	// Read back, the same way capturing does, and for a sharper reason. On macOS
+	// this runs through an administrator prompt: osascript reports whether it
+	// managed to ask, not whether the answer changed anything, so a dismissed
+	// prompt can return an error the caller never sees as one. Deleting the
+	// backup on an unverified restore is what turns a recoverable state into a
+	// permanent one.
+	if err := systemProxyVerify(previous); err != nil {
+		a.strandedSystemProxy(fmt.Sprintf("the system proxy did not go back: %v", err))
 		return
 	}
 	_ = os.Remove(a.systemProxyBackupPath())
 	a.mu.Lock()
 	a.state.Runtime.SystemProxy = false
+	a.state.Runtime.SystemProxyStranded = false
 	a.mu.Unlock()
 	a.appendRuntimeLog("system proxy restored")
+}
+
+// strandedSystemProxy records that the machine is still pointed at a proxy this
+// app is no longer running.
+//
+// The engine really has stopped, so the connection is disconnected and says so.
+// What has not happened is the machine being given back, and those are different
+// facts: reporting only the first leaves somebody with no working network and
+// nothing on screen that explains it. The backup is deliberately left where it
+// is — startup tries again, and until it succeeds this is the only record of
+// what the settings were.
+func (a *App) strandedSystemProxy(reason string) {
+	a.appendRuntimeLog(reason)
+	a.mu.Lock()
+	a.state.Runtime.SystemProxy = true
+	a.state.Runtime.SystemProxyStranded = true
+	a.mu.Unlock()
+	a.appendRuntimeLog(
+		"this machine is still pointed at a proxy that has stopped — reconnect, or restart the app to try again")
+	a.emit("runtime:notice",
+		"Disconnected, but this desktop's proxy settings could not be put back. Its network will not work until they are. Reconnect, or restart the app to try again.")
 }
 
 func (a *App) writeSystemProxyBackup(state sysproxy.State) error {

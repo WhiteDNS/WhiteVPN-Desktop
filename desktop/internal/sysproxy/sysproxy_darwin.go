@@ -94,7 +94,7 @@ func verifyServices(services []string, want State, read func(string) (State, err
 		if err != nil {
 			return fmt.Errorf("sysproxy: verify %s: %w", service, err)
 		}
-		if got.Enabled != want.Enabled || !strings.EqualFold(got.Server, want.Server) {
+		if !got.Satisfies(want) {
 			return fmt.Errorf("sysproxy: %s did not stick — asked for %q (enabled=%t), found %q (enabled=%t)",
 				service, want.Server, want.Enabled, got.Server, got.Enabled)
 		}

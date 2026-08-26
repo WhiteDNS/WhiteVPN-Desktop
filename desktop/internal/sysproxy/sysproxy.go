@@ -45,3 +45,24 @@ func (s State) SameAs(other State) bool {
 		strings.EqualFold(s.Server, other.Server) &&
 		strings.EqualFold(s.Override, other.Override)
 }
+
+// Satisfies reports whether a state read back from the machine is the state
+// that was asked for.
+//
+// Not SameAs, because turning a proxy off is not the same question as turning
+// one on. Both platforms keep the address behind when they disable a proxy —
+// networksetup holds on to the host and port it was last given, WinINET to its
+// server string — so a machine that was correctly put back reads as
+// {Enabled:false, Server:"127.0.0.1:2080"} when what was asked for was
+// {Enabled:false}. Comparing the address there would call a restore that worked
+// a failure, and tell a user their settings are stranded while they are looking
+// at a working network.
+//
+// When the proxy is meant to be off, that it is off is the whole of it. The
+// address left behind is inert.
+func (s State) Satisfies(want State) bool {
+	if !want.Enabled {
+		return !s.Enabled
+	}
+	return s.SameAs(want)
+}

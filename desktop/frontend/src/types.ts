@@ -304,6 +304,10 @@ export interface RuntimeStatus {
   frontingIp: string;
   // Whether the machine has been pointed at the local proxy.
   systemProxy: boolean;
+  // The machine is still pointed at this app's proxy after the engine carrying
+  // it has stopped. Separate from systemProxy because the connection being down
+  // and the machine being given back are different facts.
+  systemProxyStranded: boolean;
   // The node carrying traffic, and where its own name says it is.
   nodeName: string;
   nodeCountryCode: string;

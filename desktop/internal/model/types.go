@@ -307,6 +307,16 @@ type RuntimeStatus struct {
 	// traffic and one that is merely running is not otherwise visible.
 	SystemProxy bool `json:"systemProxy"`
 
+	// SystemProxyStranded says the machine is still pointed at this app's proxy
+	// after the engine carrying it has stopped.
+	//
+	// Its own fact rather than a status, because the two are independent and
+	// were being reported as one: the connection is genuinely down, and the
+	// machine genuinely cannot reach the internet, and a user told only the first
+	// has no reason to look for the second. It stays true until a restore is
+	// read back and confirmed.
+	SystemProxyStranded bool `json:"systemProxyStranded"`
+
 	// The node carrying traffic, and where it says it is: the name the catalogue
 	// gave it, and the country from the flag in that name.
 	NodeName        string `json:"nodeName"`
