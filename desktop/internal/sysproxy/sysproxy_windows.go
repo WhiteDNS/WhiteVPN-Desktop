@@ -127,6 +127,14 @@ func Verify(want State) error {
 		return fmt.Errorf("sysproxy: the settings did not stick — asked for %q (enabled=%t), found %q (enabled=%t)",
 			want.Server, want.Enabled, got.Server, got.Enabled)
 	}
+	// The bypass list, which Satisfies leaves alone because macOS cannot read it
+	// back. WinINET can, and a bypass list that did not take is a machine that
+	// sends its own local traffic through the proxy — so where it can be checked
+	// it is.
+	if want.Enabled && !strings.EqualFold(got.Override, want.Override) {
+		return fmt.Errorf("sysproxy: the bypass list did not stick — asked for %q, found %q",
+			want.Override, got.Override)
+	}
 	return nil
 }
 

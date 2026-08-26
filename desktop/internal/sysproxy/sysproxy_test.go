@@ -85,3 +85,24 @@ func TestSatisfiesStaysStrictWhenAProxyWasAskedFor(t *testing.T) {
 		t.Fatal("a proxy that was written but not switched on must not pass")
 	}
 }
+
+// macOS has no read for the bypass list. `networksetup` writes it and offers
+// nothing that reads it back, so a correctly configured Mac reports Override
+// empty — and verification that compares it fails on every macOS machine, every
+// time. Capturing has always compared only what can be read; this is what keeps
+// it that way.
+func TestSatisfiesIgnoresTheBypassListItCannotRead(t *testing.T) {
+	want := State{Enabled: true, Server: "127.0.0.1:2080", Override: DefaultBypass}
+	asMacReportsIt := State{Enabled: true, Server: "127.0.0.1:2080"}
+
+	if !asMacReportsIt.Satisfies(want) {
+		t.Fatal("a correctly configured proxy must verify even where the bypass list cannot be read back")
+	}
+	// The fields that can be read are still compared.
+	if (State{Enabled: true, Server: "127.0.0.1:9999"}).Satisfies(want) {
+		t.Fatal("a different address must still fail")
+	}
+	if (State{Enabled: false, Server: "127.0.0.1:2080"}).Satisfies(want) {
+		t.Fatal("a proxy that was written but not switched on must still fail")
+	}
+}
