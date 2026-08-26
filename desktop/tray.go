@@ -166,6 +166,8 @@ func (a *App) refreshTray() {
 	a.tray.show.SetTitle(words.show)
 	a.tray.quit.SetTitle(words.quit)
 	systray.SetTooltip(trayAppName + " — " + label)
+	// The colour says the same thing the tooltip does, without needing a hover.
+	systray.SetIcon(trayIconFor(state.Runtime.Status))
 
 	// Nothing to toggle while stopping, exactly as the button on the page.
 	if state.Runtime.Status == model.RuntimeStopping {
