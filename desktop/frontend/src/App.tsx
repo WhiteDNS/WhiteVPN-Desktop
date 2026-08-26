@@ -6584,6 +6584,17 @@ function WhiteVPNSettingsPage({
         <UpdateCheckRow t={t} />
       </SettingsSection>
 
+      {/* The reversible one first. Both are called "reset", and the one that
+          keeps your subscriptions is the one almost everybody wants — putting
+          it second would have people reaching past it for the one that does
+          not. */}
+      <SettingsSection
+        title={t("settings.resetSettings.title")}
+        description={t("settings.resetSettings.description")}
+      >
+        <ResetSettingsRow onState={onState} onError={onError} onSuccess={onSuccess} t={t} />
+      </SettingsSection>
+
       <SettingsSection title={t("settings.reset.title")} description={t("settings.reset.description")}>
         <ResetAppDataRow onState={onState} onError={onError} onSuccess={onSuccess} t={t} />
       </SettingsSection>
@@ -6598,6 +6609,73 @@ function WhiteVPNSettingsPage({
 // version and wants to see it should not have to wait out that cache, so this
 // forces it — and then says what it found, including that it could not look,
 // which on these networks is a normal answer rather than an error.
+// Putting the settings back without taking anything with them.
+//
+// Behind a confirmation like its destructive neighbour, but the dialog's work is
+// the opposite one: not warning that this cannot be undone, but saying plainly
+// what it will not touch. The two sit next to each other and are both called
+// "reset", so the difference has to be on screen rather than in the name.
+function ResetSettingsRow({
+  onState,
+  onError,
+  onSuccess,
+  t,
+}: {
+  onState: (next: AppState) => void;
+  onError: (message: string) => void;
+  onSuccess: (message: string) => void;
+  t: TranslateFn;
+}) {
+  const [asking, setAsking] = useState(false);
+  const [working, setWorking] = useState(false);
+
+  async function reset() {
+    if (working) {
+      return;
+    }
+    onError("");
+    setWorking(true);
+    try {
+      onState(await backend.resetWhiteVpnSettings());
+      setAsking(false);
+      onSuccess(t("settings.resetSettings.done"));
+    } catch (err) {
+      onError(messageFromError(err));
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  return (
+    <>
+      <div>
+        <Button variant="outline" onClick={() => setAsking(true)}>
+          <RotateCcw />
+          {t("settings.resetSettings.button")}
+        </Button>
+      </div>
+
+      <Dialog open={asking} onOpenChange={(open) => !open && !working && setAsking(false)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t("settings.resetSettings.confirm.title")}</DialogTitle>
+            <DialogDescription>{t("settings.resetSettings.confirm.body")}</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAsking(false)} disabled={working}>
+              {t("common.cancel")}
+            </Button>
+            <Button onClick={() => void reset()} disabled={working}>
+              <RotateCcw />
+              {working ? t("settings.resetSettings.working") : t("settings.resetSettings.button")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
 // Deleting everything the app has stored.
 //
 // Behind a confirmation because it cannot be undone and nothing is backed up

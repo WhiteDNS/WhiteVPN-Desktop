@@ -546,6 +546,22 @@ const strings = {
   // Putting the app back to a fresh install. It exists because a bug that only
   // shows on a first launch is invisible to everyone who has already used the
   // app — which was all of us until a user on a clean install found one.
+  "settings.resetSettings.title": { en: "Reset settings", fa: "بازنشانی تنظیمات" },
+  "settings.resetSettings.description": {
+    en: "Put every setting back to its default. Subscriptions, saved configs, hidden nodes and measured delays are kept, and a connection that is up stays up.",
+    fa: "همهٔ تنظیمات به حالت پیش‌فرض برمی‌گردند. اشتراک‌ها، کانفیگ‌های ذخیره‌شده، سرورهای مخفی‌شده و نتیجهٔ تست‌ها می‌مانند، و اتصالی که برقرار است قطع نمی‌شود.",
+  },
+  "settings.resetSettings.button": { en: "Reset settings", fa: "بازنشانی تنظیمات" },
+  "settings.resetSettings.confirm.title": { en: "Reset every setting?", fa: "همهٔ تنظیمات بازنشانی شود؟" },
+  "settings.resetSettings.confirm.body": {
+    en: "The country, the chosen server, connection types, split tunnelling, DNS, the kill switch, the second hop, the language and the theme all go back to their defaults, and the built-in catalogue is selected again. Nothing is deleted: your subscriptions, saved configs and test results stay, and a connection that is up is left alone. Settings that only apply at connect take effect the next time you connect.",
+    fa: "کشور، سرور انتخاب‌شده، نوع اتصال، تونل جداگانه، DNS، کیل‌سوییچ، هاپ دوم، زبان و پوستهٔ برنامه همه به پیش‌فرض برمی‌گردند و دوباره کاتالوگ داخلی انتخاب می‌شود. چیزی پاک نمی‌شود: اشتراک‌ها، کانفیگ‌های ذخیره‌شده و نتیجهٔ تست‌ها می‌مانند و اتصال برقرار دست‌نخورده می‌ماند. تنظیماتی که فقط موقع اتصال اثر دارند، از اتصال بعدی اعمال می‌شوند.",
+  },
+  "settings.resetSettings.working": { en: "Resetting…", fa: "در حال بازنشانی…" },
+  "settings.resetSettings.done": {
+    en: "Settings are back to their defaults. Your subscriptions, configs and test results were kept.",
+    fa: "تنظیمات به حالت پیش‌فرض برگشت. اشتراک‌ها، کانفیگ‌ها و نتیجهٔ تست‌ها حفظ شدند.",
+  },
   "settings.reset.title": { en: "Reset", fa: "بازنشانی" },
   "settings.reset.description": {
     en: "Delete everything this app has saved and start again as if it were newly installed.",
