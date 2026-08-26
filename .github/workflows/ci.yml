@@ -86,6 +86,23 @@ jobs:
         working-directory: desktop
         run: go test ${{ runner.os == 'Linux' && '-race' || '' }} ./internal/... .
 
+      # The macOS proxy rules rest on two claims about `networksetup` that Apple
+      # does not document: whether the server address survives switching the
+      # proxy off, and whether the bypass list can be read back at all. Both were
+      # settled by reading its behaviour out of our own source, because there is
+      # no Mac here to ask.
+      #
+      # A hosted runner is a real Mac that can be asked, and it is the only place
+      # this belongs: the test reconfigures the machine's own network settings,
+      # and an ephemeral runner is where being wrong about the restore costs
+      # nothing. It is skipped everywhere else unless the variable is set by hand.
+      - name: Ask a real Mac about its proxy settings
+        if: runner.os == 'macOS'
+        working-directory: desktop
+        env:
+          WHITEVPN_SYSPROXY_INTEGRATION: "1"
+        run: go test -v -run OnARealMac ./internal/sysproxy/
+
   cross-compile:
     name: Cross-compile
     runs-on: ubuntu-latest
