@@ -81,6 +81,11 @@ type App struct {
 	lastFirewallStatusKey string
 	emitHook              func(name string, payload any)
 
+	// fetchSubscriptionHook stands in for the network when there is one, so the
+	// snapshot fallback can be tested against a provider that fails without a
+	// test that depends on one being unreachable.
+	fetchSubscriptionHook func(ctx context.Context, id string) (string, error)
+
 	proxyCountryMu    sync.Mutex
 	proxyCountryCache map[string]proxyCountryCacheEntry
 }

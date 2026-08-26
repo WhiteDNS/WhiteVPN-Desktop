@@ -219,7 +219,62 @@ func (a *App) subscriptionBody(ctx context.Context) (string, error) {
 
 // subscriptionBodyFor fetches one by name, which is what lets the Servers page
 // look at a subscription the VPN is not connecting through.
+//
+// A body that arrives and parses is stored; a fetch that fails falls back to the
+// last one that did. See subscription_snapshot.go for why the fallback is worth
+// having and what it refuses to store.
 func (a *App) subscriptionBodyFor(ctx context.Context, id string) (string, error) {
+	body, origin, err := a.resolveSubscriptionBody(ctx, id)
+	if err != nil {
+		return "", err
+	}
+	if origin == originLastKnownGood {
+		// Said plainly rather than left to be inferred from a node list that
+		// looks normal. Connecting on a list from yesterday is usually right and
+		// occasionally why a node that no longer exists is being dialled.
+		a.appendRuntimeLog(fmt.Sprintf(
+			"%s could not be fetched — using the last copy that worked", id))
+	}
+	return body, nil
+}
+
+// resolveSubscriptionBody is subscriptionBodyFor, and where the body came from.
+func (a *App) resolveSubscriptionBody(ctx context.Context, id string) (string, snapshotOrigin, error) {
+	fetch := a.fetchSubscriptionBodyFor
+	if a.fetchSubscriptionHook != nil {
+		fetch = a.fetchSubscriptionHook
+	}
+	body, err := fetch(ctx, id)
+	if !subscriptionIsStorable(id) {
+		return body, originRefreshed, err
+	}
+	if err == nil {
+		// Compiled before it is stored, so a captive portal's login page or a
+		// half-served document cannot replace a snapshot that works. A body that
+		// arrives and does not parse is a failed fetch by another name, and is
+		// treated as one.
+		if nodes, parseErr := whiteVPNNodesFromSubscription(body); parseErr == nil && len(nodes) > 0 {
+			if storeErr := a.storeSubscriptionSnapshot(id, body, len(nodes)); storeErr != nil {
+				// Not fatal. The body in hand is good and the connection can be
+				// made from it; what failed is being able to make the next one
+				// without the network.
+				a.appendRuntimeLog(fmt.Sprintf("could not save a copy of %q: %v", id, storeErr))
+			}
+			return body, originRefreshed, nil
+		} else if parseErr != nil {
+			err = fmt.Errorf("subscription unreadable: %w", parseErr)
+		} else {
+			err = fmt.Errorf("subscription held no servers")
+		}
+	}
+	if snapshot, ok := a.lastKnownGoodSubscription(id); ok {
+		return snapshot.Body, originLastKnownGood, nil
+	}
+	return "", originRefreshed, err
+}
+
+// fetchSubscriptionBodyFor goes to wherever this subscription actually lives.
+func (a *App) fetchSubscriptionBodyFor(ctx context.Context, id string) (string, error) {
 	if id == model.ManualServerSourceID {
 		a.mu.Lock()
 		manualProfiles := make([]model.V2RayProfile, 0, len(a.state.V2RayProfiles))
