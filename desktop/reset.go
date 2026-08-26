@@ -113,3 +113,52 @@ func removeConfigDirContents(dir string) error {
 	}
 	return nil
 }
+
+// ResetWhiteVPNSettings puts the settings back to a fresh install's and leaves
+// everything else where it is.
+//
+// Separate from ResetAppData, which deletes everything and refuses to run while
+// anything is connected. That is the right tool for "put this machine back to
+// the day it was installed" and the wrong one for every ordinary case: somebody
+// who has narrowed the connection down to one node, turned on a fronting IP and
+// changed the DNS mode while chasing a problem wants those undone, and does not
+// want to lose the subscriptions they pasted in, the delays they spent ten
+// minutes measuring, or the connection they are reading the instructions over.
+//
+// So this touches settings and only settings. Subscriptions, imported and manual
+// configs, hidden nodes, measured delays and validator results are all left
+// alone, and a running connection keeps running: nothing here reaches the engine
+// or the session. Settings that only apply at connect — the listening port, the
+// tunnel — go back to their defaults and take effect the next time, which is the
+// same thing changing them by hand does.
+func (a *App) ResetWhiteVPNSettings() (model.AppState, error) {
+	defaults := model.DefaultWhiteVPNSettings()
+
+	a.mu.Lock()
+	// Consent is a record of something the user did, not a preference they
+	// configured. Clearing it would not put them back to a fresh install, it
+	// would claim they never agreed, and then ask them again — so it carries
+	// over.
+	defaults.AcceptedPrivacyPolicyVersion = a.state.WhiteVPN.AcceptedPrivacyPolicyVersion
+	// Run through the same normalisation a hand-edited save gets, so a default
+	// that this machine cannot honour — the tunnel, where there is no way to
+	// raise one — is corrected here rather than at connect.
+	a.state.WhiteVPN = settingsForThisMachine(model.NormalizeWhiteVPNSettings(defaults))
+	a.state.Theme = model.DefaultAppState().Theme
+	// Which subscription is selected is a setting, and the phone resets it the
+	// same way. The subscriptions themselves stay; only the choice of which one
+	// the VPN connects through goes back to the built-in catalogue.
+	a.state.SelectedSubscriptionID = whiteDNSVPNSubscriptionID
+	state, err := a.saveLocked()
+	a.mu.Unlock()
+
+	if err != nil {
+		return state, fmt.Errorf("reset settings: %w", err)
+	}
+	a.appendRuntimeLog("settings reset to their defaults — subscriptions, saved configs and test results were kept")
+	// The tray reads the language and the status from the same state the page
+	// does, so it is told rather than left to notice.
+	a.notifyTray()
+	a.emit("state:changed", state)
+	return state, nil
+}
