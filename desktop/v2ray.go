@@ -333,6 +333,9 @@ func (a *App) DeleteV2RaySubscription(id string) (model.AppState, error) {
 		return profile.SubscriptionID == id
 	})
 	a.forgetWhiteVPNNodes(id)
+	// The stored body goes too. A subscription the user removed must not leave a
+	// copy of its servers behind for something to fall back to later.
+	a.forgetSubscriptionSnapshot(id)
 	return a.saveLocked()
 }
 
