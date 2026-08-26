@@ -95,6 +95,22 @@ func (a *App) restoreSystemProxy() {
 	if !ok {
 		return
 	}
+	// If the machine already holds what the backup asks for, there is nothing to
+	// put back and nothing to ask permission for.
+	//
+	// This is the ordinary case at startup after a restore that reported failure
+	// but had in fact worked, and on macOS it is the difference between that
+	// costing nothing and costing an administrator prompt at every launch,
+	// forever, for a machine that was never wrong. It also means a user who fixed
+	// their settings by hand is not asked to approve undoing it.
+	if current, err := systemProxyCurrent(); err == nil && current.Satisfies(previous) {
+		_ = os.Remove(a.systemProxyBackupPath())
+		a.mu.Lock()
+		a.state.Runtime.SystemProxy = false
+		a.state.Runtime.SystemProxyStranded = false
+		a.mu.Unlock()
+		return
+	}
 	if err := systemProxyApply(previous); err != nil {
 		// The backup stays: a restore that failed is one that still has to
 		// happen, and the next start will try again.

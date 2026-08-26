@@ -128,7 +128,13 @@ func TestRefusedRestoreKeepsTheBackupAndSaysSo(t *testing.T) {
 			if err := app.writeSystemProxyBackup(original); err != nil {
 				t.Fatal(err)
 			}
-			defer swapSystemProxyCalls(t, nil, tc.apply, tc.verify)()
+			// The machine is still pointed at the proxy, which is what makes
+			// this a restore that has to happen rather than one already done.
+			defer swapSystemProxyCalls(t,
+				func() (sysproxy.State, error) {
+					return sysproxy.State{Enabled: true, Server: "127.0.0.1:2080"}, nil
+				},
+				tc.apply, tc.verify)()
 
 			app.restoreSystemProxy()
 
@@ -157,7 +163,10 @@ func TestConfirmedRestoreClearsTheBackupAndTheWarning(t *testing.T) {
 	if err := app.writeSystemProxyBackup(sysproxy.State{Enabled: false}); err != nil {
 		t.Fatal(err)
 	}
-	defer swapSystemProxyCalls(t, nil,
+	defer swapSystemProxyCalls(t,
+		func() (sysproxy.State, error) {
+			return sysproxy.State{Enabled: true, Server: "127.0.0.1:2080"}, nil
+		},
 		func(sysproxy.State) error { return nil },
 		func(sysproxy.State) error { return nil },
 	)()
@@ -193,5 +202,68 @@ func swapSystemProxyCalls(
 	}
 	return func() {
 		systemProxyCurrent, systemProxyApply, systemProxyVerify = previousCurrent, previousApply, previousVerify
+	}
+}
+
+// A machine that already holds what the backup asks for needs nothing done to
+// it, and must not be asked to approve doing it.
+//
+// This is what makes a wrongly reported failure cost nothing. On macOS every
+// attempt costs an administrator prompt, so without this a machine that was
+// never wrong would be asked to approve putting back settings it already has,
+// at every launch, forever.
+func TestRestoringAMachineThatIsAlreadyCorrectAsksForNothing(t *testing.T) {
+	app := &App{state: model.DefaultAppState(), configDir: t.TempDir()}
+	app.state.Runtime.SystemProxy = true
+	app.state.Runtime.SystemProxyStranded = true
+
+	original := sysproxy.State{Enabled: false}
+	if err := app.writeSystemProxyBackup(original); err != nil {
+		t.Fatal(err)
+	}
+
+	applied := false
+	defer swapSystemProxyCalls(t,
+		// The machine is already off, which is what the backup asks for.
+		func() (sysproxy.State, error) {
+			return sysproxy.State{Enabled: false, Server: "127.0.0.1:2080"}, nil
+		},
+		func(sysproxy.State) error { applied = true; return nil },
+		func(sysproxy.State) error { return nil },
+	)()
+
+	app.restoreSystemProxy()
+
+	if applied {
+		t.Fatal("the machine was already correct, so nothing should have been applied to it")
+	}
+	if _, ok := app.readSystemProxyBackup(); ok {
+		t.Fatal("with nothing left to put back, the backup should be gone")
+	}
+	if app.state.Runtime.SystemProxyStranded {
+		t.Fatal("a machine that is correct is not stranded, and the warning should have cleared itself")
+	}
+}
+
+// But a machine that is genuinely still pointed at the stopped proxy is put
+// back, rather than being waved through by the check above.
+func TestRestoringAMachineStillPointedAtTheProxyStillActs(t *testing.T) {
+	app := &App{state: model.DefaultAppState(), configDir: t.TempDir()}
+	if err := app.writeSystemProxyBackup(sysproxy.State{Enabled: false}); err != nil {
+		t.Fatal(err)
+	}
+	applied := false
+	defer swapSystemProxyCalls(t,
+		func() (sysproxy.State, error) {
+			return sysproxy.State{Enabled: true, Server: "127.0.0.1:2080"}, nil
+		},
+		func(sysproxy.State) error { applied = true; return nil },
+		func(sysproxy.State) error { return nil },
+	)()
+
+	app.restoreSystemProxy()
+
+	if !applied {
+		t.Fatal("the machine was still pointed at the proxy and should have been put back")
 	}
 }

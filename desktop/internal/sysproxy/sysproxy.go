@@ -60,9 +60,17 @@ func (s State) SameAs(other State) bool {
 //
 // When the proxy is meant to be off, that it is off is the whole of it. The
 // address left behind is inert.
+//
+// Override is not compared, and this is the difference from SameAs that matters
+// most: macOS has no read for the bypass list at all. `networksetup` writes it
+// with -setproxybypassdomains and offers nothing that reads it back, so the
+// state read from a correctly configured Mac always reports Override empty.
+// Comparing it would fail verification on every macOS machine, every time —
+// which is what happens when this is written as SameAs. Windows can read the
+// list, and checks it where it can.
 func (s State) Satisfies(want State) bool {
 	if !want.Enabled {
 		return !s.Enabled
 	}
-	return s.SameAs(want)
+	return s.Enabled == want.Enabled && strings.EqualFold(s.Server, want.Server)
 }
