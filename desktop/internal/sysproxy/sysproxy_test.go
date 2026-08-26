@@ -47,3 +47,41 @@ func indexOf(haystack, needle string) int {
 	}
 	return -1
 }
+
+// Turning a proxy off and turning one on are not the same question.
+//
+// Both platforms keep the address behind when they disable a proxy, so a machine
+// that was correctly put back reads as disabled-but-still-addressed. Comparing
+// the address there reported every successful restore as a failure — which,
+// once restore started trusting the answer, would have stranded every user whose
+// settings were "no proxy" to begin with.
+func TestSatisfiesIgnoresTheAddressLeftBehindByTurningItOff(t *testing.T) {
+	want := State{Enabled: false}
+	leftBehind := State{Enabled: false, Server: "127.0.0.1:2080", Override: DefaultBypass}
+
+	if !leftBehind.Satisfies(want) {
+		t.Fatal("a machine with the proxy off satisfies being asked to turn it off")
+	}
+	if leftBehind.SameAs(want) {
+		t.Fatal("SameAs is the stricter question and should still see a difference")
+	}
+	if (State{Enabled: true, Server: "127.0.0.1:2080"}).Satisfies(want) {
+		t.Fatal("a proxy that is still on does not satisfy being asked to turn it off")
+	}
+}
+
+// Being asked to turn one on stays as strict as it was: the address is the
+// whole point of the request.
+func TestSatisfiesStaysStrictWhenAProxyWasAskedFor(t *testing.T) {
+	want := State{Enabled: true, Server: "127.0.0.1:2080", Override: DefaultBypass}
+
+	if !want.Satisfies(want) {
+		t.Fatal("the state that was asked for satisfies the request")
+	}
+	if (State{Enabled: true, Server: "127.0.0.1:9999", Override: DefaultBypass}).Satisfies(want) {
+		t.Fatal("a different address must not pass as the one that was asked for")
+	}
+	if (State{Enabled: false, Server: "127.0.0.1:2080", Override: DefaultBypass}).Satisfies(want) {
+		t.Fatal("a proxy that was written but not switched on must not pass")
+	}
+}

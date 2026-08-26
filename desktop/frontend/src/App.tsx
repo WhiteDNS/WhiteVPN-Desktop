@@ -232,6 +232,7 @@ function normalizeRuntime(runtime: RuntimeStatus): RuntimeStatus {
     publicProxyIp: runtime.publicProxyIp || "",
     frontingIp: runtime.frontingIp || "",
     systemProxy: Boolean(runtime.systemProxy),
+    systemProxyStranded: Boolean(runtime.systemProxyStranded),
     exitIp: runtime.exitIp || "",
     nodeName: runtime.nodeName || "",
     nodeCountryCode: runtime.nodeCountryCode || "",
@@ -2430,6 +2431,18 @@ function WhiteDNSVPNPage({
         onMeasure={(names) => void measureDelays(names)}
         onReload={() => void loadNodes(true)}
       />
+
+      {/* Shown whatever the connection is doing, because this is not about the
+          connection: the engine has stopped and the machine is still pointed at
+          it, so nothing on this desktop can reach the internet. A user who is
+          told only "Disconnected" has no reason to look for that. */}
+      {runtime.systemProxyStranded && (
+        <Alert variant="destructive">
+          <AlertCircle />
+          <AlertTitle>{t("vpn.systemProxy.stranded")}</AlertTitle>
+          <AlertDescription>{t("vpn.systemProxy.stranded.description")}</AlertDescription>
+        </Alert>
+      )}
 
       {otherRuntimeActive && (
         <Alert>
