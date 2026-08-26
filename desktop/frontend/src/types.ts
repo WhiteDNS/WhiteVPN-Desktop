@@ -717,10 +717,21 @@ export type WhiteVPNNode = {
 // One run of the node tests: which nodes, which tests, and the numbers the user
 // is allowed to change. Bounds live in internal/model; anything outside them is
 // replaced with the default rather than clamped.
+// One node's result and the list it belongs to. Node names come from providers,
+// so two subscriptions can both hold a "Germany 01" — a result matched on the
+// name alone would land on whichever list happens to be on screen.
+export interface NodeMeasurement {
+  subscriptionId: string;
+  node: WhiteVPNNode;
+}
+
 export type NodeTestRequest = {
   // Which subscription the names belong to; empty means the selected one.
   subscriptionId?: string;
   nodes: string[];
+  // Test every subscription in turn rather than one. `nodes` is ignored when it
+  // is set — the names on one page do not describe the others.
+  allSubscriptions?: boolean;
   reachability: boolean;
   delay: boolean;
   speed: boolean;

@@ -146,6 +146,7 @@ import type {
   ConnectionSelection,
   UpdateStatus,
   WhiteVPNNode,
+  NodeMeasurement,
   WhiteVPNNodeList,
   NodeTestRequest,
   RuntimeType,
@@ -733,6 +734,13 @@ function App() {
     return manualAvailable || (state?.v2raySubscriptions ?? []).some((subscription) => subscription.id === browsing) ? browsing : fallback;
   }, [browsing, state?.selectedSubscriptionId, state?.v2rayProfiles, state?.v2raySubscriptions]);
 
+  // The nodes:test handler is registered once and would otherwise close over
+  // whichever subscription was showing when the page mounted.
+  const browsedSubscriptionRef = useRef(browsedSubscriptionId);
+  useEffect(() => {
+    browsedSubscriptionRef.current = browsedSubscriptionId;
+  }, [browsedSubscriptionId]);
+
   function applyState(next: AppState) {
     setState((current) => normalizeAppState(next, current));
   }
@@ -807,7 +815,12 @@ function App() {
   async function runNodeTest(request: NodeTestRequest) {
     try {
       setNodeTestRunning(true);
-      await backend.startNodeTest({ ...request, subscriptionId: browsedSubscriptionId });
+      // The page's subscription is what a normal run measures. A run covering
+      // everything supplies its own list per subscription, so naming one here
+      // would only invite the question of which wins.
+      await backend.startNodeTest(
+        request.allSubscriptions ? request : { ...request, subscriptionId: browsedSubscriptionId },
+      );
     } catch (err) {
       setNodeTestRunning(false);
       showError(messageFromError(err));
@@ -940,8 +953,17 @@ function App() {
       onRuntimeEvent<unknown>("subscriptions:changed", () => {
         void backend.getAppState().then(applyState);
       }),
-      onRuntimeEvent<WhiteVPNNode>("nodes:test", (node) => {
-        setNodes((current) => current.map((entry) => (entry.name === node.name ? node : entry)));
+      onRuntimeEvent<NodeMeasurement>("nodes:test", (measurement) => {
+        // A run can cover every subscription now, so a result has to say which
+        // list it is for. Node names come from providers and two subscriptions
+        // can both hold a "Germany 01" — applied on the name alone, one list's
+        // measurement would overwrite the other's wherever they collide.
+        if (measurement.subscriptionId !== browsedSubscriptionRef.current) {
+          return;
+        }
+        setNodes((current) =>
+          current.map((entry) => (entry.name === measurement.node.name ? measurement.node : entry)),
+        );
       }),
       onRuntimeEvent<unknown>("nodes:test-done", () => setNodeTestRunning(false)),
       onRuntimeEvent<string>("nodes:test-error", (message) => {
@@ -2647,6 +2669,9 @@ function NodesPage({
   const [hidingBusy, setHidingBusy] = useState(false);
   const unknown = t("vpn.nodes.unknownCountry");
   const manualProfileCount = state.v2rayProfiles.filter((profile) => !profile.subscriptionId).length;
+  // How many lists a run covering everything would walk: the subscriptions, and
+  // the hand-added configs when there are any.
+  const sourceCount = state.v2raySubscriptions.length + (manualProfileCount > 0 ? 1 : 0);
 
   useEffect(() => {
     setSort(subscriptionId === manualServerSourceID ? null : { column: "label", direction: "asc" });
@@ -2783,6 +2808,18 @@ function NodesPage({
     }
     setPending({ nodes: new Set(targets), tests: request });
     onRunTest({ ...request, nodes: targets });
+  }
+
+  // Every subscription in turn. The backend walks them one at a time, so this
+  // takes as long as running the same test on each page in sequence — which is
+  // what it replaces.
+  function runTestsEverywhere() {
+    onError("");
+    // Nothing is marked pending: the rows on screen are one list of several,
+    // and marking them would show a spinner on nodes whose turn may not have
+    // come yet.
+    setPending(null);
+    onRunTest({ ...request, nodes: [], allSubscriptions: true });
   }
 
   // What a bulk export covers: the selection when there is one, everything on
@@ -3021,10 +3058,21 @@ function NodesPage({
               {t("servers.stop")}
             </Button>
           ) : (
-            <Button onClick={runTests} disabled={!visible.length}>
-              <Gauge />
-              {selectedNames.length ? t("servers.testSelected") : t("servers.testAll")}
-            </Button>
+            <>
+              <Button onClick={runTests} disabled={!visible.length}>
+                <Gauge />
+                {selectedNames.length ? t("servers.testSelected") : t("servers.testAll")}
+              </Button>
+              {/* Only when there is more than one list to cover. On a single
+                  subscription this would be the button beside it, worded
+                  differently. */}
+              {sourceCount > 1 && (
+                <Button variant="outline" onClick={runTestsEverywhere} title={t("servers.testEverywhere.hint")}>
+                  <Gauge />
+                  {t("servers.testEverywhere", { count: sourceCount })}
+                </Button>
+              )}
+            </>
           )}
         </>
       }

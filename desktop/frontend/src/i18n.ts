@@ -676,6 +676,11 @@ const strings = {
     en: "Point your program at {endpoint} — it accepts both HTTP and SOCKS5. If another program already holds this port, connecting will say so rather than quietly moving to another one, which would leave whatever you configured pointing at nothing.",
     fa: "برنامه‌تان را به {endpoint} وصل کنید — هم HTTP و هم SOCKS5 را می‌پذیرد. اگر برنامهٔ دیگری این پورت را گرفته باشد، هنگام اتصال همین را می‌گوید و بی‌سروصدا پورت دیگری انتخاب نمی‌کند، چون آن‌وقت چیزی که تنظیم کرده‌اید به جای خالی وصل می‌ماند.",
   },
+  "servers.testEverywhere": { en: "Test all {count} lists", fa: "تست همهٔ {count} فهرست" },
+  "servers.testEverywhere.hint": {
+    en: "Runs the chosen tests over every subscription in turn, so the results can be compared across all of them. Each list is measured on its own engine, one after another, so this takes about as long as testing each page separately.",
+    fa: "تست‌های انتخاب‌شده را روی همهٔ اشتراک‌ها به‌ترتیب اجرا می‌کند تا نتیجه‌ها با هم قابل مقایسه باشند. هر فهرست با موتور خودش و یکی پس از دیگری اندازه‌گیری می‌شود، پس تقریباً به‌اندازهٔ تست جداگانهٔ هر صفحه طول می‌کشد.",
+  },
   "servers.export": { en: "Export configs", fa: "خروجی گرفتن از کانفیگ‌ها" },
   "servers.exportSelected": { en: "Export selected ({count})", fa: "خروجی انتخاب‌شده‌ها ({count})" },
   "servers.exportAll": { en: "Export all ({count})", fa: "خروجی همه ({count})" },

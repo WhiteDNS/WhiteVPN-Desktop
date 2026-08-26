@@ -618,12 +618,36 @@ type WhiteVPNNode struct {
 
 // NodeTestRequest is one run of the tests: which nodes, which tests, and the
 // numbers the user is allowed to change.
+// NodeMeasurement is one node's result and the subscription it belongs to.
+//
+// The subscription is a property of the result rather than of the node: the
+// same node measured under two subscriptions is two results, and the interface
+// has to know which list a result is for. Matching on the name alone was enough
+// only while a run could not leave one subscription.
+type NodeMeasurement struct {
+	SubscriptionID string       `json:"subscriptionId"`
+	Node           WhiteVPNNode `json:"node"`
+}
+
 type NodeTestRequest struct {
 	// Which subscription the names belong to. Empty means the selected one,
 	// which is what the dashboard tests; the Servers page names the one it is
 	// looking at, so a test measures the nodes on screen.
 	SubscriptionID string   `json:"subscriptionId"`
 	Nodes          []string `json:"nodes"`
+
+	// AllSubscriptions tests every subscription in turn rather than one.
+	//
+	// Nodes is ignored when it is set, because the names on one page do not
+	// describe the others. Somebody comparing what they have across three
+	// providers was running the same test three times and reading three tables;
+	// this is that, once.
+	//
+	// Sequential rather than parallel, and not a shortcut: each subscription
+	// needs a measuring engine built from its own body, and running several at
+	// once would have them compete for the bandwidth the speed test is trying to
+	// measure.
+	AllSubscriptions bool `json:"allSubscriptions"`
 
 	Reachability bool `json:"reachability"`
 	Delay        bool `json:"delay"`
