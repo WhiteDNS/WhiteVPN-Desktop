@@ -126,6 +126,59 @@ jobs:
             GOOS="${target%/*}" GOARCH="${target#*/}" go build ./internal/...
           done
 
+  engine:
+    name: Engine
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.26.5"
+          cache-dependency-path: desktop/go.sum
+
+      # The engine is the one part of this system nothing automated ever
+      # touched. It is built from pinned mihomo and FlClash sources at package
+      # time, ships as a separate binary, and carries every byte of a user's
+      # traffic — and the five tests that talk to a real one skipped in CI,
+      # silently, because the binary was never there to talk to.
+      #
+      # That made a green tick on an engine version bump mean nothing about the
+      # engine. The tests exist and are good; they just had nothing to run
+      # against.
+      #
+      # Keyed on the setup script because that is where the versions are pinned,
+      # so moving MIHOMO_TAG or either commit rebuilds instead of quietly
+      # testing the old engine against the new pins — which would be worse than
+      # not testing at all.
+      - name: Cache the engine sources and binary
+        uses: actions/cache@v4
+        with:
+          path: |
+            desktop/third_party/flclash
+            desktop/cores
+          key: engine-${{ runner.os }}-${{ hashFiles('desktop/scripts/setup-mihomo-core.sh', 'desktop/scripts/build-mihomo-core.sh', 'desktop/scripts/patches/*.patch') }}
+
+      - name: Build the engine
+        working-directory: desktop
+        run: make mihomo-core TARGET_GOOS=linux TARGET_GOARCH=amd64
+
+      # Proves the binary is the one the tests will find, and says which version
+      # was built — so a log from a failed run identifies the engine without
+      # anyone having to work it out from the pins.
+      - name: Report what was built
+        working-directory: desktop
+        run: |
+          set -euo pipefail
+          ls -l cores/
+          ./cores/mihomo-linux-amd64 -v || true
+
+      # -run is deliberately absent: this runs the engine package's whole suite,
+      # so the tests that were skipping are simply no longer skipping.
+      - name: Test against the real engine
+        working-directory: desktop
+        run: go test -v ./internal/engine/
+
+
   frontend:
     name: Frontend
     runs-on: ubuntu-latest
