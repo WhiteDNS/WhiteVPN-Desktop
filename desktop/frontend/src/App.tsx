@@ -6390,10 +6390,13 @@ function WhiteVPNSettingsPage({
           {!tunnelAvailable && <FieldDescription>{t("settings.routing.tun.unavailable")}</FieldDescription>}
         </Field>
 
-        {/* Only in proxy-only mode. Everywhere else the port is an
-            implementation detail and inviting someone to change it would be
-            inviting them to break something for no reason. */}
-        {routingMode(draft) === "proxyOnly" && (
+        {/* In proxy-only mode the port is the whole interface — it is what
+            gets typed into Telegram. Everywhere else it stays hidden until
+            sharing is on, because that is the only other moment a fixed number
+            matters: a phone on the LAN has to be told an address, and it
+            cannot follow a silent switch to a different port any more than
+            Telegram could. */}
+        {(routingMode(draft) === "proxyOnly" || draft.allowLan) && (
           <Field>
             <FieldLabel>{t("settings.routing.port")}</FieldLabel>
             <Input
