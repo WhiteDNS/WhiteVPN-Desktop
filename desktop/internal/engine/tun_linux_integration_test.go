@@ -31,6 +31,7 @@ package engine
 // separate one written only for CI.
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"net"
@@ -39,6 +40,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -98,10 +100,17 @@ func TestOnARealLinuxMachineTheTunnelActuallyComesUp(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
+	// The engine's own account of itself, which on this path is readable
+	// because the core is started directly rather than through pkexec. Without
+	// it a failure here is "the adapter is not there" and nothing about why —
+	// and why is the entire question.
+	engineSaid := &lockedBuffer{}
 	proc, err := Spawn(ctx, SpawnOptions{
 		CorePath:       requireCore(t),
 		WorkingDir:     home,
 		ConnectTimeout: 20 * time.Second,
+		Stdout:         engineSaid,
+		Stderr:         engineSaid,
 		// The path this is actually testing. Root already, so this does not
 		// raise a pkexec prompt — it takes elevate_linux.go's other branch,
 		// the one a real desktop session reaches once its own prompt is
@@ -137,7 +146,40 @@ func TestOnARealLinuxMachineTheTunnelActuallyComesUp(t *testing.T) {
 		}
 		time.Sleep(time.Second)
 	}
+	t.Logf("the engine said:\n%s", engineSaid.String())
+	t.Logf("interfaces:\n%s", describeInterfaces(ipPath))
+	t.Logf("config:\n%s", config)
 	t.Fatalf("the tunnel never came up: %v", lastErr)
+}
+
+// lockedBuffer collects the core's output from whichever goroutine writes it.
+type lockedBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *lockedBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *lockedBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
+// describeInterfaces reports what the machine actually has, so a failure says
+// whether the adapter was missing or merely not carrying the route.
+func describeInterfaces(ipPath string) string {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, ipPath, "-brief", "link", "show").CombinedOutput()
+	if err != nil {
+		return fmt.Sprintf("ip link show failed: %v: %s", err, strings.TrimSpace(string(out)))
+	}
+	return strings.TrimSpace(string(out))
 }
 
 // requireCore is corePath without its skip.

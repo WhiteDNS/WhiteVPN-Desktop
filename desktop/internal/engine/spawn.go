@@ -47,8 +47,11 @@ type SpawnOptions struct {
 	// Stdout and Stderr receive the core's own output. Worth capturing: some
 	// startup failures are only ever printed there and never reach a reply.
 	//
-	// They are not honoured under Elevated: a child started through the elevation
-	// prompt cannot inherit this process's pipes.
+	// A child started through an elevation prompt cannot inherit this process's
+	// pipes, so on that path they are dropped. Where the core is started
+	// directly — Windows never, Linux when the caller is already root — they
+	// are honoured, which is the only case where the engine's own startup
+	// complaints can be read at all.
 	Stdout io.Writer
 	Stderr io.Writer
 
@@ -141,7 +144,7 @@ func Spawn(ctx context.Context, opts SpawnOptions) (*Process, error) {
 
 	var child childProcess
 	if opts.Elevated {
-		elevated, err := startElevatedChild(opts.CorePath, endpoint, opts.WorkingDir)
+		elevated, err := startElevatedChild(opts.CorePath, endpoint, opts.WorkingDir, opts.Stdout, opts.Stderr)
 		if err != nil {
 			_ = listener.Close()
 			cleanupEndpoint(endpoint)
