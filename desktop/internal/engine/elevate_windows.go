@@ -2,6 +2,7 @@ package engine
 
 import (
 	"fmt"
+	"io"
 	"os/exec"
 	"strings"
 	"syscall"
@@ -169,7 +170,11 @@ func isElevated() bool {
 // If this process is already elevated there is nothing to ask for, and starting
 // normally is better: it keeps the engine's output, which the elevation prompt
 // path cannot.
-func startElevatedChild(corePath, endpoint, workingDir string) (childProcess, error) {
+// stdout and stderr are ignored here and cannot be otherwise: ShellExecuteExW
+// starts the process through the shell with its own handles, so there is
+// nothing of ours for it to inherit. That is the cost recorded at the top of
+// this file.
+func startElevatedChild(corePath, endpoint, workingDir string, _, _ io.Writer) (childProcess, error) {
 	if isElevated() {
 		cmd := exec.Command(corePath, endpoint)
 		cmd.Dir = workingDir

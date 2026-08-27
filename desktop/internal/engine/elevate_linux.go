@@ -3,6 +3,7 @@ package engine
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 )
@@ -28,12 +29,19 @@ import (
 // password" is actionable where "the engine did not start" is not.
 const pkexecDeclined = 126
 
-func startElevatedChild(corePath, endpoint, workingDir string) (childProcess, error) {
+func startElevatedChild(corePath, endpoint, workingDir string, stdout, stderr io.Writer) (childProcess, error) {
 	if os.Geteuid() == 0 {
 		// Already root — asking again would be theatre, and starting it directly
 		// keeps the engine's output, which the pkexec path cannot capture.
+		//
+		// "Keeps" was aspirational until the writers were actually attached:
+		// the comment claimed the output survived while nothing was reading it,
+		// so a core that failed to raise its adapter said why into a pipe that
+		// went nowhere.
 		cmd := exec.Command(corePath, endpoint)
 		cmd.Dir = workingDir
+		cmd.Stdout = stdout
+		cmd.Stderr = stderr
 		configureCommand(cmd)
 		if err := cmd.Start(); err != nil {
 			return nil, fmt.Errorf("engine: start %s: %w", corePath, err)
@@ -41,6 +49,9 @@ func startElevatedChild(corePath, endpoint, workingDir string) (childProcess, er
 		return ordinaryChild{cmd: cmd}, nil
 	}
 
+	// Past this point the core is started by pkexec, which does not pass our
+	// pipes down to it, so stdout and stderr are deliberately dropped rather
+	// than half-wired.
 	pkexecPath, err := exec.LookPath("pkexec")
 	if err != nil {
 		return nil, errors.New(

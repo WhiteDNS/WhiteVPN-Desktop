@@ -664,12 +664,12 @@ const strings = {
     fa: "هیچ چیزی روی این دستگاه تغییر نمی‌کند. برنامه فقط گوش می‌دهد و شما یک برنامه را به آن وصل می‌کنید — افزونهٔ مرورگر یا تنظیمات پراکسی تلگرام. بقیه مثل همیشه از مسیر عادی می‌روند.",
   },
   "settings.routing.tun.description": {
-    en: "A virtual network adapter carries everything, including programs that ignore proxy settings. Needs Administrator on Windows.",
-    fa: "یک کارت شبکهٔ مجازی همه چیز را حمل می‌کند، حتی برنامه‌هایی که تنظیمات پراکسی را نادیده می‌گیرند. روی ویندوز نیاز به دسترسی Administrator دارد.",
+    en: "A virtual network adapter carries everything, including programs that ignore proxy settings. Asks for permission when connecting — Administrator on Windows, your password through polkit on Linux.",
+    fa: "یک کارت شبکهٔ مجازی همه چیز را حمل می‌کند، حتی برنامه‌هایی که تنظیمات پراکسی را نادیده می‌گیرند. هنگام اتصال اجازه می‌خواهد — روی ویندوز Administrator و روی لینوکس رمز شما از طریق polkit.",
   },
   "settings.routing.tun.unavailable": {
-    en: "Tunnel (TUN) mode is available on Windows only for now. It needs to run the engine with administrator rights, and that is not implemented on this platform yet.",
-    fa: "حالت تونل (TUN) فعلاً فقط روی ویندوز در دسترس است. این حالت باید موتور را با دسترسی مدیر اجرا کند و این کار هنوز روی این سیستم‌عامل پیاده‌سازی نشده است.",
+    en: "Tunnel (TUN) mode needs to run the engine with elevated rights. On Windows and Linux it can; on macOS that is not implemented yet. On Linux it also needs polkit installed, which is what puts the password prompt on screen — without it the engine cannot be raised at all.",
+    fa: "حالت تونل (TUN) باید موتور را با دسترسی بالا اجرا کند. روی ویندوز و لینوکس این ممکن است؛ روی مک هنوز پیاده‌سازی نشده. روی لینوکس به polkit هم نیاز دارد، چون همان است که پنجرهٔ رمز را نشان می‌دهد — بدون آن اصلاً نمی‌شود موتور را بالا برد.",
   },
   "settings.routing.port": { en: "Local proxy port", fa: "پورت پراکسی محلی" },
   "settings.routing.port.description": {
@@ -706,8 +706,8 @@ const strings = {
   },
   "settings.tunnel": { en: "Tunnel (TUN)", fa: "تونل (TUN)" },
   "settings.tunnel.description": {
-    en: "The tunnel carries every program on the machine. Turning it on asks for Administrator when connecting, because creating the network adapter needs it. Left off, only programs pointed at the local proxy are carried.",
-    fa: "تونل ترافیک همهٔ برنامه‌های دستگاه را حمل می‌کند. روشن کردنش هنگام اتصال دسترسی Administrator می‌خواهد، چون ساختن آداپتور شبکه به آن نیاز دارد. اگر خاموش باشد، فقط برنامه‌هایی که به پراکسی محلی وصل شده‌اند حمل می‌شوند.",
+    en: "The tunnel carries every program on the machine. Turning it on asks for permission when connecting — Administrator on Windows, your password through polkit on Linux — because creating the network adapter needs it. Left off, only programs pointed at the local proxy are carried.",
+    fa: "تونل ترافیک همهٔ برنامه‌های دستگاه را حمل می‌کند. روشن کردنش هنگام اتصال اجازه می‌خواهد — روی ویندوز Administrator و روی لینوکس رمز شما از طریق polkit — چون ساختن آداپتور شبکه به آن نیاز دارد. اگر خاموش باشد، فقط برنامه‌هایی که به پراکسی محلی وصل شده‌اند حمل می‌شوند.",
   },
   "settings.killSwitch": { en: "Kill switch", fa: "قطع‌کنندهٔ اضطراری" },
   "settings.killSwitch.description": {

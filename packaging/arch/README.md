@@ -25,10 +25,13 @@ password prompt in the desktop's own polkit agent. The interface stays as the
 user. Without polkit installed the app still runs; only the tunnel is
 unavailable, and it says so rather than failing quietly.
 
-**Untested.** The tunnel path on Linux has not been exercised against a real
-connection the way the Windows one has, where the adapter, the routing and IPv6
-containment were each measured. Treat Linux tunnel mode as new: if traffic does
-not leave through the node, the local proxy is the reliable fallback.
+**Partly verified.** CI brings the adapter up on a real Linux machine, confirms
+the routing decision resolves through it, and does so against the same code path
+a desktop session takes once its polkit prompt is answered. What that does not
+cover is a live connection carrying real traffic, or IPv6 containment measured
+the way it was on Windows. Treat Linux tunnel mode as newer than the Windows
+one: if traffic does not leave through the node, the local proxy is the reliable
+fallback.
 
 ## Updating for a release
 

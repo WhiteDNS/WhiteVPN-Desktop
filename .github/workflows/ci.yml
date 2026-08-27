@@ -178,6 +178,38 @@ jobs:
         working-directory: desktop
         run: go test -v ./internal/engine/
 
+      # Whether the Linux tunnel actually comes up rests on two things nobody
+      # here can try by hand: that CAP_NET_ADMIN by way of a root process lets
+      # mihomo create the adapter, and that `ip route get` reads back correctly
+      # from whatever mechanism mihomo used to install its routes. The comment
+      # on TunOptions.StrictRoute says that is "unreachable policy rules" on
+      # Linux rather than routes attached to the device the way Windows does
+      # it — so a plain `ip route show dev` could easily be asking the wrong
+      # question and answering it confidently.
+      #
+      # A hosted Linux runner is a real Linux machine, so it is asked directly.
+      # Run as root rather than through pkexec: pkexec needs a polkit agent and
+      # an interactive session a runner has neither of, but elevate_linux.go
+      # already takes a direct path when the caller is root, which is the same
+      # code a desktop session reaches once its own prompt is answered.
+      #
+      # Compiled unprivileged and only then run under sudo, so root never needs
+      # its own module cache or network access — it gets a finished binary with
+      # nothing left to fetch or build.
+      - name: Ask a real Linux machine whether the tunnel comes up
+        working-directory: desktop
+        env:
+          WHITEVPN_TUN_INTEGRATION: "1"
+        run: |
+          go test -c -o /tmp/whitevpn-tun-integration ./internal/engine/
+          # From the package's own directory, because corePath resolves the
+          # engine binary relative to it (../../cores). `go test` sets that
+          # working directory itself; a compiled binary run from anywhere else
+          # looks for the core outside the repository and skips for want of it,
+          # which reads as a pass.
+          cd internal/engine
+          sudo --preserve-env=WHITEVPN_TUN_INTEGRATION /tmp/whitevpn-tun-integration -test.v -test.run OnARealLinuxMachine
+
 
   frontend:
     name: Frontend
