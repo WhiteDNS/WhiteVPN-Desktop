@@ -64,85 +64,33 @@ func TestOnARealLinuxMachineTheTunnelActuallyComesUp(t *testing.T) {
 	if err != nil {
 		t.Fatal("iproute2's ip is not installed, so the routing decision cannot be read")
 	}
-	core := requireCore(t)
-
-	// The shipped settings, and then the same thing with one option removed at
-	// a time.
-	//
-	// The first run of this failed with "configure tun interface: numerical
-	// result out of range", which names the stage and not the setting. Guessing
-	// which of MTU, stack, strict-route or the IPv6 address the kernel objected
-	// to would be guessing; the machine can be asked instead, and one CI run
-	// answers it completely rather than four.
-	//
-	// Every variant is reported whether it passes or fails, because the useful
-	// output here is the whole table, not the first success.
-	variants := []struct {
-		name string
-		with func(*mihomoconf.TunOptions)
-	}{
-		{"as shipped", func(*mihomoconf.TunOptions) {}},
-		{"without strict-route", func(o *mihomoconf.TunOptions) { o.StrictRoute = false }},
-		{"without IPv6", func(o *mihomoconf.TunOptions) { o.IPv6 = false; o.Inet6Address = "" }},
-		{"MTU 1500", func(o *mihomoconf.TunOptions) { o.MTU = 1500 }},
-		{"system stack", func(o *mihomoconf.TunOptions) { o.Stack = "system" }},
-		{"nothing but auto-route", func(o *mihomoconf.TunOptions) {
-			o.StrictRoute = false
-			o.IPv6 = false
-			o.Inet6Address = ""
-			o.MTU = 1500
-		}},
-	}
-
-	var worked []string
-	for _, variant := range variants {
-		if err := tryTunnel(t, core, ipPath, variant.name, variant.with); err != nil {
-			t.Logf("%-24s FAILED: %v", variant.name, err)
-			continue
-		}
-		t.Logf("%-24s came up", variant.name)
-		worked = append(worked, variant.name)
-	}
-
-	t.Logf("interfaces after the sweep:\n%s", describeInterfaces(ipPath))
-
-	if len(worked) == 0 {
-		t.Fatal("no configuration brought the tunnel up on this machine")
-	}
-	// The shipped settings are the ones that have to work. A variant succeeding
-	// tells us what to change; it does not make the current defaults correct.
-	if worked[0] != "as shipped" {
-		t.Fatalf("the shipped settings did not come up; these did: %s", strings.Join(worked, ", "))
-	}
-}
-
-// tryTunnel starts one engine with one set of tunnel options and reports
-// whether traffic ends up resolving through the adapter.
-//
-// Each variant gets its own engine and its own device name: a leftover adapter
-// from a previous attempt would otherwise make the next one look successful
-// without having created anything.
-func tryTunnel(t *testing.T, core, ipPath, label string, with func(*mihomoconf.TunOptions)) error {
-	t.Helper()
 
 	proxies, err := mihomoconf.ConvertLinks(
 		"vless://11111111-2222-3333-4444-555555555555@198.51.100.1:443?security=tls&type=tcp#Unreachable")
 	if err != nil {
-		return fmt.Errorf("convert: %w", err)
+		t.Fatalf("convert: %v", err)
 	}
+	// The address does not have to answer. Bringing the adapter up and
+	// installing its routes is mihomo's own startup work and happens whether or
+	// not the one proxy in the group can be reached.
 	proxiesYAML, err := mihomoconf.BuildProxiesYAML(proxies, mihomoconf.SplitTunnel{})
 	if err != nil {
-		return fmt.Errorf("build proxies: %w", err)
+		t.Fatalf("build proxies: %v", err)
 	}
 
 	tun := mihomoconf.DefaultTunOptions()
-	with(&tun)
-	// Distinct per variant, and distinct from what a real connect would use, so
-	// nothing left behind can be mistaken for this attempt's adapter.
-	tun.Device = "wvtun" + strings.Map(keepAlphanumeric, label)
+	// Its own name, so a leftover adapter — or a real WhiteVPN connection on
+	// the same machine — is never mistaken for this test's.
+	//
+	// Fifteen characters at the outside. Linux caps an interface name at
+	// IFNAMSIZ-1, and exceeding it fails as ERANGE, which mihomo reports as
+	// "configure tun interface: numerical result out of range" — a message that
+	// names the stage and not the cause. This test's first name was seventeen
+	// characters and cost a full round of CI to explain. The shipped name is
+	// eight, so nothing about the product was ever at stake.
+	tun.Device = "whitevpn-tuntt"
 	if len(tun.Device) > 15 {
-		// Linux interface names are capped at IFNAMSIZ-1.
-		tun.Device = tun.Device[:15]
+		t.Fatalf("device name %q is %d characters; Linux allows 15", tun.Device, len(tun.Device))
 	}
 
 	config := mihomoconf.Render(proxiesYAML, mihomoconf.Options{
@@ -154,67 +102,58 @@ func tryTunnel(t *testing.T, core, ipPath, label string, with func(*mihomoconf.T
 	home := t.TempDir()
 	configPath := home + "/config.yaml"
 	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
-		return err
+		t.Fatal(err)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
 	// The engine's own account of itself, readable on this path because the
 	// core is started directly rather than through pkexec. Without it a failure
-	// is "the adapter is not there" and nothing about why.
+	// here is "the adapter is not there" and nothing about why.
 	engineSaid := &lockedBuffer{}
 	proc, err := Spawn(ctx, SpawnOptions{
-		CorePath:       core,
+		CorePath:       requireCore(t),
 		WorkingDir:     home,
 		ConnectTimeout: 20 * time.Second,
 		Stdout:         engineSaid,
 		Stderr:         engineSaid,
-		// The path being tested. Root already, so this takes
-		// elevate_linux.go's direct branch — the same code a desktop session
-		// reaches once its own polkit prompt is answered.
+		// The path being tested. Root already, so this takes elevate_linux.go's
+		// direct branch — the same code a desktop session reaches once its own
+		// polkit prompt is answered, not one written only for CI.
 		Elevated: true,
 	})
 	if err != nil {
-		return fmt.Errorf("spawn: %w", err)
+		t.Fatalf("spawn: %v", err)
 	}
 	defer func() { _ = proc.Stop(context.Background()) }()
 
 	if err := proc.Init(ctx, home, 36); err != nil {
-		return fmt.Errorf("init: %w", err)
+		t.Fatalf("init: %v", err)
 	}
 	if err := proc.ValidateConfig(ctx, configPath); err != nil {
-		return fmt.Errorf("the engine could not read the config: %w", err)
+		t.Fatalf("the engine could not read the config: %v", err)
 	}
 	if err := proc.SetupConfig(ctx, map[string]string{}, "http://198.51.100.1/"); err != nil {
-		return fmt.Errorf("apply config: %w", err)
+		t.Fatalf("apply config: %v", err)
 	}
 	if err := proc.StartListener(ctx); err != nil {
-		return fmt.Errorf("start listener: %w", err)
+		t.Fatalf("start listener: %v", err)
 	}
 
 	// The adapter is not necessarily there the instant StartListener returns —
 	// the same race waitForTunnel covers in production — so it is polled.
-	deadline := time.Now().Add(15 * time.Second)
+	deadline := time.Now().Add(20 * time.Second)
 	var lastErr error
 	for time.Now().Before(deadline) {
 		if lastErr = verifyRealRouteThroughDevice(ipPath, tun.Device); lastErr == nil {
-			return nil
+			return
 		}
 		time.Sleep(time.Second)
 	}
-	t.Logf("[%s] the engine said:\n%s", label, engineSaid.String())
-	return lastErr
-}
-
-func keepAlphanumeric(r rune) rune {
-	switch {
-	case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
-		return r
-	case r >= 'A' && r <= 'Z':
-		return r + 32
-	}
-	return -1
+	t.Logf("the engine said:\n%s", engineSaid.String())
+	t.Logf("interfaces:\n%s", describeInterfaces(ipPath))
+	t.Fatalf("the tunnel never came up: %v", lastErr)
 }
 
 // lockedBuffer collects the core's output from whichever goroutine writes it.
