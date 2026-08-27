@@ -202,6 +202,12 @@ jobs:
           WHITEVPN_TUN_INTEGRATION: "1"
         run: |
           go test -c -o /tmp/whitevpn-tun-integration ./internal/engine/
+          # From the package's own directory, because corePath resolves the
+          # engine binary relative to it (../../cores). `go test` sets that
+          # working directory itself; a compiled binary run from anywhere else
+          # looks for the core outside the repository and skips for want of it,
+          # which reads as a pass.
+          cd internal/engine
           sudo --preserve-env=WHITEVPN_TUN_INTEGRATION /tmp/whitevpn-tun-integration -test.v -test.run OnARealLinuxMachine
 
 

@@ -36,6 +36,8 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -46,15 +48,19 @@ import (
 const tunIntegrationEnv = "WHITEVPN_TUN_INTEGRATION"
 
 func TestOnARealLinuxMachineTheTunnelActuallyComesUp(t *testing.T) {
+	// The only skip. Everything past this point was explicitly asked for, so a
+	// missing precondition is a broken harness rather than a machine that
+	// cannot answer — and a skip there would read as a pass, which is how the
+	// first version of this went green while proving nothing.
 	if os.Getenv(tunIntegrationEnv) == "" {
 		t.Skipf("set %s=1 to run this: it creates a real network adapter and needs root", tunIntegrationEnv)
 	}
 	if os.Geteuid() != 0 {
-		t.Skip("this has to run as root — elevate_linux.go's direct-launch path is what is being asked about")
+		t.Fatal("this has to run as root — elevate_linux.go's direct-launch path is what is being asked about")
 	}
 	ipPath, err := exec.LookPath("ip")
 	if err != nil {
-		t.Skip("iproute2's ip is not installed, so the routing decision cannot be read")
+		t.Fatal("iproute2's ip is not installed, so the routing decision cannot be read")
 	}
 
 	// The address does not have to answer. Bringing the adapter up and
@@ -93,7 +99,7 @@ func TestOnARealLinuxMachineTheTunnelActuallyComesUp(t *testing.T) {
 	defer cancel()
 
 	proc, err := Spawn(ctx, SpawnOptions{
-		CorePath:       corePath(t),
+		CorePath:       requireCore(t),
 		WorkingDir:     home,
 		ConnectTimeout: 20 * time.Second,
 		// The path this is actually testing. Root already, so this does not
@@ -132,6 +138,29 @@ func TestOnARealLinuxMachineTheTunnelActuallyComesUp(t *testing.T) {
 		time.Sleep(time.Second)
 	}
 	t.Fatalf("the tunnel never came up: %v", lastErr)
+}
+
+// requireCore is corePath without its skip.
+//
+// corePath is right to stand aside where the engine has not been built — most
+// of this package's tests are run by people who have not built it. This one was
+// asked for by name, so a missing core is a broken harness and has to say so:
+// skipping here is how the first version of this went green while proving
+// nothing at all, because the compiled binary was run from a directory where
+// the relative path to cores/ resolved outside the repository.
+func requireCore(t *testing.T) string {
+	t.Helper()
+	name := "mihomo-" + runtime.GOOS + "-" + runtime.GOARCH
+	path, err := filepath.Abs(filepath.Join("..", "..", "cores", name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(path); err != nil {
+		cwd, _ := os.Getwd()
+		t.Fatalf("the engine binary is not at %s (looked from %s) — build it with `make mihomo-core`, "+
+			"and run this from the package directory so the relative path resolves", path, cwd)
+	}
+	return path
 }
 
 // verifyRealRouteThroughDevice is a deliberately independent check from
