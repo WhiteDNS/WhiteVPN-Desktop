@@ -756,6 +756,32 @@ const strings = {
     fa: "آدرس جایگزینی تنظیم نشده. سرورها مستقیم در دسترس‌اند.",
   },
 
+  "settings.directRouting.title": { en: "Sites that skip the tunnel", fa: "سایت‌هایی که از تونل رد نمی‌شوند" },
+  "settings.directRouting.description": {
+    en: "Send chosen sites straight out of this machine instead of through the VPN. Iranian sites are the usual reason: they load faster, some refuse foreign addresses outright, and you no longer have to disconnect to reach a bank or a government form.",
+    fa: "سایت‌های انتخابی به‌جای عبور از وی‌پی‌ان، مستقیم از همین دستگاه خارج می‌شوند. دلیل معمولش سایت‌های ایرانی است: سریع‌تر باز می‌شوند، بعضی‌شان آدرس خارجی را اصلاً قبول نمی‌کنند، و دیگر لازم نیست برای بانک یا سامانه‌های دولتی اتصال را قطع کنید.",
+  },
+  "settings.directRouting.enable": { en: "Send these straight out", fa: "این‌ها مستقیم خارج شوند" },
+  "settings.directRouting.enableHint": {
+    en: "Off keeps the lists but sends everything through the tunnel, so you can turn it off to test a site and back on without retyping anything.",
+    fa: "خاموش، فهرست‌ها را نگه می‌دارد ولی همه چیز از تونل رد می‌شود — پس می‌توانید برای تست یک سایت خاموشش کنید و بعد بدون تایپ دوباره برش گردانید.",
+  },
+  "settings.directRouting.domain": { en: "Website", fa: "وب‌سایت" },
+  "settings.directRouting.domainHint": {
+    en: "Matched by ending, so \"ir\" covers every .ir address at once and \"digikala.com\" covers its subdomains too. Pasting a full address is fine — the scheme and path are trimmed.",
+    fa: "بر اساس پایان آدرس تطبیق داده می‌شود، پس «ir» همهٔ آدرس‌های ir. را یکجا می‌گیرد و «digikala.com» زیردامنه‌هایش را هم شامل می‌شود. چسباندن آدرس کامل هم اشکالی ندارد — بخش‌های اضافه حذف می‌شوند.",
+  },
+  "settings.directRouting.emptyDomains": { en: "No websites listed", fa: "هیچ وب‌سایتی در فهرست نیست" },
+  "settings.directRouting.ip": { en: "Address range", fa: "محدودهٔ آدرس" },
+  "settings.directRouting.ipHint": {
+    en: "A range like 10.0.0.0/8, or a single address. Useful for something reached by address rather than by name — a work network, a device on another site.",
+    fa: "محدوده‌ای مثل 10.0.0.0/8، یا یک آدرس تکی. برای چیزی که با آدرس صدا زده می‌شود نه با نام — مثل شبکهٔ محل کار یا دستگاهی در جای دیگر.",
+  },
+  "settings.directRouting.emptyIps": { en: "No address ranges listed", fa: "هیچ محدودهٔ آدرسی در فهرست نیست" },
+  "settings.directRouting.warning": {
+    en: "Traffic to everything listed here leaves with your real address and is visible to your internet provider, exactly as it would be with the VPN switched off. That is the point of it — but it means anything you would not want seen does not belong on these lists.",
+    fa: "ترافیک هر چیزی که اینجا فهرست شده با آدرس واقعی شما خارج می‌شود و برای سرویس‌دهندهٔ اینترنتتان قابل دیدن است، دقیقاً مثل وقتی که وی‌پی‌ان خاموش باشد. هدف همین است — ولی یعنی هر چیزی که نمی‌خواهید دیده شود، جایش در این فهرست‌ها نیست.",
+  },
   "settings.splitTunnel.title": { en: "Split tunnel", fa: "تقسیم تونل" },
   "settings.splitTunnel.description": {
     en: "Choose which programs the tunnel carries.",

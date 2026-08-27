@@ -73,6 +73,50 @@ func TestGeneratedConfigIsReadableByTheEngine(t *testing.T) {
 	}
 }
 
+// Direct-routing rules are generated text going into someone else's parser, so
+// whether that parser accepts them is not something reading our own code can
+// answer. ValidateConfig only catches what fails to parse, which is exactly the
+// class of fault a malformed rule would be.
+func TestDirectRoutingRulesAreReadableByTheEngine(t *testing.T) {
+	proxies, err := mihomoconf.ConvertLinks(
+		"vless://11111111-2222-3333-4444-555555555555@a.example.com:443?security=tls&type=tcp#Direct%20Routing")
+	if err != nil {
+		t.Fatalf("convert: %v", err)
+	}
+	proxiesYAML, _, err := mihomoconf.BuildProxiesYAMLWithRouting(proxies, mihomoconf.Routing{
+		Direct: mihomoconf.DirectRoute{
+			// The shipped starting list, plus the shapes a person types.
+			Domains: []string{"ir", "digikala.com", "  APARAT.com ", "https://bank.ir/login"},
+			IPs:     []string{"10.0.0.0/8", "1.2.3.4", "2001:db8::/32"},
+		},
+		Split: mihomoconf.SplitTunnel{Mode: mihomoconf.SplitTunnelBypass, Processes: []string{"firefox.exe"}},
+	})
+	if err != nil {
+		t.Fatalf("build proxies: %v", err)
+	}
+	config := mihomoconf.Render(proxiesYAML, mihomoconf.Options{
+		Secret:     "validation-secret",
+		ProxyGroup: mihomoconf.SelectGroup,
+	})
+
+	home := t.TempDir()
+	configPath := filepath.Join(home, "config.yaml")
+	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	proc := spawnReal(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	if err := proc.Init(ctx, home, 36); err != nil {
+		t.Fatalf("initClash: %v", err)
+	}
+	if err := proc.ValidateConfig(ctx, configPath); err != nil {
+		t.Fatalf("the engine could not read our direct-routing rules: %v\n---\n%s", err, config)
+	}
+}
+
 // The negative control, so the check above is not vacuous. It has to be
 // unparseable YAML, because that is the only class of fault this call detects.
 func TestEngineRejectsUnparseableConfig(t *testing.T) {
