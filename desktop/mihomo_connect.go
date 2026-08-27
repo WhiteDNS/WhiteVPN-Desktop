@@ -446,9 +446,21 @@ func chooseProxyPort(settings model.WhiteVPNSettings) (int, error) {
 		wanted = mihomoconf.DefaultMixedPort
 	}
 
-	if proxyOnly(settings) {
+	// A number somebody else is relying on, in two ways. In proxy-only mode it
+	// is what got typed into Telegram or a browser extension. Shared on the
+	// network it is what another device was told to connect to. Either way, a
+	// silent switch to a different port is a program that stops working days
+	// later, in another application or on another machine, with nothing
+	// connecting that failure back to this one.
+	if proxyOnly(settings) || settings.AllowLAN {
 		if !portIsFree(wanted) {
-			return 0, fmt.Errorf("port %d is already in use by another program — choose a different local proxy port in Settings, or turn the system proxy back on", wanted)
+			howToFix := "choose a different local proxy port in Settings, or turn the system proxy back on"
+			if !proxyOnly(settings) {
+				// Sharing is what made the port somebody's business here; the
+				// system proxy is not on trial.
+				howToFix = "choose a different local proxy port in Settings"
+			}
+			return 0, fmt.Errorf("port %d is already in use by another program — %s", wanted, howToFix)
 		}
 		return wanted, nil
 	}

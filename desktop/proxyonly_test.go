@@ -69,6 +69,47 @@ func TestATakenPortIsReportedInProxyOnlyMode(t *testing.T) {
 	}
 }
 
+// Sharing on the network makes the port somebody else's business the same way
+// proxy-only does — a device that was told to connect to it cannot follow a
+// silent switch to a different one.
+func TestATakenPortIsReportedWhenSharedOnTheNetwork(t *testing.T) {
+	held, port := holdAPort(t)
+	defer held.Close()
+
+	for _, settings := range []model.WhiteVPNSettings{
+		{TunEnabled: false, SetSystemProxy: true, AllowLAN: true, ListenPort: port},
+		{TunEnabled: true, SetSystemProxy: false, AllowLAN: true, ListenPort: port},
+	} {
+		_, err := chooseProxyPort(settings)
+		if err == nil {
+			t.Fatal("a port that cannot be had must be reported when it is shared, not worked around")
+		}
+		if !strings.Contains(err.Error(), fmt.Sprint(port)) {
+			t.Errorf("the message should mention %d: %v", port, err)
+		}
+		// The system proxy is not what is on trial here; sharing is.
+		if strings.Contains(err.Error(), "system proxy") {
+			t.Errorf("blaming the system proxy for a sharing conflict is misleading: %v", err)
+		}
+	}
+}
+
+// Without sharing, the two settings behave exactly as they did before this: a
+// taken port is worked around, not reported.
+func TestATakenPortIsStillWorkedAroundWithoutSharing(t *testing.T) {
+	held, port := holdAPort(t)
+	defer held.Close()
+
+	settings := model.WhiteVPNSettings{TunEnabled: false, SetSystemProxy: true, AllowLAN: false, ListenPort: port}
+	got, err := chooseProxyPort(settings)
+	if err != nil {
+		t.Fatalf("this mode should not fail over a port: %v", err)
+	}
+	if got == port {
+		t.Fatal("the held port was handed out anyway")
+	}
+}
+
 // A free port is used as asked, in every mode.
 func TestAFreePortIsUsedAsAsked(t *testing.T) {
 	held, port := holdAPort(t)
