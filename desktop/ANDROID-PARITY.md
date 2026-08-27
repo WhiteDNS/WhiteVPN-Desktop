@@ -670,11 +670,20 @@ Measured 2026-08-05, from Windows:
   preferences well-behaved programs read, and a program that ignores them is not
   reached by anything short of a tunnel. Say that rather than promise more.
 
-  **Tunnel mode does not work on Linux.** `engine.startElevatedChild` is
-  implemented on Windows only, so the core cannot be raised to create an
-  adapter. That is why the system proxy failing used to leave a Linux user with
-  no usable mode at all, and why it is now a notice rather than a failed
-  connection.
+  **Tunnel mode works on Linux where polkit is installed.** The core is raised
+  through `pkexec`, which puts the prompt in the desktop's own polkit agent and
+  leaves the interface running as the user. Without polkit the core cannot be
+  raised at all, so the mode is withheld rather than offered and failed — a
+  property of the machine rather than of the operating system, which is why
+  `tunnelSupported` asks rather than hard-coding it.
+
+  The route check is not the Windows one. `Get-NetRoute -InterfaceAlias` reads
+  routes attached to the adapter, and mihomo installs Linux routes through
+  policy rules that such a question would not see — so Linux asks
+  `ip route get` instead, which resolves the decision the way a real packet
+  would. Verified against a live adapter on a CI runner rather than reasoned
+  about, because the difference between those two questions is exactly the kind
+  that answers confidently and wrongly.
 - **macOS** — **cannot be built from Windows.** Without CGO it does not compile
   at all: `fyne.io/systray` needs Cocoa. With CGO it needs the macOS SDK. It has
   to run on a Mac, or on a macOS CI runner.
