@@ -50,10 +50,10 @@ jobs:
     steps:
       # Arch has no webkit2gtk-4.0 package, so this is a 4.1 build; that is what
       # the PKGBUILD depends on too.
+      # --disable-sandbox: pacman 7 confines itself with Landlock, which the
+      # container is not permitted to set up, and it treats that as fatal.
       - name: Install build dependencies
-        run: |
-          pacman -Syu --needed --noconfirm base-devel git go nodejs npm gtk3 webkit2gtk-4.1 zip
-          echo "PATH=/root/go/bin:$PATH" >> "$GITHUB_ENV"
+        run: pacman -Syu --disable-sandbox --needed --noconfirm base-devel git go nodejs npm gtk3 webkit2gtk-4.1 zip
 
       - uses: actions/checkout@v7
 
@@ -62,7 +62,9 @@ jobs:
 
       - name: Install Wails CLI
         working-directory: desktop
-        run: go install "github.com/wailsapp/wails/v2/cmd/wails@$(go list -m -f '{{.Version}}' github.com/wailsapp/wails/v2)"
+        run: |
+          go install "github.com/wailsapp/wails/v2/cmd/wails@$(go list -m -f '{{.Version}}' github.com/wailsapp/wails/v2)"
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       # package-linux builds the engine for the same target first, so this
       # covers mihomo as well as the app.
