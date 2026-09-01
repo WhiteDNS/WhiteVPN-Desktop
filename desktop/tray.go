@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"fyne.io/systray"
+	"github.com/wailsapp/wails/v2/pkg/options"
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"whitevpn-desktop/internal/model"
@@ -273,4 +274,21 @@ func trayIcon() []byte {
 		return trayIconICO
 	}
 	return trayIconPNG
+}
+
+// onSecondInstanceLaunch runs in the instance that is already going, when
+// somebody starts the app again.
+//
+// Showing the window is the whole of it, and it is what the person clicking
+// wanted: on Windows an app whose window is hidden to the tray is
+// indistinguishable from one that is not running, so launching it again is the
+// obvious move rather than a mistake. The second process exits by itself once
+// this returns.
+//
+// The arguments the second launch carried are deliberately ignored. This app
+// takes none that mean anything — no file to open, no URL to handle — and
+// acting on an argument nobody defined would be inventing behaviour at the one
+// entry point that cannot be tested from the interface.
+func (a *App) onSecondInstanceLaunch(options.SecondInstanceData) {
+	a.showWindow()
 }
