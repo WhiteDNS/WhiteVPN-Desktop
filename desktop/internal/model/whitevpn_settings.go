@@ -78,6 +78,30 @@ type ConnectionSelection struct {
 
 // SplitTunnelSettings routes some programs around the tunnel, or only some
 // through it.
+// DirectRoutingSettings names destinations that never enter the tunnel.
+//
+// The user's own two lists rather than a country switch. mihomo can match a
+// country with GEOIP, but that rule downloads a database when one is not on
+// disk and fails the whole configuration when it cannot reach it — so on a
+// filtered network it would not route Iranian traffic around the tunnel, it
+// would stop the tunnel existing. See internal/mihomoconf/directroute.go.
+//
+// "ir" as a domain suffix covers every .ir address with no database anywhere,
+// which is most of what this was asked for, and the rest is names people add as
+// they meet them.
+type DirectRoutingSettings struct {
+	// Enabled keeps the lists while switching them off, so somebody testing
+	// whether a site is misbehaving does not have to retype them afterwards.
+	Enabled bool `json:"enabled"`
+
+	// Domains are matched by suffix: "ir" catches every .ir address,
+	// "digikala.com" catches its subdomains too.
+	Domains []string `json:"domains"`
+
+	// IPs are CIDR ranges. A bare address is read as a single host.
+	IPs []string `json:"ips"`
+}
+
 type SplitTunnelSettings struct {
 	Mode string `json:"mode"`
 	// Processes are executable names, because that is what mihomo's
@@ -105,6 +129,11 @@ type WhiteVPNSettings struct {
 	CountryCode string              `json:"countryCode"`
 	Connection  ConnectionSelection `json:"connection"`
 	SplitTunnel SplitTunnelSettings `json:"splitTunnel"`
+
+	// DirectRouting keeps chosen destinations out of the tunnel. Off by
+	// default, with a starting list rather than an empty one: an empty list
+	// behind a switch teaches nobody what the switch is for.
+	DirectRouting DirectRoutingSettings `json:"directRouting"`
 
 	// Settings sections, in the order the phone shows them.
 	TLSIntegrityEnabled bool                 `json:"tlsIntegrityEnabled"`
@@ -168,12 +197,39 @@ type WhiteVPNSettings struct {
 	AcceptedPrivacyPolicyVersion int `json:"acceptedPrivacyPolicyVersion"`
 }
 
+// DefaultDirectRouting is the list somebody starts from.
+//
+// Off, but not empty. The switch is the decision; the list is the explanation
+// of what the switch does, and an empty one behind it teaches nothing and
+// leaves a person guessing at the format.
+//
+// "ir" is the whole of the .ir top-level domain and needs no database. The rest
+// are the large Iranian services people actually named when asking for this,
+// and they are ordinary entries: editable, removable, and no more privileged
+// than anything added later.
+func DefaultDirectRouting() DirectRoutingSettings {
+	return DirectRoutingSettings{
+		Enabled: false,
+		Domains: []string{
+			"ir",
+			"digikala.com",
+			"aparat.com",
+			"varzesh3.com",
+			"divar.ir",
+			"snapp.ir",
+			"shaparak.ir",
+		},
+		IPs: []string{},
+	}
+}
+
 // DefaultWhiteVPNSettings mirrors the phone's defaults.
 func DefaultWhiteVPNSettings() WhiteVPNSettings {
 	return WhiteVPNSettings{
 		CountryCode:         "", // unset means automatic
 		Connection:          ConnectionSelection{Node: "", Types: []string{}, DelaySort: false},
 		SplitTunnel:         SplitTunnelSettings{Mode: SplitTunnelOff, Processes: []string{}},
+		DirectRouting:       DefaultDirectRouting(),
 		TLSIntegrityEnabled: false,
 		AmneziaNoise: AmneziaNoiseSettings{
 			Enabled: false,
@@ -264,6 +320,12 @@ func NormalizeWhiteVPNSettings(settings WhiteVPNSettings) WhiteVPNSettings {
 	}
 
 	settings.FrontingIPs = nonEmptyStrings(settings.FrontingIPs)
+
+	// Blank lines out of a textarea, and the duplicates that come of pasting a
+	// list twice. Shape only: what each entry means is mihomoconf's to decide,
+	// and a second opinion here that disagreed with it would be the harder bug.
+	settings.DirectRouting.Domains = nonEmptyStrings(lowered(settings.DirectRouting.Domains))
+	settings.DirectRouting.IPs = nonEmptyStrings(settings.DirectRouting.IPs)
 	if len(settings.FrontingIPs) > MaxFrontingIPs {
 		settings.FrontingIPs = settings.FrontingIPs[:MaxFrontingIPs]
 	}

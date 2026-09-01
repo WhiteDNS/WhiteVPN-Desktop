@@ -6248,6 +6248,8 @@ function WhiteVPNSettingsPage({
 
   const [frontingDraft, setFrontingDraft] = useState("");
   const [processDraft, setProcessDraft] = useState("");
+  const [directDomainDraft, setDirectDomainDraft] = useState("");
+  const [directIpDraft, setDirectIpDraft] = useState("");
   const [saving, setSaving] = useState(false);
 
   // Settings changed elsewhere — a backup restore, most likely — have to reach
@@ -6302,6 +6304,21 @@ function WhiteVPNSettingsPage({
     }
     patch({ splitTunnel: { ...draft.splitTunnel, processes: [...draft.splitTunnel.processes, value] } });
     setProcessDraft("");
+  }
+
+  function addDirectEntry(kind: "domains" | "ips", value: string, clear: () => void) {
+    const entry = value.trim();
+    if (!entry) {
+      return;
+    }
+    // Cleared even when it is already there, so a second Enter on the same
+    // value does not leave the field looking like it failed.
+    if (draft.directRouting[kind].includes(entry)) {
+      clear();
+      return;
+    }
+    patch({ directRouting: { ...draft.directRouting, [kind]: [...draft.directRouting[kind], entry] } });
+    clear();
   }
 
   const dnsMode = draft.dnsPrivacy.mode;
@@ -6510,6 +6527,108 @@ function WhiteVPNSettingsPage({
           emptyLabel={t("settings.fronting.empty")}
           onRemove={(value) => patch({ frontingIps: draft.frontingIps.filter((entry) => entry !== value) })}
         />
+      </SettingsSection>
+
+      <SettingsSection
+        title={t("settings.directRouting.title")}
+        description={t("settings.directRouting.description")}
+      >
+        <SettingSwitchRow
+          label={t("settings.directRouting.enable")}
+          checked={draft.directRouting.enabled}
+          onCheckedChange={(enabled) => patch({ directRouting: { ...draft.directRouting, enabled } })}
+        />
+        <FieldDescription>{t("settings.directRouting.enableHint")}</FieldDescription>
+
+        <FieldGroup>
+          <Field>
+            <FieldLabel>{t("settings.directRouting.domain")}</FieldLabel>
+            <div className="flex gap-2">
+              <Input
+                value={directDomainDraft}
+                placeholder="digikala.com"
+                disabled={!draft.directRouting.enabled}
+                onChange={(event) => setDirectDomainDraft(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    addDirectEntry("domains", directDomainDraft, () => setDirectDomainDraft(""));
+                  }
+                }}
+              />
+              <Button
+                variant="outline"
+                disabled={!draft.directRouting.enabled}
+                onClick={() => addDirectEntry("domains", directDomainDraft, () => setDirectDomainDraft(""))}
+              >
+                {t("common.add")}
+              </Button>
+            </div>
+            <FieldDescription>{t("settings.directRouting.domainHint")}</FieldDescription>
+          </Field>
+        </FieldGroup>
+        <RemovableBadges
+          values={draft.directRouting.domains}
+          emptyLabel={t("settings.directRouting.emptyDomains")}
+          onRemove={(value) =>
+            patch({
+              directRouting: {
+                ...draft.directRouting,
+                domains: draft.directRouting.domains.filter((entry) => entry !== value),
+              },
+            })
+          }
+        />
+
+        <FieldGroup>
+          <Field>
+            <FieldLabel>{t("settings.directRouting.ip")}</FieldLabel>
+            <div className="flex gap-2">
+              <Input
+                value={directIpDraft}
+                placeholder="10.0.0.0/8"
+                disabled={!draft.directRouting.enabled}
+                onChange={(event) => setDirectIpDraft(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    addDirectEntry("ips", directIpDraft, () => setDirectIpDraft(""));
+                  }
+                }}
+              />
+              <Button
+                variant="outline"
+                disabled={!draft.directRouting.enabled}
+                onClick={() => addDirectEntry("ips", directIpDraft, () => setDirectIpDraft(""))}
+              >
+                {t("common.add")}
+              </Button>
+            </div>
+            <FieldDescription>{t("settings.directRouting.ipHint")}</FieldDescription>
+          </Field>
+        </FieldGroup>
+        <RemovableBadges
+          values={draft.directRouting.ips}
+          emptyLabel={t("settings.directRouting.emptyIps")}
+          onRemove={(value) =>
+            patch({
+              directRouting: {
+                ...draft.directRouting,
+                ips: draft.directRouting.ips.filter((entry) => entry !== value),
+              },
+            })
+          }
+        />
+
+        {/* Said where the lists are, not in a tooltip. Somebody who has just
+            sent their bank around the tunnel should know what that means before
+            they close the page, not find out from a landlord or an employer. */}
+        {draft.directRouting.enabled && (
+          <Alert>
+            <AlertCircle />
+            <AlertDescription>{t("settings.directRouting.warning")}</AlertDescription>
+          </Alert>
+        )}
       </SettingsSection>
 
       <SettingsSection title={t("settings.splitTunnel.title")} description={t("settings.splitTunnel.description")}>

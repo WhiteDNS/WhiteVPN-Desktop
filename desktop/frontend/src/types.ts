@@ -751,10 +751,24 @@ export type WhiteVPNNodeList = {
 
 // Mirrors model.WhiteVPNSettings. Every field here is a setting WhiteVPN for
 // Android exposes, so that someone moving from the phone finds the same options.
+// Destinations that never enter the tunnel — the user's own two lists.
+//
+// Not a country switch: mihomo's GEOIP rule downloads a database when one is
+// not on disk and fails the whole configuration when it cannot reach it, so on
+// a filtered network it would stop the tunnel rather than route around it.
+export type DirectRoutingSettings = {
+  enabled: boolean;
+  // Matched by suffix: "ir" catches every .ir address.
+  domains: string[];
+  // CIDR ranges; a bare address is read as a single host.
+  ips: string[];
+};
+
 export type WhiteVPNSettings = {
   countryCode: string;
   connection: ConnectionSelection;
   splitTunnel: SplitTunnelSettings;
+  directRouting: DirectRoutingSettings;
   tlsIntegrityEnabled: boolean;
   amneziaNoise: AmneziaNoiseSettings;
   frontingIps: string[];

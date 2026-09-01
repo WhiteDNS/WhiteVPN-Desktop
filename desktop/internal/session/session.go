@@ -36,6 +36,14 @@ type Options struct {
 	// phone on the same hotspot reaches this desktop's connection.
 	AllowLAN bool
 
+	// Direct names destinations that never enter the tunnel — the user's own
+	// domain and address lists. Empty means everything goes through.
+	//
+	// Like Chain, only the link-based path honours it: a subscription arriving
+	// as a whole mihomo document brings its own rules, and inserting ours above
+	// them would be rewriting somebody else's routing.
+	Direct mihomoconf.DirectRoute
+
 	// Chain sends traffic through a second node before the internet. Empty means
 	// one hop, which is the ordinary case.
 	//
@@ -697,7 +705,11 @@ func PrepareConfig(opts Options) (string, []string, error) {
 		}
 		// Share links, which is what the WhiteDNS catalogue is. They carry nodes
 		// only, so the groups and rule have to be generated around them.
-		document, firstHop, buildErr := mihomoconf.BuildProxiesYAMLWithChain(proxies, opts.SplitTunnel, opts.Chain)
+		document, firstHop, buildErr := mihomoconf.BuildProxiesYAMLWithRouting(proxies, mihomoconf.Routing{
+			Direct: opts.Direct,
+			Split:  opts.SplitTunnel,
+			Chain:  opts.Chain,
+		})
 		if buildErr != nil {
 			return "", nil, buildErr
 		}

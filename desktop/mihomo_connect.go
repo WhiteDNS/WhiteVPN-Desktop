@@ -127,6 +127,7 @@ func (a *App) startWhiteDNSVPNWithMihomo() (model.AppState, error) {
 		// would be the worst of both.
 		Exclude:     a.hiddenNodeNames(a.selectedSubscriptionID()),
 		SplitTunnel: splitTunnelFor(settings),
+		Direct:      directRouteFor(settings),
 		// The fourth control that was stored and never read. It refuses a node
 		// whose certificates do not verify through the tunnel — a connection
 		// that carries traffic while being read is the failure it exists for.
@@ -698,6 +699,22 @@ func amneziaNoiseFor(settings model.WhiteVPNSettings) mihomoconf.AmneziaNoise {
 // added to the bypass list went through the tunnel like everything else and the
 // site it was meant to reach still saw the VPN. A control that changes nothing
 // is worse than one that is absent.
+// directRouteFor turns the saved lists into the engine's shape.
+//
+// Switched off means no rules at all rather than empty lists, so that turning
+// it off is the same configuration as never having turned it on — otherwise a
+// user comparing two connections would be comparing documents that differ for
+// no reason.
+func directRouteFor(settings model.WhiteVPNSettings) mihomoconf.DirectRoute {
+	if !settings.DirectRouting.Enabled {
+		return mihomoconf.DirectRoute{}
+	}
+	return mihomoconf.DirectRoute{
+		Domains: settings.DirectRouting.Domains,
+		IPs:     settings.DirectRouting.IPs,
+	}
+}
+
 func splitTunnelFor(settings model.WhiteVPNSettings) mihomoconf.SplitTunnel {
 	switch settings.SplitTunnel.Mode {
 	case model.SplitTunnelBypass:

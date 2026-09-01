@@ -185,22 +185,45 @@ type Options struct {
 	SplitTunnel SplitTunnel
 }
 
+// Routing is how traffic is divided between the tunnel and everything else.
+//
+// A struct rather than three more parameters. These are one decision made in
+// three parts — what leaves directly, which programs are in scope, and whether
+// there is a second hop — and they are read together at the one place that
+// orders them into a rule list, where getting the order wrong is the whole
+// failure mode.
+type Routing struct {
+	// Direct never enters the tunnel: the user's own destinations.
+	Direct DirectRoute
+	// Split decides which programs are carried.
+	Split SplitTunnel
+	// Chain optionally sends traffic through a second node before it leaves.
+	Chain Chain
+}
+
 // BuildProxiesYAML renders proxies plus the two default groups and a catch-all
 // rule, which is what a link-based subscription needs: links carry nodes and
 // nothing else, so without this there is nothing for traffic to match.
 func BuildProxiesYAML(proxies []Proxy, split SplitTunnel) (string, error) {
-	document, _, err := BuildProxiesYAMLWithChain(proxies, split, Chain{})
+	document, _, err := BuildProxiesYAMLWithRouting(proxies, Routing{Split: split})
 	return document, err
 }
 
 // BuildProxiesYAMLWithChain is BuildProxiesYAML, and optionally a second hop.
+func BuildProxiesYAMLWithChain(proxies []Proxy, split SplitTunnel, chain Chain) (string, []string, error) {
+	return BuildProxiesYAMLWithRouting(proxies, Routing{Split: split, Chain: chain})
+}
+
+// BuildProxiesYAMLWithRouting renders the document with every routing decision
+// applied.
 //
 // It also returns the names the first hop may be chosen from, which is not the
 // full list once a chain is in play: the exit's own node is taken out, and a
 // datagram exit narrows it further to nodes that can carry UDP. A caller
 // selecting a proxy has to select from these, or it would name one the group
 // does not contain.
-func BuildProxiesYAMLWithChain(proxies []Proxy, split SplitTunnel, chain Chain) (string, []string, error) {
+func BuildProxiesYAMLWithRouting(proxies []Proxy, routing Routing) (string, []string, error) {
+	split, chain, direct := routing.Split, routing.Chain, routing.Direct
 	if len(proxies) == 0 {
 		return "", nil, fmt.Errorf("mihomoconf: no proxies to build a config from")
 	}
@@ -256,9 +279,19 @@ func BuildProxiesYAMLWithChain(proxies []Proxy, split SplitTunnel, chain Chain) 
 				"proxies":   firstHopNames,
 			},
 		},
-		// Split-tunnel rules first, because mihomo takes the first rule that
-		// fits: a catch-all above them means nothing below is ever reached.
-		"rules": append(split.Rules(exitTarget), catchAllRules(split, exitTarget)...),
+		// Order is the whole of a rule list's meaning, because mihomo takes the
+		// first rule that fits.
+		//
+		// Direct routing comes before the split tunnel, not after. Both can
+		// send traffic direct, so for the bypass mode the order changes
+		// nothing — but under "only these programs are tunnelled" it decides
+		// whether a tunnelled program's Iranian traffic still goes around. It
+		// should: somebody who named their bank has named it whichever program
+		// opens it.
+		//
+		// The catch-all is last and may be absent, when the split tunnel has
+		// written its own.
+		"rules": concatRules(direct.Rules(), split.Rules(exitTarget), catchAllRules(split, exitTarget)),
 	}
 
 	encoded, err := yaml.Marshal(document)
@@ -266,6 +299,19 @@ func BuildProxiesYAMLWithChain(proxies []Proxy, split SplitTunnel, chain Chain) 
 		return "", nil, err
 	}
 	return string(encoded), firstHopNames, nil
+}
+
+// concatRules joins the rule groups in the order they must be matched.
+func concatRules(groups ...[]string) []string {
+	total := 0
+	for _, group := range groups {
+		total += len(group)
+	}
+	rules := make([]string, 0, total)
+	for _, group := range groups {
+		rules = append(rules, group...)
+	}
+	return rules
 }
 
 // catchAllRules is what everything not matched already does.
