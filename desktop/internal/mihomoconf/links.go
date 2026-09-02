@@ -589,6 +589,12 @@ func parseWireGuard(line string, names *nameRegistry) (Proxy, error) {
 			proxy["reserved"] = values
 		}
 	}
+	// AmneziaWG. A server disguising its handshake only answers a client using
+	// the same numbers, so these belong to the link the way the keys do — they
+	// were being dropped, which left the proxy importable and unconnectable.
+	if amnezia := amneziaFromQuery(query); amnezia != nil {
+		proxy["amnezia-wg-option"] = amnezia
+	}
 	return proxy, nil
 }
 
