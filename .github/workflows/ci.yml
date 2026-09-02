@@ -151,7 +151,7 @@ jobs:
       # testing the old engine against the new pins — which would be worse than
       # not testing at all.
       - name: Cache the engine sources and binary
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             desktop/third_party/flclash
