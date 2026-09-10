@@ -63,6 +63,15 @@ func ApplyAmneziaNoise(proxies []Proxy, noise AmneziaNoise) ([]Proxy, int) {
 		for key, value := range proxy {
 			next[key] = value
 		}
+		// A link that carried its own numbers keeps them. AmneziaWG is a
+		// disguise both ends have to agree on, so a server's own parameters are
+		// part of its address, not a preference — overwriting them with a
+		// setting meant for a different server produces a handshake nobody
+		// answers. The setting is for nodes that arrived without any.
+		if _, fromLink := next["amnezia-wg-option"]; fromLink {
+			out = append(out, next)
+			continue
+		}
 		next["amnezia-wg-option"] = map[string]any{
 			"jc":   noise.Count,
 			"jmin": noise.MinSize,
