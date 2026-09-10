@@ -48,11 +48,17 @@ Grab the asset for your machine from the
 | Windows on ARM (Snapdragon, Surface Pro X) | `*-windows-arm64-windows-on-arm.zip` |
 | macOS, Apple Silicon | `*-macos-arm64.zip` |
 | macOS, Intel | `*-macos-amd64.zip` |
-| Debian, Ubuntu | `*-linux-amd64.deb` or `*-linux-arm64.deb` |
-| Fedora, RHEL, openSUSE | `*-linux-amd64.rpm` or `*-linux-arm64.rpm` |
-| Ubuntu 24.04+, Fedora 40+ (WebKitGTK 4.1) | the `*-linux-amd64-webkit41.*` assets |
-| Any x86-64 Linux, no package manager | `*-linux-amd64-webkit41.AppImage` |
+| Debian 13+, Ubuntu 24.04+, Fedora 40+ | `*-linux-amd64.deb` / `.rpm`, or `*-linux-arm64.deb` / `.rpm` |
+| Ubuntu 22.04, Debian 12 | the `*-linux-amd64-webkit40.*` assets |
+| Any x86-64 Linux, no package manager | `*-linux-amd64.AppImage` |
 | Portable fallback | `.tar.gz` — needs GTK 3 and a matching WebKitGTK |
+
+The Linux split is WebKitGTK, which the window is drawn with. The plain
+`amd64` and `arm64` assets link against 4.1, which is what Ubuntu 24.04 and
+later ship; the `webkit40` assets are for Ubuntu 22.04 and Debian 12, which
+have only 4.0. Installing the wrong one fails at `dpkg` with an unmet
+dependency rather than at run time, and each package's description names the
+other.
 
 Download the ZIP from the release assets rather than a raw `.app` from a CI
 artifact: artifact downloads strip the executable bit and macOS then refuses to

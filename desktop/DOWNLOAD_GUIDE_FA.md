@@ -42,7 +42,7 @@
 
 اگر می‌خواهید درگیر نصب بسته DEB یا RPM و مشکل دیپندنسی نشوید، ابتدا AppImage را امتحان کنید:
 
-`WhiteDNS-Desktop-1.0.0-beta6-linux-amd64-webkit41.AppImage`
+`WhiteDNS-Desktop-1.0.0-beta6-linux-amd64.AppImage`
 
 بعد از دانلود، فایل را executable کنید و اجرا کنید. AppImage هنوز به اجزای پایه سیستم مثل kernel/glibc و در بعضی سیستم‌ها FUSE یا حالت extract نیاز دارد، اما به نصب بسته RPM یا DEB برنامه نیاز ندارد.
 
@@ -52,9 +52,9 @@
 
 `WhiteDNS-Desktop-1.0.0-beta6-linux-amd64.deb`
 
-اگر Ubuntu 24.04 یا توزیع جدیدتری دارید که WebKitGTK 4.1 استفاده می‌کند، این فایل مناسب‌تر است:
+این فایل به WebKitGTK 4.1 نیاز دارد، یعنی Ubuntu 24.04 به بعد و Debian 13 به بعد. اگر Ubuntu 22.04 یا Debian 12 دارید، به‌جای آن این فایل را بگیرید:
 
-`WhiteDNS-Desktop-1.0.0-beta6-linux-amd64-webkit41.deb`
+`WhiteDNS-Desktop-1.0.0-beta6-linux-amd64-webkit40.deb`
 
 برای دستگاه‌های ARM64 از این فایل استفاده کنید:
 
@@ -66,9 +66,9 @@
 
 `WhiteDNS-Desktop-1.0.0-beta6-linux-amd64.rpm`
 
-برای توزیع‌های جدیدتر که WebKitGTK 4.1 دارند، این نسخه انتخاب بهتر است:
+این فایل به WebKitGTK 4.1 نیاز دارد، یعنی Fedora 40 به بعد. برای توزیع‌های قدیمی‌تر که هنوز روی WebKitGTK 4.0 هستند، این نسخه را بگیرید:
 
-`WhiteDNS-Desktop-1.0.0-beta6-linux-amd64-webkit41.rpm`
+`WhiteDNS-Desktop-1.0.0-beta6-linux-amd64-webkit40.rpm`
 
 برای دستگاه‌های ARM64:
 
@@ -80,9 +80,9 @@
 
 `WhiteDNS-Desktop-1.0.0-beta6-linux-amd64.tar.gz`
 
-برای Linux amd64 با WebKitGTK 4.1:
+یا برای Linux amd64 با WebKitGTK 4.0:
 
-`WhiteDNS-Desktop-1.0.0-beta6-linux-amd64-webkit41.tar.gz`
+`WhiteDNS-Desktop-1.0.0-beta6-linux-amd64-webkit40.tar.gz`
 
 یا برای ARM64:
 
@@ -94,12 +94,12 @@
 - Windows on ARM: `windows-arm64-windows-on-arm`
 - مک M1/M2/M3/M4 و جدیدتر: `macos-arm64`
 - مک Intel: `macos-amd64`
-- لینوکس Intel/AMD با کمترین دردسر نصب: `linux-amd64-webkit41.AppImage`
+- لینوکس Intel/AMD با کمترین دردسر نصب: `linux-amd64.AppImage`
 - لینوکس Debian/Ubuntu روی Intel/AMD: `linux-amd64.deb`
-- لینوکس Ubuntu 24.04+ روی Intel/AMD: `linux-amd64-webkit41.deb`
+- لینوکس Ubuntu 22.04 یا Debian 12 روی Intel/AMD: `linux-amd64-webkit40.deb`
 - لینوکس Debian/Ubuntu روی ARM64: `linux-arm64.deb`
 - توزیع‌های RPM روی Intel/AMD: `linux-amd64.rpm`
-- توزیع‌های RPM جدیدتر روی Intel/AMD: `linux-amd64-webkit41.rpm`
+- توزیع‌های RPM قدیمی‌تر روی Intel/AMD: `linux-amd64-webkit40.rpm`
 - توزیع‌های RPM روی ARM64: `linux-arm64.rpm`
 
 اگر هنوز مطمئن نیستید، معمولاً این انتخاب‌ها درست هستند:
@@ -107,4 +107,4 @@
 - برای ویندوز: `windows-x64`
 - برای مک‌های جدید: `macos-arm64`
 - برای مک‌های قدیمی Intel: `macos-amd64`
-- برای لینوکس روی کامپیوتر معمولی Intel/AMD: `linux-amd64-webkit41.AppImage`
+- برای لینوکس روی کامپیوتر معمولی Intel/AMD: `linux-amd64.AppImage`
