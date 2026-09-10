@@ -6261,11 +6261,30 @@ function WhiteVPNSettingsPage({
 
   // Settings changed elsewhere — a backup restore, most likely — have to reach
   // this form, or it would go on showing, and then saving, what it loaded with.
+  //
+  // Keyed on the settings' *contents*, not on the object holding them. Every
+  // reply from the backend is freshly deserialised, so `stored` is a new object
+  // each time even when nothing in it differs — and this effect used to fire on
+  // all of them. Connect, disconnect, a subscription refresh: any of those threw
+  // away whatever the person had changed and not yet saved, and the switch they
+  // had just flipped went back to where it started in front of them. It read as
+  // "the setting will not stay on".
+  //
+  // A real change elsewhere still wins, which is what this is for.
+  const storedSnapshot = useMemo(() => JSON.stringify(stored), [stored]);
   useEffect(() => {
     setDraft(stored);
-  }, [stored]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storedSnapshot]);
 
-  const dirty = useMemo(() => JSON.stringify(draft) !== JSON.stringify(stored), [draft, stored]);
+  // What the form holds right now, for the handlers that cannot wait for the
+  // next render to find out.
+  const draftRef = useRef(draft);
+  useEffect(() => {
+    draftRef.current = draft;
+  }, [draft]);
+
+  const dirty = useMemo(() => JSON.stringify(draft) !== storedSnapshot, [draft, storedSnapshot]);
 
   async function save(next: WhiteVPNSettings) {
     setSaving(true);
@@ -6281,6 +6300,31 @@ function WhiteVPNSettingsPage({
 
   function patch(changes: Partial<WhiteVPNSettings>) {
     setDraft((current) => ({ ...current, ...changes }));
+  }
+
+  // Switches save themselves; the fields keep the Save button.
+  //
+  // This is the phone's arrangement — its checkbox handler calls
+  // saveAmneziaNoise straight away, and only the numeric inputs wait for Apply —
+  // and it is the phone that is the specification here. It is also the shape of
+  // the bug it fixes: a switch that has been flipped looks finished. Nothing on
+  // this page said otherwise, and leaving it lost the change, because navigating
+  // away unmounts the form and takes the unsaved draft with it. Flip Amnezia
+  // noise on, go to the VPN page to reconnect, come back: off again, with no
+  // error and nothing to suggest the app had thrown anything away.
+  //
+  // A field still being typed into rides along with the save, which is the
+  // honest reading of a form: what it shows is what gets stored. Out-of-range
+  // values are corrected by the backend rather than refused, and the correction
+  // comes straight back into the form.
+  function patchAndSave(changes: Partial<WhiteVPNSettings>) {
+    // From the ref rather than from `draft`, because two switches flipped in
+    // one tick would both read the same render's copy and the second would
+    // save a document that had never heard of the first.
+    const next = { ...draftRef.current, ...changes };
+    draftRef.current = next;
+    setDraft(next);
+    void save(next);
   }
 
   function addFrontingIP() {
@@ -6440,7 +6484,7 @@ function WhiteVPNSettingsPage({
         <SettingSwitchRow
           label={t("settings.allowLan")}
           checked={draft.allowLan}
-          onCheckedChange={(allowLan) => patch({ allowLan })}
+          onCheckedChange={(allowLan) => patchAndSave({ allowLan })}
         />
         <FieldDescription>{t("settings.allowLan.description")}</FieldDescription>
         {draft.allowLan && (
@@ -6454,7 +6498,7 @@ function WhiteVPNSettingsPage({
           label={t("settings.killSwitch")}
           checked={draft.killSwitch.enabled}
           disabled
-          onCheckedChange={(checked) => patch({ killSwitch: { enabled: checked } })}
+          onCheckedChange={(checked) => patchAndSave({ killSwitch: { enabled: checked } })}
         />
         <FieldDescription>{t("settings.killSwitch.description")}</FieldDescription>
       </SettingsSection>
@@ -6464,7 +6508,7 @@ function WhiteVPNSettingsPage({
           <SettingSwitchRow
             label={t("settings.tlsIntegrity")}
             checked={draft.tlsIntegrityEnabled}
-            onCheckedChange={(checked) => patch({ tlsIntegrityEnabled: checked })}
+            onCheckedChange={(checked) => patchAndSave({ tlsIntegrityEnabled: checked })}
           />
         </div>
         <FieldDescription>{t("settings.tlsIntegrity.description")}</FieldDescription>
@@ -6543,7 +6587,7 @@ function WhiteVPNSettingsPage({
         <SettingSwitchRow
           label={t("settings.directRouting.enable")}
           checked={draft.directRouting.enabled}
-          onCheckedChange={(enabled) => patch({ directRouting: { ...draft.directRouting, enabled } })}
+          onCheckedChange={(enabled) => patchAndSave({ directRouting: { ...draft.directRouting, enabled } })}
         />
         <FieldDescription>{t("settings.directRouting.enableHint")}</FieldDescription>
 
@@ -6699,7 +6743,7 @@ function WhiteVPNSettingsPage({
           <SettingSwitchRow
             label={t("settings.noise.enable")}
             checked={draft.amneziaNoise.enabled}
-            onCheckedChange={(checked) => patch({ amneziaNoise: { ...draft.amneziaNoise, enabled: checked } })}
+            onCheckedChange={(checked) => patchAndSave({ amneziaNoise: { ...draft.amneziaNoise, enabled: checked } })}
           />
         </div>
         <FieldGroup className="grid gap-4 md:grid-cols-3">
