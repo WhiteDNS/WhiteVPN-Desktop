@@ -22,8 +22,8 @@ server workbench — it is added deliberately and recorded as a divergence in
   public, or any `vless://`, `vmess://`, `trojan://`, `ss://`, `hysteria2://`,
   `anytls://`, `socks://` or `wireguard://` list you add. Which of the two
   built-in lists to use is your choice, on the Subscriptions page; new
-  installations start on the private one, and fall back to the public one —
-  saying so — if the private servers cannot be reached.
+  installations start on the private one. A list that cannot be reached is not
+  a dead end: the app tries the others it has and says which one it used.
 - **Chooses for you, or lets you choose** — filter by country, by protocol, or
   pin one node by hand. A choice nothing matches is refused rather than
   silently ignored.

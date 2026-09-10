@@ -263,15 +263,20 @@ made without either injected has no built-in catalogue and says so.
 Neither address is stored in the state either, so neither appears in the
 subscriptions list, a backup export, or anything the interface is handed.
 
-**The fallback, and its three refusals.** When the private list cannot be
-fetched, this connection goes through the public one and the user is told. It
-does not change the stored selection — the next attempt tries private again,
-because a fallback that rewrites the choice is one that never gets
-reconsidered. It does not fall back the other way, because Public is not a list
-anyone is dropped off. And it does not fall back when the private list *was*
-fetched and simply had no node that carried traffic: that is the watchdog's job,
-and treating it as an outage would move people off the private servers over a
-single bad node.
+**The fallback.** When the chosen list cannot be fetched, every other source
+this app could connect through is tried in turn — the built-in catalogues first,
+private before public, then the user's own subscriptions, then anything pasted
+in by hand — and a notice names the one it landed on. This is broader than the
+phone, which only falls back from private to public: what matters is that the
+list somebody is on cannot be reached, not which one it is.
+
+Two refusals. It does not change the stored selection — the next attempt tries
+the chosen list first again, because a fallback that rewrites the choice is one
+that never gets reconsidered, and somebody whose provider was down for an hour
+would find themselves quietly moved for good. And it does not fall back when the
+chosen list *was* fetched and simply had no node that carried traffic: that is
+the watchdog's job, and treating it as an outage would move people off their own
+servers over a single bad node.
 
 ## 5. Connection behaviour (no UI, but user-visible if wrong)
 

@@ -287,55 +287,122 @@ func (a *App) subscriptionBody(ctx context.Context) (string, error) {
 // subscriptionBodyWithFallback is subscriptionBody, and the one place this app
 // will connect through a list the user did not pick.
 //
-// The private catalogue is the better list and the default, but it is one
-// address with no key and nothing in front of it, so it is also the one most
-// easily taken away — and somebody whose private list cannot be fetched is
-// somebody with no working VPN, on a machine where that is often the point.
-// The public catalogue is there, so it is used.
+// A subscription that cannot be fetched otherwise means no VPN at all, on a
+// machine where that is often the point. So when the chosen one cannot be had,
+// every other source this app could connect through is tried in turn — the
+// built-in catalogues first, private before public, then the user's own
+// subscriptions in their own order, then anything pasted in by hand — and the
+// first that yields a usable list is used, with a notice naming it.
 //
-// Three things this deliberately does not do. It does not change the stored
-// selection: the user picked Private and still has, and the next attempt tries
-// Private again — a fallback that rewrites the choice is one that never gets
-// reconsidered. It does not fall back the other way, because Public is not a
-// list anyone is dropped off. And it does not fall back when the private list
-// was fetched and simply had no node that carried traffic: that is what the
-// watchdog is for, and treating it as an outage would move people off the
-// private servers on a single bad node.
+// Two things it deliberately does not do.
+//
+// It does not change the stored selection. The user picked a list and still
+// has it; the next attempt tries that one first again. A fallback that rewrites
+// the choice is one that never gets reconsidered, and somebody whose provider
+// was down for an hour would find themselves quietly moved for good.
+//
+// It does not fall back when the chosen list *was* fetched and simply had no
+// node that carried traffic. That is what the watchdog is for, and treating it
+// as an outage would move people off their own servers over a single bad node.
 //
 // It returns the subscription actually used, because everything downstream —
 // the node cache, the hidden-node list — is keyed by subscription and would
-// otherwise file the public catalogue's nodes under the private one's name.
+// otherwise file one list's nodes under another's name.
 func (a *App) subscriptionBodyWithFallback(ctx context.Context) (string, string, error) {
 	selected := a.selectedSubscriptionID()
 	body, err := a.subscriptionBodyFor(ctx, selected)
 	if err == nil {
 		return body, selected, nil
 	}
-	if selected != whiteVPNPrivateSubscriptionID {
-		return "", selected, err
-	}
 
-	public, known := builtInCatalogueFor(whiteDNSVPNSubscriptionID)
-	if !known || !public.available() {
+	candidates := a.fallbackSubscriptionIDs(selected)
+	if len(candidates) == 0 {
 		return "", selected, err
 	}
-	// The reason the private list could not be used is worth keeping even when
-	// the fallback works, or a service that is quietly always falling back looks
+	// The reason the chosen list could not be used is worth keeping even when a
+	// fallback works, or a service that is quietly always falling back looks
 	// exactly like one that is quietly always fine.
-	a.appendRuntimeLog(fmt.Sprintf("the private servers could not be reached (%v) — falling back to the public ones", err))
+	a.appendRuntimeLog(fmt.Sprintf("%s could not be reached (%v) — trying the other server lists",
+		a.subscriptionDisplayName(selected), err))
 
-	fallbackBody, fallbackErr := a.subscriptionBodyFor(ctx, public.id)
-	if fallbackErr != nil {
-		// Report the private failure, not this one. It is the list the user
-		// asked for, and the fallback failing as well says nothing they can act
-		// on beyond what the first error already said.
-		a.appendRuntimeLog(fmt.Sprintf("the public servers could not be reached either: %v", fallbackErr))
-		return "", selected, err
+	for _, candidate := range candidates {
+		fallbackBody, fallbackErr := a.subscriptionBodyFor(ctx, candidate)
+		if fallbackErr != nil {
+			a.appendRuntimeLog(fmt.Sprintf("%s could not be reached either: %v",
+				a.subscriptionDisplayName(candidate), fallbackErr))
+			continue
+		}
+		a.emit("runtime:notice", fmt.Sprintf(
+			"%s could not be reached, so this connection is going through %s instead. Your choice has not been changed — the next connection will try %s again.",
+			a.subscriptionDisplayName(selected),
+			a.subscriptionDisplayName(candidate),
+			a.subscriptionDisplayName(selected)))
+		return fallbackBody, candidate, nil
 	}
 
-	a.emit("runtime:notice",
-		"The private servers could not be reached, so this connection is going through the public ones. Your choice has not been changed — the next connection will try the private servers again.")
-	return fallbackBody, public.id, nil
+	// Nothing worked. The error reported is the chosen list's: it is the one the
+	// user asked for, and the others failing as well says nothing they can act
+	// on beyond what the first said.
+	return "", selected, err
+}
+
+// fallbackSubscriptionIDs is every other source this app could connect through,
+// in the order they are worth trying.
+//
+// Built-in catalogues lead because they are the app's own and are there on every
+// installation. Private before public within them, for the same reason the
+// Subscriptions page lists it first. Then the user's own subscriptions, in the
+// order they added them, and last the configs they pasted in by hand.
+func (a *App) fallbackSubscriptionIDs(exclude string) []string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	ids := make([]string, 0, len(a.state.V2RaySubscriptions)+len(model.BuiltInSubscriptionIDs))
+	seen := map[string]bool{exclude: true}
+	add := func(id string) {
+		if id == "" || seen[id] {
+			return
+		}
+		seen[id] = true
+		ids = append(ids, id)
+	}
+
+	for _, catalogue := range builtInCatalogues() {
+		// A build made without this one's address has nothing to fetch, and an
+		// attempt would only spend the time it takes to fail.
+		if catalogue.available() {
+			add(catalogue.id)
+		}
+	}
+	for _, subscription := range a.state.V2RaySubscriptions {
+		if !model.IsBuiltInSubscription(subscription.ID) && strings.TrimSpace(subscription.URL) != "" {
+			add(subscription.ID)
+		}
+	}
+	for _, profile := range a.state.V2RayProfiles {
+		if profile.SubscriptionID == "" {
+			add(model.ManualServerSourceID)
+			break
+		}
+	}
+	return ids
+}
+
+// subscriptionDisplayName is what a message about a subscription should call it.
+func (a *App) subscriptionDisplayName(id string) string {
+	if id == model.ManualServerSourceID {
+		return "your saved configs"
+	}
+	a.mu.Lock()
+	subscription, ok := findV2RaySubscription(a.state, id)
+	a.mu.Unlock()
+	if ok && strings.TrimSpace(subscription.Name) != "" {
+		return subscription.Name
+	}
+	if catalogue, known := builtInCatalogueFor(id); known {
+		return catalogue.name
+	}
+	return id
 }
 
 // subscriptionBodyFor fetches one by name, which is what lets the Servers page
