@@ -66,10 +66,16 @@ func TestResetRemovesEverythingAndStartsFresh(t *testing.T) {
 	if next.WhiteVPN.TunEnabled {
 		t.Error("settings survived the reset")
 	}
-	// A fresh install lists the catalogue and nothing else — the same property
-	// the first-launch fix is about, and a reset has to land in that state too.
-	if len(next.V2RaySubscriptions) != 1 || next.V2RaySubscriptions[0].ID != whiteDNSVPNSubscriptionID {
-		t.Fatalf("a reset should leave exactly the catalogue listed: %#v", next.V2RaySubscriptions)
+	// A fresh install lists the built-in catalogues and nothing else — the same
+	// property the first-launch fix is about, and a reset has to land in that
+	// state too.
+	if len(next.V2RaySubscriptions) != len(model.BuiltInSubscriptionIDs) {
+		t.Fatalf("a reset should leave exactly the catalogues listed: %#v", next.V2RaySubscriptions)
+	}
+	for i, id := range model.BuiltInSubscriptionIDs {
+		if next.V2RaySubscriptions[i].ID != id {
+			t.Fatalf("row %d after reset is %q, want %q", i, next.V2RaySubscriptions[i].ID, id)
+		}
 	}
 }
 

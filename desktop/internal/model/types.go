@@ -42,6 +42,14 @@ const (
 	// one subscription whose address is not stored — the app holds it as a
 	// constant — so it is also the one that may sit in the list without one.
 	BuiltInSubscriptionID = "whitedns-vpn"
+
+	// PrivateBuiltInSubscriptionID names the second catalogue the app ships
+	// with: the private servers, which the phone app moved to in 1.6.6.
+	//
+	// The public one keeps the older id so that a state file written before
+	// this existed still resolves to something rather than falling back and
+	// losing whichever list its owner had chosen.
+	PrivateBuiltInSubscriptionID = "whitevpn-private"
 	// ManualServerSourceID names configs pasted directly into the app. They are
 	// stored as profiles, not as a subscription.
 	ManualServerSourceID = "manual"
@@ -68,6 +76,19 @@ const (
 	ConnectionStartupModeStandard = "standard"
 	ConnectionStartupModeFullScan = "full-scan"
 )
+
+// BuiltInSubscriptionIDs are the catalogues the app ships with, private first.
+//
+// Order is what the Subscriptions page lists them in, and the private one leads
+// because it is the one this service would rather people were on: fewer users
+// per address, so less of the reputation damage that gets a shared exit blocked.
+var BuiltInSubscriptionIDs = []string{PrivateBuiltInSubscriptionID, BuiltInSubscriptionID}
+
+// IsBuiltInSubscription reports whether this id names a catalogue the app ships
+// with rather than one somebody added.
+func IsBuiltInSubscription(id string) bool {
+	return id == BuiltInSubscriptionID || id == PrivateBuiltInSubscriptionID
+}
 
 type Choice[T comparable] struct {
 	Value T      `json:"value"`
@@ -1063,7 +1084,7 @@ func DefaultAppState() AppState {
 		SelectedSettingsProfileID:   DefaultSettingsProfileID,
 		SelectedV2RayProfileID:      "",
 		SelectedV2RaySettingsID:     DefaultV2RaySettingsID,
-		SelectedSubscriptionID:      BuiltInSubscriptionID,
+		SelectedSubscriptionID:      PrivateBuiltInSubscriptionID,
 		Theme:                       "system",
 		ConnectionProfiles:          []ConnectionProfile{DefaultConnectionProfile()},
 		ResolverProfiles:            []ResolverProfile{DefaultResolverProfile()},

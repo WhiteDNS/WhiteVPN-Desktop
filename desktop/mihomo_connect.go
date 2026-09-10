@@ -65,7 +65,7 @@ func (a *App) startWhiteDNSVPNWithMihomo() (model.AppState, error) {
 	a.setMihomoRuntimeType()
 	a.handleRuntimeState(model.RuntimeConnecting, "Fetching subscription")
 
-	subscription, err := a.subscriptionBody(ctx)
+	subscription, usedID, err := a.subscriptionBodyWithFallback(ctx)
 	if err != nil {
 		a.reportConnectFailure(ctx, err.Error())
 		return a.GetAppState(), err
@@ -90,7 +90,7 @@ func (a *App) startWhiteDNSVPNWithMihomo() (model.AppState, error) {
 		a.reportConnectFailure(ctx, err.Error())
 		return a.GetAppState(), err
 	}
-	a.storeWhiteVPNNodes(a.selectedSubscriptionID(), nodes, time.Now().UTC())
+	a.storeWhiteVPNNodes(usedID, nodes, time.Now().UTC())
 	prefer := preferredNodeNames(nodes, settings)
 	if len(prefer) == 0 && selectionIsNarrowed(settings) {
 		err := fmt.Errorf("no node matches the chosen location or connection; change it on the VPN page")
@@ -125,7 +125,7 @@ func (a *App) startWhiteDNSVPNWithMihomo() (model.AppState, error) {
 		// Nodes the user hid never reach the configuration, so the engine cannot
 		// choose one on Automatic. Hidden from the list but still connectable
 		// would be the worst of both.
-		Exclude:     a.hiddenNodeNames(a.selectedSubscriptionID()),
+		Exclude:     a.hiddenNodeNames(usedID),
 		SplitTunnel: splitTunnelFor(settings),
 		Direct:      directRouteFor(settings),
 		// The fourth control that was stored and never read. It refuses a node

@@ -68,7 +68,7 @@ func (a *App) ResetAppData() (model.AppState, error) {
 	// next save would write them all back.
 	a.mu.Lock()
 	a.state = model.DefaultAppState()
-	a.ensureWhiteDNSVPNSubscriptionLocked()
+	a.ensureBuiltInCataloguesLocked()
 	// A reset is a fresh install, and a fresh install offers the legacy import
 	// again — but only if there is still something there to import.
 	a.legacyImport = profiles.ReadLegacyImport(legacyWhiteDNSStatePath())
@@ -148,7 +148,7 @@ func (a *App) ResetWhiteVPNSettings() (model.AppState, error) {
 	// Which subscription is selected is a setting, and the phone resets it the
 	// same way. The subscriptions themselves stay; only the choice of which one
 	// the VPN connects through goes back to the built-in catalogue.
-	a.state.SelectedSubscriptionID = whiteDNSVPNSubscriptionID
+	a.state.SelectedSubscriptionID = model.DefaultAppState().SelectedSubscriptionID
 	state, err := a.saveLocked()
 	a.mu.Unlock()
 

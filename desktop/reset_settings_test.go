@@ -119,7 +119,7 @@ func TestResettingSettingsSelectsTheCatalogueAgain(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if state.SelectedSubscriptionID != whiteDNSVPNSubscriptionID {
+	if state.SelectedSubscriptionID != model.DefaultAppState().SelectedSubscriptionID {
 		t.Fatalf("expected the catalogue to be selected, got %q", state.SelectedSubscriptionID)
 	}
 	if len(state.V2RaySubscriptions) != 1 {

@@ -526,9 +526,11 @@ func keepSelectionsForKnownSubscriptions(
 		return nil
 	}
 	known := make(map[string]struct{}, len(subscriptions)+2)
-	// The built-in catalogue and the manual list are always there to come back
-	// to, and neither appears among the user's subscriptions.
-	known[model.BuiltInSubscriptionID] = struct{}{}
+	// The built-in catalogues and the manual list are always there to come back
+	// to, and none of them appears among the user's subscriptions.
+	for _, id := range model.BuiltInSubscriptionIDs {
+		known[id] = struct{}{}
+	}
 	known[model.ManualServerSourceID] = struct{}{}
 	for _, subscription := range subscriptions {
 		known[subscription.ID] = struct{}{}
@@ -551,12 +553,17 @@ func normalizeSelectedSubscription(selected string, subscriptions []model.V2RayS
 	}) {
 		return selected
 	}
+	if model.IsBuiltInSubscription(selected) {
+		// Always there to come back to, whether or not the row has been written
+		// into this state file yet.
+		return selected
+	}
 	for _, subscription := range subscriptions {
 		if subscription.ID == selected && selected != "" {
 			return selected
 		}
 	}
-	return model.BuiltInSubscriptionID
+	return model.DefaultAppState().SelectedSubscriptionID
 }
 
 func normalizeV2RaySubscriptions(subscriptions []model.V2RaySubscription) []model.V2RaySubscription {
@@ -571,9 +578,9 @@ func normalizeV2RaySubscriptions(subscriptions []model.V2RaySubscription) []mode
 			subscription.ID = fmt.Sprintf("v2ray-subscription-%d", time.Now().UnixMilli()+int64(idx))
 		}
 		// A subscription with no address is unusable and dropped - except the
-		// built-in catalogue, whose address the app keeps in code so that it is
-		// not carried in the state where it could be read.
-		if subscription.URL == "" && subscription.ID != model.BuiltInSubscriptionID {
+		// built-in catalogues, whose addresses the app keeps in code so that
+		// they are not carried in the state where they could be read.
+		if subscription.URL == "" && !model.IsBuiltInSubscription(subscription.ID) {
 			continue
 		}
 		if _, ok := seen[subscription.ID]; ok {

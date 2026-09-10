@@ -191,6 +191,14 @@ const maxNoiseCount = 20;
 const minNoiseSize = 1;
 const maxNoiseSize = 1280;
 const whiteDNSVPNSubscriptionID = "whitedns-vpn";
+const whiteVPNPrivateSubscriptionID = "whitevpn-private";
+// The catalogues the app ships with. Neither can be edited or removed, and
+// neither shows an address, because the app holds theirs rather than storing
+// them. Mirrors model.BuiltInSubscriptionIDs.
+const builtInSubscriptionIDs = [whiteVPNPrivateSubscriptionID, whiteDNSVPNSubscriptionID];
+function isBuiltInSubscription(id: string): boolean {
+  return builtInSubscriptionIDs.includes(id);
+}
 const manualServerSourceID = "manual";
 const manualConfigLinkPattern = /\b(?:vless|vmess|trojan|ss|shadowsocks|hysteria|hysteria2|hy2|anytls|wireguard|wg):\/\/\S+/i;
 
@@ -568,7 +576,7 @@ function whiteDNSVPNRuntimeActive(state: AppState): boolean {
     return true;
   }
   return v2RayRuntimeActive(state) && state.v2rayProfiles.some((profile) => (
-    profile.id === state.runtime.activeConnectionId && profile.subscriptionId === whiteDNSVPNSubscriptionID
+    profile.id === state.runtime.activeConnectionId && isBuiltInSubscription(profile.subscriptionId)
   ));
 }
 
@@ -728,7 +736,7 @@ function App() {
   // there, or the connected one until they pick. A pick that no longer exists
   // falls back rather than leaving the page pointed at nothing.
   const browsedSubscriptionId = useMemo(() => {
-    const fallback = state?.selectedSubscriptionId || whiteDNSVPNSubscriptionID;
+    const fallback = state?.selectedSubscriptionId || builtInSubscriptionIDs[0];
     if (!browsing) {
       return fallback;
     }
@@ -3829,7 +3837,7 @@ function V2RaySubscriptionsPage({
                   {state.v2raySubscriptions.map((subscription) => {
                     const refreshing = Boolean(refreshingSubscriptionIds[subscription.id]);
                     const managedProfileIds = profileIndex.subscriptionProfileIds[subscription.id] || [];
-                    const builtIn = subscription.id === whiteDNSVPNSubscriptionID;
+                    const builtIn = isBuiltInSubscription(subscription.id);
                     const inUse = subscription.id === state.selectedSubscriptionId;
                     // Said on the row rather than once when it was added: a
                     // server list fetched in the clear can be read and replaced
@@ -3875,7 +3883,11 @@ function V2RaySubscriptionsPage({
                               <AlertCircle className="size-3.5 shrink-0 text-amber-600 dark:text-amber-400" aria-label={t("subs.inTheClear")} />
                             )}
                             <span className={cn("truncate text-xs", builtIn ? "text-muted-foreground" : "font-mono", inTheClear && "text-amber-600 dark:text-amber-400")} title={inTheClear ? t("subs.inTheClear") : undefined}>
-                              {builtIn ? t("subs.builtIn") : subscription.url}
+                              {builtIn
+                                ? subscription.id === whiteVPNPrivateSubscriptionID
+                                  ? t("subs.builtIn.private")
+                                  : t("subs.builtIn.public")
+                                : subscription.url}
                             </span>
                           </span>
                         </td>

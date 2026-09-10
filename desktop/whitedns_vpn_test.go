@@ -165,18 +165,21 @@ func TestFirstLaunchListsTheCatalogue(t *testing.T) {
 	}
 
 	app := &App{store: store, configDir: dir, state: state}
-	app.ensureWhiteDNSVPNSubscriptionLocked()
+	app.ensureBuiltInCataloguesLocked()
 
 	listed := app.GetAppState().V2RaySubscriptions
-	if len(listed) != 1 {
-		t.Fatalf("a first launch should list the catalogue and nothing else, got %#v", listed)
+	if len(listed) != len(model.BuiltInSubscriptionIDs) {
+		t.Fatalf("a first launch should list the catalogues and nothing else, got %#v", listed)
 	}
-	if listed[0].ID != whiteDNSVPNSubscriptionID {
-		t.Fatalf("the listed subscription is not the catalogue: %#v", listed[0])
-	}
-	// Listing it must not start storing its address; see the test below.
-	if listed[0].URL != "" {
-		t.Fatalf("the catalogue's address was stored: %q", listed[0].URL)
+	for i, id := range model.BuiltInSubscriptionIDs {
+		if listed[i].ID != id {
+			t.Fatalf("row %d is %q, want %q", i, listed[i].ID, id)
+		}
+		// Listing them must not start storing their addresses; see the test
+		// below.
+		if listed[i].URL != "" {
+			t.Fatalf("%s stored its address: %q", id, listed[i].URL)
+		}
 	}
 }
 
@@ -190,7 +193,7 @@ func TestBuiltInCatalogueAddressNeverEntersState(t *testing.T) {
 
 	app := &App{state: model.DefaultAppState()}
 	app.mu.Lock()
-	idx := app.ensureWhiteDNSVPNSubscriptionLocked()
+	idx := app.ensureBuiltInSubscriptionLocked(whiteDNSVPNSubscriptionID)
 	app.mu.Unlock()
 
 	if got := app.state.V2RaySubscriptions[idx].URL; got != "" {
@@ -230,7 +233,7 @@ func TestForgetBuiltInSubscriptionURLClearsAnOlderState(t *testing.T) {
 func TestBuiltInCatalogueRefusesEditAndDeletion(t *testing.T) {
 	app := &App{state: model.DefaultAppState()}
 	app.mu.Lock()
-	app.ensureWhiteDNSVPNSubscriptionLocked()
+	app.ensureBuiltInCataloguesLocked()
 	app.mu.Unlock()
 
 	if _, err := app.SaveV2RaySubscription(model.V2RaySubscription{ID: whiteDNSVPNSubscriptionID, Name: "Mine", URL: "https://evil.example"}); err == nil {
@@ -280,14 +283,14 @@ func TestPrivacyPolicyGateReturnsForANewerVersion(t *testing.T) {
 
 func TestSelectSubscriptionDefaultsToTheBuiltInCatalogue(t *testing.T) {
 	app := testV2RaySubscriptionApp(t)
-	if got := app.selectedSubscriptionID(); got != whiteDNSVPNSubscriptionID {
-		t.Fatalf("expected the built-in catalogue by default, got %q", got)
+	if got := app.selectedSubscriptionID(); got != defaultSubscriptionID() {
+		t.Fatalf("expected the default built-in catalogue, got %q", got)
 	}
 
 	if _, err := app.SelectSubscription("does-not-exist"); err == nil {
 		t.Fatal("expected selecting a subscription that is not listed to be refused")
 	}
-	if got := app.selectedSubscriptionID(); got != whiteDNSVPNSubscriptionID {
+	if got := app.selectedSubscriptionID(); got != defaultSubscriptionID() {
 		t.Fatalf("a refused selection must change nothing, got %q", got)
 	}
 }
@@ -345,8 +348,8 @@ func TestDeletingTheSelectedSubscriptionFallsBackToTheCatalogue(t *testing.T) {
 	if _, err := app.DeleteV2RaySubscription(id); err != nil {
 		t.Fatal(err)
 	}
-	if got := app.selectedSubscriptionID(); got != whiteDNSVPNSubscriptionID {
-		t.Fatalf("expected the built-in catalogue to be selected again, got %q", got)
+	if got := app.selectedSubscriptionID(); got != defaultSubscriptionID() {
+		t.Fatalf("expected a built-in catalogue to be selected again, got %q", got)
 	}
 }
 

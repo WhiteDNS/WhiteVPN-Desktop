@@ -209,6 +209,14 @@ const strings = {
   "subs.column.profiles": { en: "Profiles", fa: "پروفایل‌ها" },
   "subs.column.status": { en: "Status", fa: "وضعیت" },
   "subs.builtIn": { en: "Built-in", fa: "داخلی" },
+  "subs.builtIn.private": {
+    en: "Built-in · private servers",
+    fa: "داخلی · سرورهای اختصاصی",
+  },
+  "subs.builtIn.public": {
+    en: "Built-in · public servers",
+    fa: "داخلی · سرورهای عمومی",
+  },
   "subs.builtInStays": { en: "The built-in catalogue stays", fa: "فهرست داخلی حذف نمی‌شود" },
   "subs.refresh": { en: "Refresh", fa: "تازه‌سازی" },
   "subs.refreshing": { en: "Refreshing", fa: "در حال تازه‌سازی" },
