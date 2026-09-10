@@ -131,7 +131,7 @@ func NewApp() (*App, error) {
 	// its id whatever the list says. Anyone who had refreshed once never saw it
 	// again, which is why it survived this long: every developer machine had
 	// been through that by the time anyone looked.
-	app.ensureWhiteDNSVPNSubscriptionLocked()
+	app.ensureBuiltInCataloguesLocked()
 	if firstRun {
 		app.legacyImport = profiles.ReadLegacyImport(legacyWhiteDNSStatePath())
 	}

@@ -32,9 +32,13 @@ VERSION_LDFLAGS := -X main.appVersion=$(APP_VERSION)
 #
 # Empty is a valid build: it produces a client with no catalogue that says so,
 # which is what anyone building from source should get.
+# The private catalogue has an address and no key: its body is served in the
+# clear, which makes the address the whole of its protection and so exactly the
+# thing that must not sit in a public repository.
 WHITEVPN_CATALOGUE_URL ?=
 WHITEVPN_CATALOGUE_KEY ?=
-CATALOGUE_LDFLAGS := $(if $(WHITEVPN_CATALOGUE_URL),-X 'main.whiteDNSVPNSubscriptionURL=$(WHITEVPN_CATALOGUE_URL)',) $(if $(WHITEVPN_CATALOGUE_KEY),-X 'main.whiteDNSVPNSubscriptionKey=$(WHITEVPN_CATALOGUE_KEY)',)
+WHITEVPN_PRIVATE_CATALOGUE_URL ?=
+CATALOGUE_LDFLAGS := $(if $(WHITEVPN_CATALOGUE_URL),-X 'main.whiteDNSVPNSubscriptionURL=$(WHITEVPN_CATALOGUE_URL)',) $(if $(WHITEVPN_CATALOGUE_KEY),-X 'main.whiteDNSVPNSubscriptionKey=$(WHITEVPN_CATALOGUE_KEY)',) $(if $(WHITEVPN_PRIVATE_CATALOGUE_URL),-X 'main.whiteVPNPrivateSubscriptionURL=$(WHITEVPN_PRIVATE_CATALOGUE_URL)',)
 WAILS_RELEASE_FLAGS := -trimpath -ldflags "$(RELEASE_LDFLAGS) $(VERSION_LDFLAGS) $(CATALOGUE_LDFLAGS)"
 
 # The other version: what the file itself reports in Properties → Details.

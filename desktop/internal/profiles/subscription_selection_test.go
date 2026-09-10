@@ -19,7 +19,7 @@ func TestACorrectedSelectionTakesItsFilterWithIt(t *testing.T) {
 
 	normalized := NormalizeState(state)
 
-	if normalized.SelectedSubscriptionID != model.BuiltInSubscriptionID {
+	if normalized.SelectedSubscriptionID != model.DefaultAppState().SelectedSubscriptionID {
 		t.Fatalf("expected a fallback to the catalogue, got %q", normalized.SelectedSubscriptionID)
 	}
 	if normalized.WhiteVPN.CountryCode != "" || len(normalized.WhiteVPN.Connection.Types) != 0 {

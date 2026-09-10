@@ -21,7 +21,9 @@ import (
 
 const (
 	whiteDNSVPNSubscriptionID              = model.BuiltInSubscriptionID
-	whiteDNSVPNSubscriptionName            = "WhiteDNS VPN"
+	whiteVPNPrivateSubscriptionID          = model.PrivateBuiltInSubscriptionID
+	whiteDNSVPNSubscriptionName            = "WhiteVPN Public"
+	whiteVPNPrivateSubscriptionName        = "WhiteVPN Private"
 	whiteDNSVPNSubscriptionRefreshInterval = 3 * time.Hour
 
 	whiteDNSVPNFrontingPingLimit       = 96
@@ -57,21 +59,83 @@ const (
 // subscriptions are unaffected, which is the right shape for an open-source
 // client of a managed service.
 var (
-	whiteDNSVPNSubscriptionURL string
-	whiteDNSVPNSubscriptionKey string
+	whiteDNSVPNSubscriptionURL     string
+	whiteDNSVPNSubscriptionKey     string
+	whiteVPNPrivateSubscriptionURL string
 )
+
+// The private catalogue's address.
+//
+// Written here rather than injected, unlike the public one above, and the
+// difference is not an oversight. What the paragraphs above protect is the
+// *key*: the public catalogue is AES-GCM ciphertext behind a Worker, so its
+// address is only worth having with the passphrase that opens it. The private
+// list is served in the clear from a public gist, which means its address is
+// the whole of its protection — and an address that has to be readable by every
+// copy of the app is not protection at all. Putting it in a build flag would
+// dress up an unauthenticated public URL as a secret, which is worse than
+// admitting what it is.
+//
+// If it is ever moved behind something that authenticates, this should move to
+// a build flag with the other one. A var rather than a const so that a build can
+// point at somewhere else without a patch:
+//
+//	-X main.whiteVPNPrivateSubscriptionURL=...
+
+// builtInCatalogue is one of the two lists the app ships with.
+type builtInCatalogue struct {
+	id   string
+	name string
+	// url is where it is fetched from, empty when this build has none.
+	url string
+	// key decrypts it. Empty means the body is served in the clear, which is
+	// what the private list does — not a missing key, an absent one.
+	key string
+}
+
+// builtInCatalogues describes both, in the order they are listed.
+func builtInCatalogues() []builtInCatalogue {
+	return []builtInCatalogue{
+		{
+			id:   whiteVPNPrivateSubscriptionID,
+			name: whiteVPNPrivateSubscriptionName,
+			url:  strings.TrimSpace(whiteVPNPrivateSubscriptionURL),
+		},
+		{
+			id:   whiteDNSVPNSubscriptionID,
+			name: whiteDNSVPNSubscriptionName,
+			url:  strings.TrimSpace(whiteDNSVPNSubscriptionURL),
+			key:  strings.TrimSpace(whiteDNSVPNSubscriptionKey),
+		},
+	}
+}
+
+// builtInCatalogueFor finds one by id.
+func builtInCatalogueFor(id string) (builtInCatalogue, bool) {
+	for _, catalogue := range builtInCatalogues() {
+		if catalogue.id == id {
+			return catalogue, true
+		}
+	}
+	return builtInCatalogue{}, false
+}
+
+// available reports whether this build can reach this catalogue at all.
+//
+// The public one needs both halves — an address with no key yields ciphertext
+// nobody can read. The private one needs only an address, because there is
+// nothing to open.
+func (c builtInCatalogue) available() bool {
+	if c.url == "" {
+		return false
+	}
+	return c.id != whiteDNSVPNSubscriptionID || c.key != ""
+}
 
 // errNoBuiltInCatalogue is what a build without the catalogue credentials says
 // when something asks for them.
 var errNoBuiltInCatalogue = errors.New(
 	"this build has no WhiteDNS catalogue: it was not built with one. Add a subscription of your own, or paste configs on the Servers page")
-
-// builtInCatalogueAvailable reports whether this build can reach the catalogue
-// at all.
-func builtInCatalogueAvailable() bool {
-	return strings.TrimSpace(whiteDNSVPNSubscriptionURL) != "" &&
-		strings.TrimSpace(whiteDNSVPNSubscriptionKey) != ""
-}
 
 type whiteDNSVPNSubscriptionFetcher func(context.Context) (string, error)
 type whiteDNSVPNFrontingIPFetcher func(context.Context) (string, error)
@@ -97,11 +161,11 @@ type whiteDNSVPNStartupExclusion struct {
 	frontingIP string
 }
 
-func fetchWhiteDNSVPNSubscriptionDocument(ctx context.Context) (string, error) {
-	if !builtInCatalogueAvailable() {
+func fetchWhiteDNSVPNSubscriptionDocument(ctx context.Context, catalogue builtInCatalogue) (string, error) {
+	if !catalogue.available() {
 		return "", errNoBuiltInCatalogue
 	}
-	body, err := fetchV2RaySubscriptionDocument(ctx, whiteDNSVPNSubscriptionURL)
+	body, err := fetchV2RaySubscriptionDocument(ctx, catalogue.url)
 	if err == nil {
 		return body, nil
 	}
@@ -112,7 +176,7 @@ func fetchWhiteDNSVPNSubscriptionDocument(ctx context.Context) (string, error) {
 	// app with no node list, which is to say no app at all.
 	if looksLikeInterference(err) {
 		if fragmented := fragmentedDirectClient(false); fragmented != nil {
-			if body, retryErr := fetchV2RaySubscriptionDocumentWith(ctx, whiteDNSVPNSubscriptionURL, fragmented); retryErr == nil {
+			if body, retryErr := fetchV2RaySubscriptionDocumentWith(ctx, catalogue.url, fragmented); retryErr == nil {
 				return body, nil
 			}
 		}
@@ -174,7 +238,7 @@ func (a *App) SelectSubscription(id string) (model.AppState, error) {
 	manualAvailable := id == model.ManualServerSourceID && slices.ContainsFunc(a.state.V2RayProfiles, func(profile model.V2RayProfile) bool {
 		return profile.SubscriptionID == ""
 	})
-	if _, ok := findV2RaySubscription(a.state, id); !ok && id != whiteDNSVPNSubscriptionID && !manualAvailable {
+	if _, ok := findV2RaySubscription(a.state, id); !ok && !model.IsBuiltInSubscription(id) && !manualAvailable {
 		state := a.state
 		a.mu.Unlock()
 		return state, fmt.Errorf("that server source is not in the list")
@@ -218,6 +282,127 @@ func (a *App) selectedSubscriptionID() string {
 // subscriptionBody fetches the selected subscription, ready for the engine.
 func (a *App) subscriptionBody(ctx context.Context) (string, error) {
 	return a.subscriptionBodyFor(ctx, a.selectedSubscriptionID())
+}
+
+// subscriptionBodyWithFallback is subscriptionBody, and the one place this app
+// will connect through a list the user did not pick.
+//
+// A subscription that cannot be fetched otherwise means no VPN at all, on a
+// machine where that is often the point. So when the chosen one cannot be had,
+// every other source this app could connect through is tried in turn — the
+// built-in catalogues first, private before public, then the user's own
+// subscriptions in their own order, then anything pasted in by hand — and the
+// first that yields a usable list is used, with a notice naming it.
+//
+// Two things it deliberately does not do.
+//
+// It does not change the stored selection. The user picked a list and still
+// has it; the next attempt tries that one first again. A fallback that rewrites
+// the choice is one that never gets reconsidered, and somebody whose provider
+// was down for an hour would find themselves quietly moved for good.
+//
+// It does not fall back when the chosen list *was* fetched and simply had no
+// node that carried traffic. That is what the watchdog is for, and treating it
+// as an outage would move people off their own servers over a single bad node.
+//
+// It returns the subscription actually used, because everything downstream —
+// the node cache, the hidden-node list — is keyed by subscription and would
+// otherwise file one list's nodes under another's name.
+func (a *App) subscriptionBodyWithFallback(ctx context.Context) (string, string, error) {
+	selected := a.selectedSubscriptionID()
+	body, err := a.subscriptionBodyFor(ctx, selected)
+	if err == nil {
+		return body, selected, nil
+	}
+
+	candidates := a.fallbackSubscriptionIDs(selected)
+	if len(candidates) == 0 {
+		return "", selected, err
+	}
+	// The reason the chosen list could not be used is worth keeping even when a
+	// fallback works, or a service that is quietly always falling back looks
+	// exactly like one that is quietly always fine.
+	a.appendRuntimeLog(fmt.Sprintf("%s could not be reached (%v) — trying the other server lists",
+		a.subscriptionDisplayName(selected), err))
+
+	for _, candidate := range candidates {
+		fallbackBody, fallbackErr := a.subscriptionBodyFor(ctx, candidate)
+		if fallbackErr != nil {
+			a.appendRuntimeLog(fmt.Sprintf("%s could not be reached either: %v",
+				a.subscriptionDisplayName(candidate), fallbackErr))
+			continue
+		}
+		a.emit("runtime:notice", fmt.Sprintf(
+			"%s could not be reached, so this connection is going through %s instead. Your choice has not been changed — the next connection will try %s again.",
+			a.subscriptionDisplayName(selected),
+			a.subscriptionDisplayName(candidate),
+			a.subscriptionDisplayName(selected)))
+		return fallbackBody, candidate, nil
+	}
+
+	// Nothing worked. The error reported is the chosen list's: it is the one the
+	// user asked for, and the others failing as well says nothing they can act
+	// on beyond what the first said.
+	return "", selected, err
+}
+
+// fallbackSubscriptionIDs is every other source this app could connect through,
+// in the order they are worth trying.
+//
+// Built-in catalogues lead because they are the app's own and are there on every
+// installation. Private before public within them, for the same reason the
+// Subscriptions page lists it first. Then the user's own subscriptions, in the
+// order they added them, and last the configs they pasted in by hand.
+func (a *App) fallbackSubscriptionIDs(exclude string) []string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	ids := make([]string, 0, len(a.state.V2RaySubscriptions)+len(model.BuiltInSubscriptionIDs))
+	seen := map[string]bool{exclude: true}
+	add := func(id string) {
+		if id == "" || seen[id] {
+			return
+		}
+		seen[id] = true
+		ids = append(ids, id)
+	}
+
+	for _, catalogue := range builtInCatalogues() {
+		// A build made without this one's address has nothing to fetch, and an
+		// attempt would only spend the time it takes to fail.
+		if catalogue.available() {
+			add(catalogue.id)
+		}
+	}
+	for _, subscription := range a.state.V2RaySubscriptions {
+		if !model.IsBuiltInSubscription(subscription.ID) && strings.TrimSpace(subscription.URL) != "" {
+			add(subscription.ID)
+		}
+	}
+	for _, profile := range a.state.V2RayProfiles {
+		if profile.SubscriptionID == "" {
+			add(model.ManualServerSourceID)
+			break
+		}
+	}
+	return ids
+}
+
+// subscriptionDisplayName is what a message about a subscription should call it.
+func (a *App) subscriptionDisplayName(id string) string {
+	if id == model.ManualServerSourceID {
+		return "your saved configs"
+	}
+	a.mu.Lock()
+	subscription, ok := findV2RaySubscription(a.state, id)
+	a.mu.Unlock()
+	if ok && strings.TrimSpace(subscription.Name) != "" {
+		return subscription.Name
+	}
+	if catalogue, known := builtInCatalogueFor(id); known {
+		return catalogue.name
+	}
+	return id
 }
 
 // subscriptionBodyFor fetches one by name, which is what lets the Servers page
@@ -293,12 +478,19 @@ func (a *App) fetchSubscriptionBodyFor(ctx context.Context, id string) (string, 
 		}
 		return body, nil
 	}
-	if id == whiteDNSVPNSubscriptionID {
-		raw, err := fetchWhiteDNSVPNSubscriptionDocument(ctx)
+	if catalogue, ok := builtInCatalogueFor(id); ok {
+		raw, err := fetchWhiteDNSVPNSubscriptionDocument(ctx, catalogue)
 		if err != nil {
 			return "", fmt.Errorf("subscription unavailable: %w", err)
 		}
-		body, err := decryptWhiteDNSVPNSubscription(raw, whiteDNSVPNSubscriptionKey)
+		// No key means the body is already what it says it is. Running the
+		// decrypt over it would fail on the first field it could not find and
+		// report the list as unreadable, which would be a true statement about
+		// the wrong thing.
+		if catalogue.key == "" {
+			return raw, nil
+		}
+		body, err := decryptWhiteDNSVPNSubscription(raw, catalogue.key)
 		if err != nil {
 			return "", fmt.Errorf("subscription unreadable: %w", err)
 		}
@@ -488,24 +680,38 @@ func decodeWhiteDNSVPNBase64URL(value string) ([]byte, error) {
 	return base64.URLEncoding.DecodeString(value)
 }
 
-// ensureWhiteDNSVPNSubscriptionLocked keeps the built-in catalogue listed among
-// the subscriptions.
+// Keeping the built-in catalogues listed among the subscriptions.
 //
-// Its address is deliberately not stored. The app knows it as a constant and
-// fetches it from there, so leaving it out of the state means there is nowhere
-// for it to be read from: not the subscriptions list, not a backup export, and
-// not the state the interface is handed. A subscription the user adds is
+// Their addresses are deliberately not stored. The app knows them itself and
+// fetches from there, so leaving them out of the state means there is nowhere
+// for them to be read from: not the subscriptions list, not a backup export,
+// and not the state the interface is handed. A subscription the user adds is
 // theirs and is stored and shown as they typed it.
-func (a *App) ensureWhiteDNSVPNSubscriptionLocked() int {
-	idx := findV2RaySubscriptionIndex(a.state.V2RaySubscriptions, whiteDNSVPNSubscriptionID)
+// ensureBuiltInCataloguesLocked lists both of them, in their own order.
+//
+// Called wherever the list is read rather than only where it is written,
+// because the private catalogue did not exist when most state files were
+// written and its row has to appear in them too.
+func (a *App) ensureBuiltInCataloguesLocked() {
+	for _, catalogue := range builtInCatalogues() {
+		a.ensureBuiltInSubscriptionLocked(catalogue.id)
+	}
+}
+
+func (a *App) ensureBuiltInSubscriptionLocked(id string) int {
+	catalogue, known := builtInCatalogueFor(id)
+	if !known {
+		return -1
+	}
+	idx := findV2RaySubscriptionIndex(a.state.V2RaySubscriptions, catalogue.id)
 	if idx == -1 {
 		a.state.V2RaySubscriptions = append(a.state.V2RaySubscriptions, model.V2RaySubscription{
-			ID:   whiteDNSVPNSubscriptionID,
-			Name: whiteDNSVPNSubscriptionName,
+			ID:   catalogue.id,
+			Name: catalogue.name,
 		})
 		return len(a.state.V2RaySubscriptions) - 1
 	}
-	a.state.V2RaySubscriptions[idx].Name = whiteDNSVPNSubscriptionName
+	a.state.V2RaySubscriptions[idx].Name = catalogue.name
 	// Clears it from a state file written before this was true.
 	a.state.V2RaySubscriptions[idx].URL = ""
 	return idx
@@ -516,22 +722,30 @@ func (a *App) ensureWhiteDNSVPNSubscriptionLocked() int {
 // The generic subscription refresh cannot do this one: it fetches whatever
 // address is stored, and this one has none stored, arrives encrypted, and is
 // counted in nodes rather than in stored profiles.
-func (a *App) refreshWhiteDNSVPNCatalogue() (model.V2RaySubscriptionRefreshResult, error) {
-	list, err := a.ListWhiteVPNNodes(true)
+func (a *App) refreshBuiltInCatalogue(id string) (model.V2RaySubscriptionRefreshResult, error) {
+	// Its own nodes, not the selected subscription's. Refresh is offered on
+	// every row, so refreshing the one that is not selected has to fetch that
+	// one rather than quietly re-reading whichever list the VPN page is on.
+	list, err := a.ListSubscriptionNodes(id, true)
 	if err != nil {
 		a.mu.Lock()
-		a.recordWhiteDNSVPNSubscriptionErrorLocked(err)
+		a.recordBuiltInSubscriptionErrorLocked(id, err)
 		next, saveErr := a.saveLocked()
 		a.mu.Unlock()
 		return model.V2RaySubscriptionRefreshResult{
 			State:        next,
-			Subscription: findV2RaySubscriptionOrZero(next, whiteDNSVPNSubscriptionID),
+			Subscription: findV2RaySubscriptionOrZero(next, id),
 			Message:      err.Error(),
 		}, saveErr
 	}
 
 	a.mu.Lock()
-	idx := a.ensureWhiteDNSVPNSubscriptionLocked()
+	idx := a.ensureBuiltInSubscriptionLocked(id)
+	if idx == -1 {
+		state := a.state
+		a.mu.Unlock()
+		return model.V2RaySubscriptionRefreshResult{State: state}, fmt.Errorf("unknown built-in catalogue %q", id)
+	}
 	a.state.V2RaySubscriptions[idx].ImportedCount = len(list.Nodes)
 	a.state.V2RaySubscriptions[idx].LastUpdatedAt = time.Now().UTC().Format(time.RFC3339)
 	a.state.V2RaySubscriptions[idx].LastError = ""
@@ -540,7 +754,7 @@ func (a *App) refreshWhiteDNSVPNCatalogue() (model.V2RaySubscriptionRefreshResul
 
 	return model.V2RaySubscriptionRefreshResult{
 		State:        next,
-		Subscription: findV2RaySubscriptionOrZero(next, whiteDNSVPNSubscriptionID),
+		Subscription: findV2RaySubscriptionOrZero(next, id),
 		OK:           true,
 		Message:      fmt.Sprintf("%d nodes available.", len(list.Nodes)),
 		Imported:     len(list.Nodes),
@@ -557,7 +771,7 @@ func (a *App) refreshWhiteDNSVPNCatalogue() (model.V2RaySubscriptionRefreshResul
 func forgetBuiltInCatalogueProfiles(state model.AppState) model.AppState {
 	kept := make([]model.V2RayProfile, 0, len(state.V2RayProfiles))
 	for _, profile := range state.V2RayProfiles {
-		if profile.SubscriptionID == whiteDNSVPNSubscriptionID {
+		if model.IsBuiltInSubscription(profile.SubscriptionID) {
 			continue
 		}
 		kept = append(kept, profile)
@@ -572,7 +786,7 @@ func forgetBuiltInCatalogueProfiles(state model.AppState) model.AppState {
 // created.
 func forgetBuiltInSubscriptionURL(state model.AppState) model.AppState {
 	for idx := range state.V2RaySubscriptions {
-		if state.V2RaySubscriptions[idx].ID == whiteDNSVPNSubscriptionID {
+		if model.IsBuiltInSubscription(state.V2RaySubscriptions[idx].ID) {
 			state.V2RaySubscriptions[idx].URL = ""
 		}
 	}
@@ -580,6 +794,11 @@ func forgetBuiltInSubscriptionURL(state model.AppState) model.AppState {
 }
 
 func (a *App) recordWhiteDNSVPNSubscriptionErrorLocked(err error) {
-	idx := a.ensureWhiteDNSVPNSubscriptionLocked()
-	a.state.V2RaySubscriptions[idx].LastError = err.Error()
+	a.recordBuiltInSubscriptionErrorLocked(whiteDNSVPNSubscriptionID, err)
+}
+
+func (a *App) recordBuiltInSubscriptionErrorLocked(id string, err error) {
+	if idx := a.ensureBuiltInSubscriptionLocked(id); idx != -1 {
+		a.state.V2RaySubscriptions[idx].LastError = err.Error()
+	}
 }

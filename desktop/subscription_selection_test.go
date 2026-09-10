@@ -6,6 +6,11 @@ import (
 	"whitevpn-desktop/internal/model"
 )
 
+// defaultSubscriptionID is whichever catalogue a fresh install starts on.
+// Asked for rather than written down, so that changing which one leads does not
+// mean editing a column of tests.
+func defaultSubscriptionID() string { return model.DefaultAppState().SelectedSubscriptionID }
+
 // setSelection is what the dashboard's two rows do, without going through the
 // catalogue check SaveWhiteVPNSelection makes — these tests are about where the
 // choice is kept, not about whether a node matches it.
@@ -58,7 +63,7 @@ func TestEachListKeepsItsOwnChoice(t *testing.T) {
 	}
 	setSelection(t, app, "", model.ConnectionSelection{Types: []string{"anytls"}})
 
-	back, err := app.SelectSubscription(whiteDNSVPNSubscriptionID)
+	back, err := app.SelectSubscription(defaultSubscriptionID())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +95,7 @@ func TestTheSelectedListKeepsNoParkedCopy(t *testing.T) {
 	if _, parked := state.WhiteVPN.SubscriptionSelections[mine]; parked {
 		t.Fatalf("the selected list should hold no parked copy: %+v", state.WhiteVPN.SubscriptionSelections)
 	}
-	if state.WhiteVPN.SubscriptionSelections[whiteDNSVPNSubscriptionID].CountryCode != "DE" {
+	if state.WhiteVPN.SubscriptionSelections[defaultSubscriptionID()].CountryCode != "DE" {
 		t.Fatalf("the list left behind should have kept its choice: %+v", state.WhiteVPN.SubscriptionSelections)
 	}
 }
@@ -116,7 +121,7 @@ func TestASettingsSaveDoesNotWipeTheParkedChoices(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if state.WhiteVPN.SubscriptionSelections[whiteDNSVPNSubscriptionID].CountryCode != "DE" {
+	if state.WhiteVPN.SubscriptionSelections[defaultSubscriptionID()].CountryCode != "DE" {
 		t.Fatalf("a settings save wiped the parked choices: %+v", state.WhiteVPN.SubscriptionSelections)
 	}
 }
@@ -130,7 +135,7 @@ func TestDeletingASubscriptionForgetsItsChoice(t *testing.T) {
 		t.Fatal(err)
 	}
 	setSelection(t, app, "JP", model.ConnectionSelection{})
-	if _, err := app.SelectSubscription(whiteDNSVPNSubscriptionID); err != nil {
+	if _, err := app.SelectSubscription(defaultSubscriptionID()); err != nil {
 		t.Fatal(err)
 	}
 

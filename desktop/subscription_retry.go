@@ -1,5 +1,7 @@
 package main
 
+import "whitevpn-desktop/internal/model"
+
 // Refreshing what the network was blocking, once there is a way past it.
 //
 // A subscription whose address is blocked locally can only be fetched through
@@ -77,7 +79,7 @@ func (a *App) emptySubscriptionIDs() []string {
 
 	var ids []string
 	for _, subscription := range a.state.V2RaySubscriptions {
-		if subscription.ID == whiteDNSVPNSubscriptionID {
+		if model.IsBuiltInSubscription(subscription.ID) {
 			continue
 		}
 		if subscription.ImportedCount > 0 && subscription.LastError == "" {

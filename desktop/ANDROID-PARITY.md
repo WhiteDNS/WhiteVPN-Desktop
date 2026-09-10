@@ -230,13 +230,53 @@ keys here, not copied literals.
 | Item | Behaviour | Status |
 |---|---|---|
 | Selected subscription | `white_dns_user_subscriptions` / `selected_subscription`, default the built-in one | `[x]` |
-| Built-in WhiteDNS catalogue | Encrypted, refreshed every 3 h | `[~]` fetch, decrypt and on-demand refresh exist; its address is never stored or shown |
+| Built-in catalogues, private and public | Two lists, the private one selected by default | `[x]` |
 | User subscriptions | Add, Edit, Test, Refresh, Delete per card | `[ ]` |
 | Import formats | HTTPS URL (HTTP rejected), Clash/Xray JSON, mihomo YAML, or share links; 2 MB cap | `[x]` share links, mihomo YAML **and** JSON, sing-box JSON, Xray JSON or a list of Xray configs, and base64 around any of them. One entry point — `mihomoconf.ParseSubscription` — so everything downstream sees the same `[]Proxy` |
 
 > The live catalogue is **base64-encoded share links**, not mihomo YAML — 864
 > nodes as of 2026-08-04. A link→mihomo converter is required, ported from
 > `SubConvConverter.kt`.
+
+### The two built-in catalogues
+
+The phone split these in 1.6.6: a private list, with the public one behind it as
+a fallback and a notice when it is in use. Here the same two lists are two rows
+on the Subscriptions page, so the choice is the user's — and the fallback is
+kept, because a private list that cannot be fetched otherwise means no VPN at
+all on a machine where that is often the point.
+
+They differ in more than their address:
+
+| | Private | Public |
+|---|---|---|
+| Body | served in the clear | AES-GCM ciphertext |
+| Injected at link time | address | address and key |
+| Default for a new install | ✓ | |
+
+Neither address is in the source. The public one is ciphertext behind a Worker,
+so its address is only useful with the passphrase that opens it; the private one
+has no key at all, which makes its address the whole of what protects that
+server list and so exactly the thing a public repository must not carry. A build
+made without either injected has no built-in catalogue and says so.
+
+Neither address is stored in the state either, so neither appears in the
+subscriptions list, a backup export, or anything the interface is handed.
+
+**The fallback.** When the chosen list cannot be fetched, every other source
+this app could connect through is tried in turn — the built-in catalogues first,
+private before public, then the user's own subscriptions, then anything pasted
+in by hand — and a notice names the one it landed on. This is broader than the
+phone, which only falls back from private to public: what matters is that the
+list somebody is on cannot be reached, not which one it is.
+
+Two refusals. It does not change the stored selection — the next attempt tries
+the chosen list first again, because a fallback that rewrites the choice is one
+that never gets reconsidered, and somebody whose provider was down for an hour
+would find themselves quietly moved for good. And it does not fall back when the
+chosen list *was* fetched and simply had no node that carried traffic: that is
+the watchdog's job, and treating it as an outage would move people off their own
+servers over a single bad node.
 
 ## 5. Connection behaviour (no UI, but user-visible if wrong)
 

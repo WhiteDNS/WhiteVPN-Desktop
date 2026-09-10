@@ -147,6 +147,7 @@ jobs:
         env:
           WHITEVPN_CATALOGUE_URL: ${{ secrets.WHITEVPN_CATALOGUE_URL }}
           WHITEVPN_CATALOGUE_KEY: ${{ secrets.WHITEVPN_CATALOGUE_KEY }}
+          WHITEVPN_PRIVATE_CATALOGUE_URL: ${{ secrets.WHITEVPN_PRIVATE_CATALOGUE_URL }}
         run: |
           set -euo pipefail
           case "${{ matrix.kind }}" in
