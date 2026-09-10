@@ -292,7 +292,7 @@ func TestSelectSubscriptionDefaultsToTheBuiltInCatalogue(t *testing.T) {
 	}
 }
 
-func TestSelectSubscriptionClearsANodePickedInAnotherList(t *testing.T) {
+func TestSelectSubscriptionPutsTheWholeChoiceAsideWithItsList(t *testing.T) {
 	app := testV2RaySubscriptionApp(t)
 	id := addTestSubscription(t, app, "Mine", "https://example.com/sub")
 
@@ -313,8 +313,16 @@ func TestSelectSubscriptionClearsANodePickedInAnotherList(t *testing.T) {
 	if state.WhiteVPN.Connection.Node != "" {
 		t.Fatalf("a node named in the old list must not survive the change, got %q", state.WhiteVPN.Connection.Node)
 	}
-	if state.WhiteVPN.CountryCode != "DE" {
-		t.Fatalf("a country filter is not tied to one list and should stay, got %q", state.WhiteVPN.CountryCode)
+	// This assertion used to be the other way round, on the reasoning that a
+	// country is a country wherever you look. It is not: "DE" is a statement
+	// about the names in the catalogue it was chosen from, and a private
+	// subscription that calls its nodes Server-01 matches none of them — so the
+	// filter followed the user across and connect refused every node with "no
+	// node matches the chosen location or connection". Which is how issue #92's
+	// reporter came to find that a subscription they had just added had no
+	// server that would connect.
+	if state.WhiteVPN.CountryCode != "" {
+		t.Fatalf("a filter chosen in another list must not follow the user into this one, got %q", state.WhiteVPN.CountryCode)
 	}
 	// Each subscription keeps its own catalogue, so the new selection starts
 	// empty rather than inheriting the old one's nodes.
