@@ -36,6 +36,7 @@ func TestGeneratedConfigIsReadableByTheEngine(t *testing.T) {
 		"trojan://password@d.example.com:443?type=ws&path=%2Ftj&sni=d.example.com#Trojan%20WS",
 		"trojan://password@e.example.com:443?sni=e.example.com#Trojan%20TCP",
 		"ss://YWVzLTI1Ni1nY206aHVudGVyMg==@f.example.com:8388#Shadowsocks",
+		"anytls://password@g.example.com:8443/?sni=g.example.com&insecure=1#AnyTLS",
 	}, "\n")
 
 	proxies, err := mihomoconf.ConvertLinks(links)

@@ -536,10 +536,44 @@ Places where copying Android exactly would be wrong:
 4. **Hysteria2 is offered here and not on the phone.** The phone's converter
    skips it; this engine supports it and a desktop has the bandwidth to make it
    worth having, so `ConvertLinks` reads it. Measured against the live catalogue
-   on 2026-08-04: 11 nodes that were being dropped. Everything else the phone
-   skips — tuic, socks — is still skipped, because the engine cannot carry it.
+   on 2026-08-04: 11 nodes that were being dropped. What the phone skips and
+   this skips too — tuic among them — stays skipped, because a desktop quietly
+   connecting through a node the phone never offers is a different product.
    Fronting leaves hysteria2 alone: it is QUIC with its own certificate and has
    no name to move.
+
+   **socks was listed here as skipped "because the engine cannot carry it",
+   and that was wrong twice over.** mihomo has had a socks5 outbound all along,
+   and the phone's own converter reads socks — so this was a parity gap the
+   note was concealing rather than recording. Worse, the manual-config importer
+   already accepted socks and the HTTP proxy schemes, and manual configs reach
+   the engine by being exported back to links and read by this converter: the
+   app took such a config, stored it, listed it on the Servers page, and then
+   dropped it on the way out. A socks-only list could not connect at all; a
+   mixed one lost the node with no error anywhere. `parseSocks` and
+   `parseHTTPProxy` close both ends of that.
+
+   The HTTP proxy schemes are a divergence, like hysteria2 — the phone has no
+   HTTP outbound — kept because this app's own form offers HTTP as a protocol.
+   Only `http-proxy://` and `https-proxy://` are read, never bare `http://` or
+   `https://`: a subscription is a document full of URLs, and reading one of
+   those as a node would invent servers out of a web page.
+
+   **anytls is parity, not a divergence.** The phone's converter gained it in
+   WhiteVPN 1.6.6; `ConvertLinks` gained it here for the same reason, and until
+   then every `anytls://` line in a user's own subscription was counted
+   unsupported and dropped — a node that never appeared, on a protocol Iranian
+   panels had already started issuing. The engine needed nothing: mihomo has had
+   an AnyTLS outbound all along, so only the link half was missing.
+
+   One deliberate difference from the phone, in `parseAnyTls`: the credential.
+   The phone reads the whole user-info half as the password, which is right for
+   the single secret nearly every generator writes and wrong for the
+   `user:password` form that anytls-go and mihomo's own converter both accept.
+   mihomo is the engine that will use this, so its reading wins — a link the
+   phone connects with connects here too, and one the phone mishandles works.
+   The split is on the raw text, so a colon written `%3A` stays inside the
+   password.
 
 5. **WireGuard is offered here and not on the phone**, for the same reason and
    found the same way: a user's subscription held five links and the app showed

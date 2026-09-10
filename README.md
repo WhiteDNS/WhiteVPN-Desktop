@@ -19,8 +19,8 @@ server workbench — it is added deliberately and recorded as a divergence in
 ## What it does
 
 - **Connects through a subscription** — the built-in catalogue, or any
-  `vless://`, `vmess://`, `trojan://`, `ss://`, `hysteria2://` or
-  `wireguard://` list you add.
+  `vless://`, `vmess://`, `trojan://`, `ss://`, `hysteria2://`, `anytls://`,
+  `socks://` or `wireguard://` list you add.
 - **Chooses for you, or lets you choose** — filter by country, by protocol, or
   pin one node by hand. A choice nothing matches is refused rather than
   silently ignored.

@@ -622,6 +622,8 @@ func NormalizeV2RayProfile(profile model.V2RayProfile) model.V2RayProfile {
 		profile.Protocol = model.V2RayProtocolShadowsocks
 	case model.V2RayProtocolHysteria2, "hy2", "hysteria":
 		profile.Protocol = model.V2RayProtocolHysteria2
+	case model.V2RayProtocolAnyTLS:
+		profile.Protocol = model.V2RayProtocolAnyTLS
 	case model.V2RayProtocolWireGuard:
 		profile.Protocol = model.V2RayProtocolWireGuard
 	case model.V2RayProtocolSOCKS, "socks5":
@@ -671,6 +673,7 @@ func NormalizeV2RayProfile(profile model.V2RayProfile) model.V2RayProfile {
 	profile.SNI = strings.TrimSpace(profile.SNI)
 	profile.ALPN = strings.TrimSpace(profile.ALPN)
 	profile.UTLSFingerprint = strings.TrimSpace(profile.UTLSFingerprint)
+	profile.CertFingerprint = strings.TrimSpace(profile.CertFingerprint)
 	profile.ECHConfigList = strings.TrimSpace(profile.ECHConfigList)
 	profile.RealityPublicKey = strings.TrimSpace(profile.RealityPublicKey)
 	profile.RealityShortID = strings.TrimSpace(profile.RealityShortID)

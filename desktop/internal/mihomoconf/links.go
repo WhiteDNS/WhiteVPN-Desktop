@@ -2,16 +2,17 @@
 // the engine reads.
 //
 // This file is the share-link converter, ported from SubConvConverter.kt in
-// WhiteDNS/WhiteVPN. Behaviour is matched deliberately for the four link types
-// the phone understands — vless, vmess, trojan and ss — so a subscription that
-// yields the same nodes there yields them here.
+// WhiteDNS/WhiteVPN. Behaviour is matched deliberately for the six link types
+// the phone understands — vless, vmess, trojan, ss, anytls and socks — so a
+// subscription that yields the same nodes there yields them here.
 //
-// Hysteria2 and WireGuard are the deliberate additions. The phone skips both;
-// this engine supports them, and a desktop has the bandwidth to make them worth
-// having. Those are divergences from parity, recorded as such in
-// ANDROID-PARITY.md, rather than gaps. Everything else the phone drops — socks,
-// tuic — is still dropped, because a desktop quietly connecting through a node
-// the phone never offers is a different product.
+// Hysteria2, WireGuard and the HTTP proxy schemes are the deliberate additions.
+// The phone skips all three; this engine supports them, and this app's own
+// manual-config form offers HTTP, so without it that form led somewhere that
+// could never connect. Those are divergences from parity, recorded as such in
+// ANDROID-PARITY.md, rather than gaps. What the phone drops and this drops too
+// — tuic among them — stays dropped, because a desktop quietly connecting
+// through a node the phone never offers is a different product.
 package mihomoconf
 
 import (
@@ -20,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"net"
 	"net/url"
 	"sort"
 	"strconv"
@@ -111,6 +113,12 @@ func ConvertLinksWithReport(input string) ([]Proxy, []string, SkipReport, error)
 			proxy, err = parseVmess(line, names)
 		case "trojan":
 			proxy, err = parseTrojan(line, names)
+		case "anytls":
+			proxy, err = parseAnyTls(line, names)
+		case "socks", "socks5":
+			proxy, err = parseSocks(line, names)
+		case "http-proxy", "https-proxy":
+			proxy, err = parseHTTPProxy(line, names)
 		case "ss":
 			proxy, err = parseShadowsocks(line, names)
 		case "hysteria2", "hy2":
@@ -448,6 +456,262 @@ func parseTrojan(line string, names *nameRegistry) (Proxy, error) {
 		proxy["fingerprint"] = pcs
 	}
 	return proxy, nil
+}
+
+// --- anytls ------------------------------------------------------------------
+
+// parseAnyTls reads an anytls link.
+//
+// Ported from SubConvConverter.kt, which gained it in WhiteVPN 1.6.6, with one
+// deliberate difference: the credential.
+//
+// The scheme is anytls://<credential>@host:port/?sni=…#name. The phone reads
+// the whole user-info half as the password, which is right for the single
+// secret nearly every generator writes. It is wrong for the user:password form
+// that anytls-go and mihomo's own converter both accept — there the password is
+// the half after the colon, and offering the server both halves is offering it
+// a secret it never issued. mihomo is the engine that will use this, so its
+// reading wins: a link the phone connects with connects here too, and one the
+// phone mishandles works.
+//
+// The split is on the raw text, before percent-decoding, so a colon written as
+// %3A stays inside the password rather than becoming the separator that splits
+// it.
+func parseAnyTls(line string, names *nameRegistry) (Proxy, error) {
+	uri, err := splitURI(line)
+	if err != nil {
+		return nil, err
+	}
+	endpoint, err := parseEndpoint(uri, false)
+	if err != nil {
+		return nil, err
+	}
+	password := anyTlsPassword(uri.rawAuthority)
+	if password == "" {
+		return nil, errSkipLink
+	}
+	query := parseQuery(uri.rawQuery)
+
+	proxy := Proxy{
+		"name":     names.register(decodeComponent(uri.rawFragment)),
+		"type":     "anytls",
+		"server":   endpoint.host,
+		"port":     endpoint.port,
+		"password": password,
+		"udp":      true,
+	}
+	// insecure is what the scheme documents; allowInsecure is what generators
+	// that also emit trojan links tend to write.
+	if insecure, present := query["insecure"]; present {
+		proxy["skip-cert-verify"] = parseBool(insecure)
+	} else if insecure, present := query["allowInsecure"]; present {
+		proxy["skip-cert-verify"] = parseBool(insecure)
+	}
+	// peer is the older spelling, and the phone reads it here too.
+	sni := strings.TrimSpace(query["sni"])
+	if sni == "" {
+		sni = strings.TrimSpace(query["peer"])
+	}
+	if sni != "" {
+		proxy["sni"] = sni
+	}
+	if alpn := strings.TrimSpace(query["alpn"]); alpn != "" {
+		proxy["alpn"] = strings.Split(alpn, ",")
+	}
+	// hpkp is the certificate pin, per the scheme's own documentation.
+	if fingerprint := strings.TrimSpace(query["hpkp"]); fingerprint != "" {
+		proxy["fingerprint"] = fingerprint
+	}
+	// Only when the link asks for one, unlike vless and trojan above. A uTLS
+	// fingerprint changes the handshake the server sees, and anytls links do
+	// not carry fp by convention — so defaulting to chrome here would be this
+	// converter altering a connection nobody asked it to alter.
+	if fp := strings.TrimSpace(query["fp"]); fp != "" {
+		proxy["client-fingerprint"] = fp
+	}
+	return proxy, nil
+}
+
+// anyTlsPassword is the credential out of a raw authority, decoded.
+//
+// Empty when there is none, which is not a node: anytls has no anonymous mode,
+// so a link without a secret is one the server would only ever refuse.
+func anyTlsPassword(authority string) string {
+	at := strings.LastIndex(authority, "@")
+	if at < 0 {
+		return ""
+	}
+	userInfo := authority[:at]
+	if _, secret, found := strings.Cut(userInfo, ":"); found {
+		return decodeComponent(secret)
+	}
+	return decodeComponent(userInfo)
+}
+
+// --- socks and http proxies --------------------------------------------------
+
+// parseSocks reads a socks link, as the phone's converter does.
+//
+// This was skipped here on the reasoning that the engine could not carry it.
+// That was wrong twice over: mihomo has had a socks5 outbound all along, and
+// the manual-config importer already accepted these links — so the app took a
+// socks config, stored it, listed it on the Servers page, and then dropped it
+// on the way to the engine, because manual configs reach the engine by being
+// exported back to links and read by this converter. A socks-only list could
+// not connect at all; a mixed one lost the node with no error anywhere.
+func parseSocks(line string, names *nameRegistry) (Proxy, error) {
+	uri, err := splitURI(line)
+	if err != nil {
+		return nil, err
+	}
+	endpoint, err := parseEndpoint(uri, false)
+	if err != nil {
+		return nil, err
+	}
+	query := parseQuery(uri.rawQuery)
+
+	proxy := Proxy{
+		"name":   names.register(endpointName(uri, endpoint)),
+		"type":   "socks5",
+		"server": endpoint.host,
+		"port":   endpoint.port,
+		// On unless the link says otherwise: socks5 carries UDP by ASSOCIATE,
+		// and a node silently downgraded to TCP breaks the calls and games that
+		// are the reason for asking.
+		"udp": !parseFalse(query["udp"]),
+	}
+	if at := strings.LastIndex(uri.rawAuthority, "@"); at >= 0 {
+		username, password, ok := socksCredentials(uri.rawAuthority[:at])
+		if !ok {
+			return nil, errSkipLink
+		}
+		proxy["username"] = username
+		if password != "" {
+			proxy["password"] = password
+		}
+	}
+	return proxy, nil
+}
+
+// socksCredentials splits the user info, base64 and all.
+//
+// Three forms in the wild, and the phone reads all three: user:password,
+// base64("user:password") as a single blob, and a bare username. Reported false
+// for a form with a password and no username, which is not a credential any
+// socks server accepts.
+func socksCredentials(rawUserInfo string) (string, string, bool) {
+	if before, after, found := strings.Cut(rawUserInfo, ":"); found {
+		username := decodeUserInfo(before)
+		if username == "" {
+			return "", "", false
+		}
+		return username, decodeUserInfo(after), true
+	}
+
+	userInfo := decodeUserInfo(rawUserInfo)
+	if userInfo == "" {
+		return "", "", false
+	}
+	if decoded, ok := decodeBase64Text(userInfo); ok {
+		if before, after, found := strings.Cut(decoded, ":"); found {
+			if before == "" {
+				return "", "", false
+			}
+			return before, after, true
+		}
+	}
+	return userInfo, "", true
+}
+
+// decodeUserInfo unescapes a credential without turning + into a space.
+//
+// QueryUnescape reads + as a space, which is right for a query string and wrong
+// here: a plus in a password is a plus, and swapping it for a space produces a
+// credential that fails authentication with nothing to show why.
+func decodeUserInfo(value string) string {
+	return decodeComponent(strings.ReplaceAll(value, "+", "%2B"))
+}
+
+// parseHTTPProxy reads an http-proxy:// or https-proxy:// link.
+//
+// A desktop addition, like hysteria2 and WireGuard: the phone's converter has
+// no HTTP proxy at all. It is here because this app's own manual-config form
+// offers HTTP as a protocol and its exporter writes exactly these two schemes,
+// so without it the form led somewhere that could never connect.
+//
+// Deliberately not bare http:// or https://. The manual importer accepts those
+// when they carry a proxy marker, but a subscription is a document full of
+// URLs — a provider's own address, a banner, a link in a comment — and reading
+// any of them as a proxy node would invent servers out of a web page.
+func parseHTTPProxy(line string, names *nameRegistry) (Proxy, error) {
+	uri, err := splitURI(line)
+	if err != nil {
+		return nil, err
+	}
+	endpoint, err := parseEndpoint(uri, false)
+	if err != nil {
+		return nil, err
+	}
+	query := parseQuery(uri.rawQuery)
+
+	proxy := Proxy{
+		"name":   names.register(endpointName(uri, endpoint)),
+		"type":   "http",
+		"server": endpoint.host,
+		"port":   endpoint.port,
+	}
+	// No udp key: mihomo's HTTP outbound has no UDP at all, and CONNECT carries
+	// streams only. Writing udp: false would suggest a switch that could be
+	// turned the other way.
+	if strings.HasPrefix(strings.ToLower(line), "https-proxy://") {
+		proxy["tls"] = true
+	}
+	if insecure, present := query["insecure"]; present {
+		proxy["skip-cert-verify"] = parseBool(insecure)
+	} else if insecure, present := query["allowInsecure"]; present {
+		proxy["skip-cert-verify"] = parseBool(insecure)
+	}
+	if sni := strings.TrimSpace(query["sni"]); sni != "" {
+		proxy["sni"] = sni
+	}
+	// The headers the exporter writes are not carried. They are stored as one
+	// opaque string with no agreed format — a leftover of the Xray path, with
+	// no form field and nothing that ever rendered them — so any reading here
+	// would be this converter inventing a syntax and then depending on it.
+	if at := strings.LastIndex(uri.rawAuthority, "@"); at >= 0 {
+		username, password, ok := socksCredentials(uri.rawAuthority[:at])
+		if !ok {
+			return nil, errSkipLink
+		}
+		proxy["username"] = username
+		if password != "" {
+			proxy["password"] = password
+		}
+	}
+	return proxy, nil
+}
+
+// endpointName is the link's own name, or its address when it has none.
+//
+// An empty name is worse here than elsewhere: the registry would hand the first
+// unnamed node "" and the next "-01", so a list of them reads as a column of
+// blanks. The address is what the phone falls back to and is at least a thing
+// somebody can tell apart.
+func endpointName(uri splitURL, endpoint endpoint) string {
+	if name := decodeComponent(uri.rawFragment); strings.TrimSpace(name) != "" {
+		return name
+	}
+	return net.JoinHostPort(endpoint.host, strconv.Itoa(endpoint.port))
+}
+
+// parseFalse is parseBool's opposite for defaults that are on: only an explicit
+// no turns them off, so an unset or unreadable value keeps the default.
+func parseFalse(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "0", "false":
+		return true
+	}
+	return false
 }
 
 // --- shadowsocks -------------------------------------------------------------
