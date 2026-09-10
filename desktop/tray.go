@@ -57,6 +57,19 @@ func (t *trayState) markReady(ready bool) {
 // the system is ready for it.
 func (a *App) startTray() {
 	a.tray.refresh = make(chan struct{}, 1)
+
+	// Registered before the icon is, not from inside the ready callback, and
+	// that ordering is the whole of whether a left click does anything on
+	// Linux. systray exports the icon's D-Bus properties as it starts, and one
+	// of them — ItemIsMenu — is read straight off whether a tap handler exists
+	// at that moment. The ready callback runs on its own goroutine alongside
+	// that export, so setting the handler there was a race with it: lose, and
+	// the icon announces itself as a menu and no host ever sends Activate.
+	//
+	// A left click is the shortest way back to the window; the menu stays on
+	// the right button, where the platform puts it.
+	systray.SetOnTapped(func() { a.showWindow() })
+
 	if runtime.GOOS == "darwin" {
 		systray.Register(a.onTrayReady, a.onTrayExit)
 		return
@@ -97,20 +110,36 @@ func (a *App) onTrayReady() {
 	systray.AddSeparator()
 	a.tray.quit = systray.AddMenuItem(words.quit, "")
 
-	// A left click is the shortest way back to the window; the menu stays on the
-	// right button, where the platform puts it.
-	systray.SetOnTapped(func() { a.showWindow() })
-
 	a.tray.markReady(true)
 	a.refreshTray()
 
+	// Returning matters, and it is not obvious why. systray holds a WaitGroup
+	// that is only released when this callback returns, and on Linux the D-Bus
+	// method a host calls to read the menu — GetLayout — waits on it. So a
+	// callback that never returns is a menu that never arrives: the icon is
+	// drawn, the click is delivered, and the host is left waiting for a layout
+	// until it gives up. That is what "the tray icon does nothing" was.
+	//
+	// So the clicks are watched from a goroutine of their own. systray's menu
+	// items are safe to use from any goroutine; it is only this callback that
+	// has to finish.
+	go a.watchTrayClicks(a.tray.toggle.ClickedCh, a.tray.show.ClickedCh, a.tray.quit.ClickedCh)
+}
+
+// watchTrayClicks turns menu clicks into actions until the tray quits.
+//
+// The channels are passed in rather than read off a.tray, so that this loop can
+// be exercised without standing up a real icon — which needs a desktop session
+// and a bus, and so would only ever be tested by hand on the one platform where
+// it broke.
+func (a *App) watchTrayClicks(toggle, show, quit <-chan struct{}) {
 	for {
 		select {
-		case <-a.tray.toggle.ClickedCh:
+		case <-toggle:
 			go a.toggleFromTray()
-		case <-a.tray.show.ClickedCh:
+		case <-show:
 			a.showWindow()
-		case <-a.tray.quit.ClickedCh:
+		case <-quit:
 			a.quitFromTray()
 			return
 		case <-a.tray.refresh:
