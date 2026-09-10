@@ -244,3 +244,13 @@ jobs:
         uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
         with:
           files: release-assets/*
+          # A tag carrying a pre-release suffix — v1.0.21-rc1, v1.1.0-beta2 —
+          # publishes as a pre-release, and nothing else does.
+          #
+          # This is not housekeeping. The app's update check reads
+          # /releases/latest and refuses drafts and pre-releases, and GitHub
+          # leaves pre-releases out of that endpoint entirely. So the flag is
+          # what decides whether a tag pushed to try something out becomes an
+          # update prompt on every installation, and leaving it unset left that
+          # to the action's default rather than to the tag.
+          prerelease: ${{ contains(github.ref_name, '-') }}
