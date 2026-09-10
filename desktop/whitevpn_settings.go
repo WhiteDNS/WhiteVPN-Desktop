@@ -39,9 +39,14 @@ func settingsForThisMachine(settings model.WhiteVPNSettings) model.WhiteVPNSetti
 // something through - is corrected once, here, instead of reaching the engine
 // and failing there where the cause is much harder to see.
 func (a *App) SaveWhiteVPNSettings(settings model.WhiteVPNSettings) (model.AppState, error) {
-	normalized := settingsForThisMachine(model.NormalizeWhiteVPNSettings(settings))
-
 	a.mu.Lock()
+	// The parked selections are never taken from the caller. They are not a
+	// setting anybody edits — they are what the subscription switch put aside —
+	// and the interface does not carry the field at all, so a settings save
+	// from the page would arrive with it empty and wipe every other
+	// subscription's filter on the way past.
+	settings.SubscriptionSelections = a.state.WhiteVPN.SubscriptionSelections
+	normalized := settingsForThisMachine(model.NormalizeWhiteVPNSettings(settings))
 	a.state.WhiteVPN = normalized
 	state, err := a.saveLocked()
 	a.mu.Unlock()

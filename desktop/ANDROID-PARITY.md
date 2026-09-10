@@ -34,6 +34,17 @@ about the visual language changes; only the content is ported.
 | 1.2 | Connection (node pick) | `white_dns_connection_selection` / `profile:<subId>` | unset = Automatic | VPN page row → connection dialog | `[x]` |
 | 1.3 | Connection type filter | `white_dns_connection_selection` / `types:<subId>` | empty = all types | Inside the connection dialog | `[x]` |
 | 1.4 | Sort by delay | `white_dns_connection_selection` / `delay-sort:<subId>` | `false` | Toggle in the connection dialog | `[x]` |
+
+Rows 1.1 to 1.4 are keyed by subscription, as the phone keys them. They were
+stored flat while there was only the built-in catalogue, and the note here said
+they would become per-subscription when user subscriptions arrived. They did
+not, and the cost was issue #92: a filter chosen in the catalogue followed the
+user onto a subscription they had just added, matched none of its nodes — a
+private panel names them `Server-01` and carries whatever protocol it issues —
+and connect refused every one of them with "no node matches the chosen location
+or connection". The choice for the selected subscription lives in `CountryCode`
+and `Connection`; every other subscription's is parked in
+`SubscriptionSelections` and swapped back when it is selected again.
 | 1.5 | Split tunnel mode | `white_dns_split_tunnel` / `mode` | `off` | VPN page row → split-tunnel dialog | `[x]` |
 | 1.6 | Split tunnel selection | `white_dns_split_tunnel` / `packages` | empty | **Adapted**: Windows processes/`.exe` instead of Android packages | `[x]` |
 

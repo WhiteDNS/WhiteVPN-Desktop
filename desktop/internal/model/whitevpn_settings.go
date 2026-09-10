@@ -61,9 +61,9 @@ type DNSPrivacySettings struct {
 // through, of which protocols, and how the list is ordered while choosing.
 //
 // The phone keys each of these by subscription — `profile:<subId>`,
-// `types:<subId>`, `delay-sort:<subId>`. There is one subscription here, the
-// built-in catalogue, so they are stored flat; they become per-subscription
-// when user subscriptions arrive.
+// `types:<subId>`, `delay-sort:<subId>`. So does this, now: the fields here
+// hold the selected subscription's choice, and SubscriptionSelections holds
+// everyone else's.
 type ConnectionSelection struct {
 	// Node is the exact proxy name to connect through. Empty means automatic:
 	// whichever node passes the filters first, in catalogue order.
@@ -123,12 +123,35 @@ type KillSwitchSettings struct {
 	Enabled bool `json:"enabled"`
 }
 
+// SubscriptionSelection is one subscription's dashboard choice, held while a
+// different subscription is selected.
+type SubscriptionSelection struct {
+	CountryCode string              `json:"countryCode"`
+	Connection  ConnectionSelection `json:"connection"`
+}
+
 // WhiteVPNSettings is everything the phone lets a user change.
 type WhiteVPNSettings struct {
-	// Dashboard rows.
+	// Dashboard rows. CountryCode and Connection belong to whichever
+	// subscription is selected; see SubscriptionSelections.
 	CountryCode string              `json:"countryCode"`
 	Connection  ConnectionSelection `json:"connection"`
 	SplitTunnel SplitTunnelSettings `json:"splitTunnel"`
+
+	// SubscriptionSelections is every other subscription's choice, by id.
+	//
+	// A filter is a statement about one list of servers. "Germany" and "vless"
+	// mean something in the catalogue they were chosen from and usually nothing
+	// in the next one — a private subscription names its nodes Server-01 and
+	// carries whatever protocol its panel issues. Held flat, they followed the
+	// user across the switch and matched nothing, and connect refused every
+	// node with "no node matches the chosen location or connection". Which is
+	// how a subscription somebody had just added came to have no server that
+	// worked.
+	//
+	// Absent for the selected subscription: its choice lives in the two fields
+	// above, and storing it twice would leave two answers to disagree.
+	SubscriptionSelections map[string]SubscriptionSelection `json:"subscriptionSelections,omitempty"`
 
 	// DirectRouting keeps chosen destinations out of the tunnel. Off by
 	// default, with a starting list rather than an empty one: an empty list
@@ -347,8 +370,30 @@ func NormalizeWhiteVPNSettings(settings WhiteVPNSettings) WhiteVPNSettings {
 	}
 
 	settings.CountryCode = NormalizeCountryCode(settings.CountryCode)
-	settings.Connection.Node = strings.TrimSpace(settings.Connection.Node)
-	settings.Connection.Types = nonEmptyStrings(lowered(settings.Connection.Types))
+	settings.Connection = NormalizeConnectionSelection(settings.Connection)
+	for id, parked := range settings.SubscriptionSelections {
+		trimmed := strings.TrimSpace(id)
+		if trimmed == "" {
+			delete(settings.SubscriptionSelections, id)
+			continue
+		}
+		parked.CountryCode = NormalizeCountryCode(parked.CountryCode)
+		parked.Connection = NormalizeConnectionSelection(parked.Connection)
+		// A selection that narrows nothing is the default, and keeping it would
+		// grow the file for every subscription anyone ever looked at.
+		if parked.CountryCode == "" && parked.Connection.Node == "" &&
+			len(parked.Connection.Types) == 0 && !parked.Connection.DelaySort {
+			delete(settings.SubscriptionSelections, id)
+			continue
+		}
+		if trimmed != id {
+			delete(settings.SubscriptionSelections, id)
+		}
+		settings.SubscriptionSelections[trimmed] = parked
+	}
+	if len(settings.SubscriptionSelections) == 0 {
+		settings.SubscriptionSelections = nil
+	}
 	settings.Language = strings.TrimSpace(settings.Language)
 	settings.ChainExitNode = strings.TrimSpace(settings.ChainExitNode)
 
@@ -361,6 +406,49 @@ func NormalizeWhiteVPNSettings(settings WhiteVPNSettings) WhiteVPNSettings {
 		settings.ListenPort = defaults.ListenPort
 	}
 	return settings
+}
+
+// SwapSubscriptionSelection parks one subscription's dashboard choice and
+// brings out the next one's.
+//
+// The whole choice moves, not just the pinned node. Location and connection
+// type are statements about one list of servers: "Germany" and "vless" mean
+// something in the catalogue they were chosen from and usually nothing in the
+// next one, so carrying them across is how somebody who had just added their
+// own subscription came to find that no server on it would connect.
+//
+// A subscription with nothing parked comes back as Automatic rather than as
+// whatever the last one was narrowed to, which is also what a first visit to it
+// should look like.
+func SwapSubscriptionSelection(settings WhiteVPNSettings, from, to string) WhiteVPNSettings {
+	if from == to {
+		return settings
+	}
+	if settings.SubscriptionSelections == nil {
+		settings.SubscriptionSelections = map[string]SubscriptionSelection{}
+	}
+	settings.SubscriptionSelections[from] = SubscriptionSelection{
+		CountryCode: settings.CountryCode,
+		Connection:  settings.Connection,
+	}
+	restored := settings.SubscriptionSelections[to]
+	// Out of the store rather than alongside it: the selected subscription's
+	// choice lives in the two fields, and leaving a copy behind would give a
+	// later switch a stale answer to restore.
+	delete(settings.SubscriptionSelections, to)
+	settings.CountryCode = restored.CountryCode
+	settings.Connection = restored.Connection
+	// Normalize drops a parked selection that narrows nothing, so the entry
+	// written above disappears on its own when there was nothing to keep.
+	return NormalizeWhiteVPNSettings(settings)
+}
+
+
+// NormalizeConnectionSelection tidies one subscription's choice.
+func NormalizeConnectionSelection(selection ConnectionSelection) ConnectionSelection {
+	selection.Node = strings.TrimSpace(selection.Node)
+	selection.Types = nonEmptyStrings(lowered(selection.Types))
+	return selection
 }
 
 // NormalizeCountryCode settles on the shape the catalogue's own names yield:

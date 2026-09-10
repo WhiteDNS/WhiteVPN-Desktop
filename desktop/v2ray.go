@@ -333,6 +333,10 @@ func (a *App) DeleteV2RaySubscription(id string) (model.AppState, error) {
 		return profile.SubscriptionID == id
 	})
 	a.forgetWhiteVPNNodes(id)
+	// The dashboard choice made in this subscription goes with it, so a list
+	// re-added under the same id starts on Automatic rather than wearing a
+	// filter chosen for the one it replaced.
+	delete(a.state.WhiteVPN.SubscriptionSelections, id)
 	// The stored body goes too. A subscription the user removed must not leave a
 	// copy of its servers behind for something to fall back to later.
 	a.forgetSubscriptionSnapshot(id)

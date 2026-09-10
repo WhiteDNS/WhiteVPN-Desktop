@@ -193,9 +193,12 @@ func (a *App) SelectSubscription(id string) (model.AppState, error) {
 		a.mu.Unlock()
 		return state, fmt.Errorf("disconnect before changing the subscription: the connection is running on the current one")
 	}
+	previous := strings.TrimSpace(a.state.SelectedSubscriptionID)
+	if previous == "" {
+		previous = whiteDNSVPNSubscriptionID
+	}
 	a.state.SelectedSubscriptionID = id
-	// The dashboard's node choice belongs to the subscription it was made in.
-	a.state.WhiteVPN.Connection.Node = ""
+	a.state.WhiteVPN = model.SwapSubscriptionSelection(a.state.WhiteVPN, previous, id)
 	state, err := a.saveLocked()
 	a.mu.Unlock()
 

@@ -252,9 +252,22 @@ func NormalizeState(state model.AppState) model.AppState {
 	state.SettingsProfiles = normalizeSettingsProfiles(state.SettingsProfiles)
 	state.V2RayProfiles = normalizeV2RayProfiles(state.V2RayProfiles)
 	state.V2RaySubscriptions = normalizeV2RaySubscriptions(state.V2RaySubscriptions)
-	state.SelectedSubscriptionID = normalizeSelectedSubscription(state.SelectedSubscriptionID, state.V2RaySubscriptions, state.V2RayProfiles)
+	// The dashboard's filter belongs to the subscription it was chosen in, so
+	// it moves when the selection is corrected. Without this a subscription
+	// deleted since the last run would leave "Germany" or "vless" applied to
+	// the catalogue it fell back to, and connect would refuse every node on it.
+	if selected := normalizeSelectedSubscription(state.SelectedSubscriptionID, state.V2RaySubscriptions, state.V2RayProfiles); selected != state.SelectedSubscriptionID {
+		previous := strings.TrimSpace(state.SelectedSubscriptionID)
+		if previous == "" {
+			previous = model.BuiltInSubscriptionID
+		}
+		state.WhiteVPN = model.SwapSubscriptionSelection(state.WhiteVPN, previous, selected)
+		state.SelectedSubscriptionID = selected
+	}
 	state.V2RaySettingsProfiles = normalizeV2RaySettingsProfiles(state.V2RaySettingsProfiles)
 	state.WhiteVPN = model.NormalizeWhiteVPNSettings(state.WhiteVPN)
+	state.WhiteVPN.SubscriptionSelections = keepSelectionsForKnownSubscriptions(
+		state.WhiteVPN.SubscriptionSelections, state.V2RaySubscriptions)
 	state.WhiteDNSVPNFrontingIPs = NormalizeWhiteDNSVPNFrontingIPs(state.WhiteDNSVPNFrontingIPs)
 	state.HiddenNodes = NormalizeHiddenNodes(state.HiddenNodes)
 
@@ -499,6 +512,38 @@ func normalizeV2RayProfiles(profiles []model.V2RayProfile) []model.V2RayProfile 
 // always present, rather than to nothing: a selection pointing at a deleted
 // subscription would otherwise leave the app with no source of servers and no
 // way to say so.
+// keepSelectionsForKnownSubscriptions drops the parked choices of subscriptions
+// that no longer exist.
+//
+// Otherwise the file grows by one entry for every list anyone ever added and
+// removed, and a subscription re-added under the same id would come back
+// wearing a filter chosen for the one it replaced.
+func keepSelectionsForKnownSubscriptions(
+	selections map[string]model.SubscriptionSelection,
+	subscriptions []model.V2RaySubscription,
+) map[string]model.SubscriptionSelection {
+	if len(selections) == 0 {
+		return nil
+	}
+	known := make(map[string]struct{}, len(subscriptions)+2)
+	// The built-in catalogue and the manual list are always there to come back
+	// to, and neither appears among the user's subscriptions.
+	known[model.BuiltInSubscriptionID] = struct{}{}
+	known[model.ManualServerSourceID] = struct{}{}
+	for _, subscription := range subscriptions {
+		known[subscription.ID] = struct{}{}
+	}
+	for id := range selections {
+		if _, ok := known[id]; !ok {
+			delete(selections, id)
+		}
+	}
+	if len(selections) == 0 {
+		return nil
+	}
+	return selections
+}
+
 func normalizeSelectedSubscription(selected string, subscriptions []model.V2RaySubscription, profiles []model.V2RayProfile) string {
 	selected = strings.TrimSpace(selected)
 	if selected == model.ManualServerSourceID && slices.ContainsFunc(profiles, func(profile model.V2RayProfile) bool {
