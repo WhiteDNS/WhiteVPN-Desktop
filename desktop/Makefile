@@ -82,7 +82,7 @@ LINUX_WAILS_TAG_FLAGS :=
 endif
 LINUX_WEBKIT ?= $(if $(findstring webkit2_41,$(LINUX_GO_TAGS)),4.1,4.0)
 LINUX_PACKAGE_FORMATS ?= deb,rpm
-LINUX_ASSET_SUFFIX ?= linux-$(LINUX_CLIENT_ARCH)$(if $(filter 4.1,$(LINUX_WEBKIT)),-webkit41,)
+LINUX_ASSET_SUFFIX ?= linux-$(LINUX_CLIENT_ARCH)$(if $(filter 4.1,$(LINUX_WEBKIT)),,-webkit40)
 LINUX_PACKAGE_OUTPUT_DIR ?= build/releases
 LINUX_DOCKER ?= docker
 LINUX_DOCKER_IMAGE ?= golang:1.26.5-bookworm
@@ -442,7 +442,7 @@ stage-artifacts:
 				'' \
 				'Use the AppImage on Linux x64 when you want a single-file download without installing a distro package.' \
 				'Use the .deb package on Debian or Ubuntu and the .rpm package on RPM-based distributions when available.' \
-				'For newer RPM distributions, prefer the webkit41 RPM asset.' \
+				'On Ubuntu 22.04 or Debian 12, take the webkit40 package; the unsuffixed one needs WebKitGTK 4.1.' \
 				'The tar.gz archive is a portable fallback and requires GTK 3 plus the matching WebKitGTK runtime package from your distribution.' \
 				'' \
 				'Launch the AppImage after making it executable, run "./WhiteDNS Desktop" from this directory, or install a distro package to add a desktop entry.' \

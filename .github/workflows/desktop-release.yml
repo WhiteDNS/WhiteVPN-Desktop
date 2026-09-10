@@ -45,15 +45,12 @@ jobs:
             kind: windows
             platform: windows/arm64
             arch: arm64
+          # The unsuffixed name is the current one, on both architectures.
+          # It used to be the WebKitGTK 4.0 build here and the 4.1 build on
+          # arm64 — the same name meaning opposite things, with the amd64 half
+          # being the one everybody clicks. On Ubuntu 24.04 and later, where
+          # only libwebkit2gtk-4.1-0 exists, that download cannot install.
           - artifact: whitevpn-desktop-linux-amd64
-            os: ubuntu-22.04
-            kind: linux
-            platform: linux/amd64
-            arch: amd64
-            webkit: "4.0"
-            linux_tags: ""
-            package_formats: deb,rpm
-          - artifact: whitevpn-desktop-linux-amd64-webkit41
             os: ubuntu-24.04
             kind: linux
             platform: linux/amd64
@@ -61,6 +58,16 @@ jobs:
             webkit: "4.1"
             linux_tags: webkit2_41
             package_formats: deb,rpm,appimage
+          # Kept for Ubuntu 22.04 and Debian 12, and named for what it needs
+          # rather than left as the default anybody would reach for first.
+          - artifact: whitevpn-desktop-linux-amd64-webkit40
+            os: ubuntu-22.04
+            kind: linux
+            platform: linux/amd64
+            arch: amd64
+            webkit: "4.0"
+            linux_tags: ""
+            package_formats: deb,rpm
           - artifact: whitevpn-desktop-linux-arm64
             os: ubuntu-24.04-arm
             kind: linux

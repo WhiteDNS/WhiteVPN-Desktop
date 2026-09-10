@@ -32,12 +32,19 @@ case "$arch" in
     ;;
 esac
 
+# Which WebKitGTK this build links against, and the line that tells somebody
+# which download to take instead. dpkg reports an unmet dependency by name and
+# stops there — "depends on libwebkit2gtk-4.0-37; however: Package
+# libwebkit2gtk-4.0-37 is not installed" is true and tells a person nothing
+# about the other asset on the same release page that would have worked.
 case "$webkit" in
   4.1)
     deb_webkit_dep="libwebkit2gtk-4.1-0"
+    webkit_note="Needs WebKitGTK 4.1 (Ubuntu 24.04 and later, Debian 13, Fedora 40 and later). On Ubuntu 22.04 or Debian 12, take the webkit40 package instead."
     ;;
   *)
     deb_webkit_dep="libwebkit2gtk-4.0-37"
+    webkit_note="Needs WebKitGTK 4.0 (Ubuntu 22.04, Debian 12). On Ubuntu 24.04 or later, take the package without the webkit40 suffix instead."
     ;;
 esac
 
@@ -176,6 +183,8 @@ Installed-Size: $installed_size
 Depends: ca-certificates, libgtk-3-0, $deb_webkit_dep
 Description: $description
  Managed desktop client for WhiteDNS and StormDNS.
+ .
+ $webkit_note
 EOF
 
   deb_path="$output_dir/$asset_base.deb"
