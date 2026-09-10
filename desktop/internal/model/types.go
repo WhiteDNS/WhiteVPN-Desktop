@@ -60,6 +60,7 @@ const (
 	V2RayProtocolTrojan      = "trojan"
 	V2RayProtocolShadowsocks = "shadowsocks"
 	V2RayProtocolHysteria2   = "hysteria2"
+	V2RayProtocolAnyTLS      = "anytls"
 	V2RayProtocolWireGuard   = "wireguard"
 	V2RayProtocolSOCKS       = "socks"
 	V2RayProtocolHTTP        = "http"
@@ -122,6 +123,7 @@ type V2RayProfile struct {
 	ALPN                     string `json:"alpn"`
 	AllowInsecure            bool   `json:"allowInsecure"`
 	UTLSFingerprint          string `json:"utlsFingerprint"`
+	CertFingerprint          string `json:"certFingerprint"`
 	ECHConfigList            string `json:"echConfigList"`
 	Reality                  bool   `json:"reality"`
 	RealityPublicKey         string `json:"realityPublicKey"`

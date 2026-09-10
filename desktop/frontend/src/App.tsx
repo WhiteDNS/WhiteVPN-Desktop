@@ -192,7 +192,7 @@ const minNoiseSize = 1;
 const maxNoiseSize = 1280;
 const whiteDNSVPNSubscriptionID = "whitedns-vpn";
 const manualServerSourceID = "manual";
-const manualConfigLinkPattern = /\b(?:vless|vmess|trojan|ss|shadowsocks|hysteria|hysteria2|hy2|wireguard|wg):\/\/\S+/i;
+const manualConfigLinkPattern = /\b(?:vless|vmess|trojan|ss|shadowsocks|hysteria|hysteria2|hy2|anytls|wireguard|wg):\/\/\S+/i;
 
 function looksLikeManualConfig(text: string): boolean {
   return manualConfigLinkPattern.test(text) || (text.includes("[Interface]") && text.includes("[Peer]"));
@@ -287,6 +287,7 @@ function normalizeV2RayProtocol(value?: string): V2RayProtocol {
     value === "trojan" ||
     value === "shadowsocks" ||
     value === "hysteria2" ||
+    value === "anytls" ||
     value === "wireguard" ||
     value === "socks" ||
     value === "http"
@@ -352,6 +353,7 @@ const v2rayProfileStableKeys: Array<keyof V2RayProfile> = [
   "alpn",
   "allowInsecure",
   "utlsFingerprint",
+  "certFingerprint",
   "echConfigList",
   "reality",
   "realityPublicKey",
@@ -4132,6 +4134,8 @@ function v2rayProfileCredentialReady(profile: V2RayProfile): boolean {
       return Boolean(profile.shadowsocksMethod.trim() && profile.password.trim());
     case "hysteria2":
       return Boolean(profile.hysteriaAuth.trim());
+    case "anytls":
+      return Boolean(profile.password.trim());
     case "wireguard":
       return Boolean(profile.wireGuardSecretKey.trim() && profile.wireGuardPeerPublicKey.trim());
     case "socks":
@@ -5601,7 +5605,7 @@ function ToggleField({
 // subscription is a reading of what a provider is serving and returns unchanged
 // at the next refresh, so it carries no profile and the button is not offered.
 const transportOptions = ["tcp", "ws", "grpc", "h2", "httpupgrade", "xhttp"];
-const protocolOptions: V2RayProtocol[] = ["vless", "vmess", "trojan", "shadowsocks", "hysteria2", "wireguard", "socks", "http"];
+const protocolOptions: V2RayProtocol[] = ["vless", "vmess", "trojan", "shadowsocks", "hysteria2", "anytls", "wireguard", "socks", "http"];
 
 function ManualNodeForm({
   profile,
@@ -5619,12 +5623,15 @@ function ManualNodeForm({
   // Which protocols carry which credential. WireGuard is its own shape
   // entirely, which is why it takes over the section rather than adding to it.
   const usesUUID = protocol === "vless" || protocol === "vmess";
-  const usesPassword = protocol === "trojan" || protocol === "shadowsocks" || protocol === "socks" || protocol === "http";
+  const usesPassword =
+    protocol === "trojan" || protocol === "shadowsocks" || protocol === "socks" || protocol === "http" || protocol === "anytls";
   const usesUsername = protocol === "socks" || protocol === "http";
   const isWireGuard = protocol === "wireguard";
-  // Hysteria2 and WireGuard carry their own transport; the rest go through one
-  // of the stream transports and can be given TLS.
-  const usesTransport = !isWireGuard && protocol !== "hysteria2";
+  // Hysteria2, anytls and WireGuard carry their own transport; the rest go
+  // through one of the stream transports and can be given TLS. anytls is TLS
+  // throughout with its own session multiplexing above it, so there is no
+  // stream transport to choose and no cleartext mode to choose it for.
+  const usesTransport = !isWireGuard && protocol !== "hysteria2" && protocol !== "anytls";
   const usesTLS = !isWireGuard;
 
   return (

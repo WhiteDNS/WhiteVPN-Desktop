@@ -24,7 +24,7 @@ export interface ResolverProfile {
   resolverInvalidCount?: number;
 }
 
-export type V2RayProtocol = "vless" | "vmess" | "trojan" | "shadowsocks" | "hysteria2" | "wireguard" | "socks" | "http";
+export type V2RayProtocol = "vless" | "vmess" | "trojan" | "shadowsocks" | "hysteria2" | "anytls" | "wireguard" | "socks" | "http";
 
 export interface V2RayProfile {
   id: string;
@@ -45,6 +45,7 @@ export interface V2RayProfile {
   alpn: string;
   allowInsecure: boolean;
   utlsFingerprint: string;
+  certFingerprint: string;
   echConfigList: string;
   reality: boolean;
   realityPublicKey: string;

@@ -206,7 +206,7 @@ func TestBase64BodyAndMalformedLinesAreSkipped(t *testing.T) {
 func TestSchemesTheEngineCannotUseAreIgnored(t *testing.T) {
 	body := strings.Join([]string{
 		"tuic://uuid:pw@example.com:443#TUIC",
-		"socks://user:pass@example.com:1080#SOCKS",
+		"juicity://uuid:pw@example.com:443#Juicity",
 	}, "\n")
 
 	if _, err := ConvertLinks(body); err == nil {

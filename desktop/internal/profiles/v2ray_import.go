@@ -14,7 +14,7 @@ import (
 	"whitevpn-desktop/internal/model"
 )
 
-var v2rayProfileURLPattern = regexp.MustCompile(`(?i)\b(vless|vmess|trojan|ss|shadowsocks|hy2|hysteria2|hysteria|socks|socks5|http-proxy|https-proxy|http|https)://\S+`)
+var v2rayProfileURLPattern = regexp.MustCompile(`(?i)\b(vless|vmess|trojan|ss|shadowsocks|hy2|hysteria2|hysteria|anytls|socks|socks5|http-proxy|https-proxy|http|https)://\S+`)
 
 func ParseV2RayProfileImports(rawText string) ([]model.V2RayProfile, error) {
 	profiles := parseWireGuardProfiles(rawText)
@@ -58,6 +58,8 @@ func parseV2RayProfile(rawLink string) (model.V2RayProfile, error) {
 		return parseShadowsocksProfile(link)
 	case "hy2", "hysteria", model.V2RayProtocolHysteria2:
 		return parseHysteriaProfile(u)
+	case model.V2RayProtocolAnyTLS:
+		return parseAnyTLSProfile(u)
 	case "socks", "socks5":
 		return parseSOCKSProfile(u)
 	case "http-proxy", "https-proxy", model.V2RayProtocolHTTP, "https":
@@ -140,6 +142,43 @@ func parseHysteriaProfile(u *url.URL) (model.V2RayProfile, error) {
 	profile.AllowInsecure = truthy(firstQuery(q, "insecure", "allowInsecure", "allow_insecure"))
 	if profile.HysteriaAuth == "" {
 		return model.V2RayProfile{}, fmt.Errorf("Hysteria2 auth is required")
+	}
+	return NormalizeV2RayProfile(profile), nil
+}
+
+// parseAnyTLSProfile reads an anytls link into a stored config.
+//
+// The credential is the password half of the user info when there are two
+// halves, and the whole of it when there is one — the reading anytls-go and
+// mihomo both use, and the same one mihomoconf.parseAnyTls applies to the links
+// that arrive in a subscription. Two importers disagreeing about which half is
+// the secret would mean the same link connecting from a subscription and
+// failing when pasted.
+func parseAnyTLSProfile(u *url.URL) (model.V2RayProfile, error) {
+	profile := baseV2RayURLProfile(u, model.V2RayProtocolAnyTLS)
+	q := canonicalV2RayQuery(u.Query())
+	if u.User != nil {
+		if password, set := u.User.Password(); set {
+			profile.Password = password
+		} else {
+			profile.Password = u.User.Username()
+		}
+	}
+	profile.Password = strings.TrimSpace(profile.Password)
+	// anytls is TLS throughout; there is no cleartext mode to turn this off for.
+	profile.TLS = true
+	profile.SNI = firstQuery(q, "sni", "peer", "serverName", "servername")
+	profile.ALPN = firstQuery(q, "alpn")
+	profile.AllowInsecure = truthy(firstQuery(q, "insecure", "allowInsecure", "allow_insecure"))
+	// Two different fingerprints, and they are not interchangeable. hpkp pins
+	// the certificate the server must present; fp names a browser for the
+	// client hello to imitate and says nothing about who is on the other end.
+	// Dropping the pin on import would hand back a connection less protected
+	// than the link asked for, so it gets a field of its own.
+	profile.CertFingerprint = firstQuery(q, "hpkp")
+	profile.UTLSFingerprint = firstQuery(q, "fp")
+	if profile.Password == "" {
+		return model.V2RayProfile{}, fmt.Errorf("anytls password is required")
 	}
 	return NormalizeV2RayProfile(profile), nil
 }

@@ -50,6 +50,8 @@ func ExportV2RayProfile(profile model.V2RayProfile) (string, error) {
 		return exportShadowsocksProfile(profile), nil
 	case model.V2RayProtocolHysteria2:
 		return exportHysteriaProfile(profile), nil
+	case model.V2RayProtocolAnyTLS:
+		return exportAnyTLSProfile(profile), nil
 	case model.V2RayProtocolWireGuard:
 		return exportWireGuardProfile(profile), nil
 	case model.V2RayProtocolSOCKS:
@@ -97,6 +99,8 @@ func IsExportableV2RayProfile(profile model.V2RayProfile) bool {
 		return strings.TrimSpace(profile.Password) != ""
 	case model.V2RayProtocolHysteria2:
 		return strings.TrimSpace(profile.HysteriaAuth) != ""
+	case model.V2RayProtocolAnyTLS:
+		return strings.TrimSpace(profile.Password) != ""
 	case model.V2RayProtocolWireGuard:
 		return strings.TrimSpace(profile.WireGuardSecretKey) != "" && strings.TrimSpace(profile.WireGuardPeerPublicKey) != ""
 	case model.V2RayProtocolSOCKS, model.V2RayProtocolHTTP:
@@ -128,6 +132,10 @@ func validateV2RayProfileForExport(profile model.V2RayProfile) error {
 	case model.V2RayProtocolHysteria2:
 		if strings.TrimSpace(profile.HysteriaAuth) == "" {
 			return fmt.Errorf("Hysteria2 auth is required")
+		}
+	case model.V2RayProtocolAnyTLS:
+		if strings.TrimSpace(profile.Password) == "" {
+			return fmt.Errorf("anytls password is required")
 		}
 	case model.V2RayProtocolWireGuard:
 		if strings.TrimSpace(profile.WireGuardSecretKey) == "" {
@@ -183,6 +191,41 @@ func exportHysteriaProfile(profile model.V2RayProfile) string {
 	u := url.URL{
 		Scheme:   "hy2",
 		User:     url.User(profile.HysteriaAuth),
+		Host:     net.JoinHostPort(profile.Server, strconv.Itoa(profile.ServerPort)),
+		RawQuery: q.Encode(),
+		Fragment: profile.Name,
+	}
+	return u.String()
+}
+
+// exportAnyTLSProfile writes the link a stored anytls config came from.
+//
+// The password goes in as the whole user info rather than as the second half of
+// a pair, because that is the form generators write and the one both readers
+// agree on. url.User percent-encodes it, so a password holding a colon comes
+// back whole rather than being read as a username.
+func exportAnyTLSProfile(profile model.V2RayProfile) string {
+	q := url.Values{}
+	if profile.SNI != "" {
+		q.Set("sni", profile.SNI)
+	}
+	if profile.ALPN != "" {
+		q.Set("alpn", profile.ALPN)
+	}
+	if profile.AllowInsecure {
+		q.Set("insecure", "1")
+	}
+	// Carried back out. A pin dropped here would be a connection that verified
+	// the first time it was imported and stopped verifying afterwards.
+	if profile.CertFingerprint != "" {
+		q.Set("hpkp", profile.CertFingerprint)
+	}
+	if profile.UTLSFingerprint != "" {
+		q.Set("fp", profile.UTLSFingerprint)
+	}
+	u := url.URL{
+		Scheme:   model.V2RayProtocolAnyTLS,
+		User:     url.User(profile.Password),
 		Host:     net.JoinHostPort(profile.Server, strconv.Itoa(profile.ServerPort)),
 		RawQuery: q.Encode(),
 		Fragment: profile.Name,

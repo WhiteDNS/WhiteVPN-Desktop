@@ -62,7 +62,7 @@ func TestConvertLinksDropsObfuscationWithoutItsPassword(t *testing.T) {
 func TestConvertLinksStillSkipsWhatTheEngineCannotUse(t *testing.T) {
 	for _, link := range []string{
 		"tuic://uuid:pass@node.example.com:443#Tuic",
-		"socks://dXNlcjpwYXNz@node.example.com:1080#Socks",
+		"juicity://uuid:pass@node.example.com:443#Juicity",
 	} {
 		if _, err := ConvertLinks(link); err == nil {
 			t.Fatalf("expected %q to yield nothing", link)
