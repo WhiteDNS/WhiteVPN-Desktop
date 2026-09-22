@@ -209,6 +209,10 @@ const strings = {
   "subs.column.profiles": { en: "Profiles", fa: "پروفایل‌ها" },
   "subs.column.status": { en: "Status", fa: "وضعیت" },
   "subs.builtIn": { en: "Built-in", fa: "داخلی" },
+  "subs.all.hint": {
+    en: "Every list at once · servers from all of them",
+    fa: "همه فهرست‌ها با هم · سرورهای همه آن‌ها",
+  },
   "subs.builtIn.private": {
     en: "Built-in · private servers",
     fa: "داخلی · سرورهای اختصاصی",

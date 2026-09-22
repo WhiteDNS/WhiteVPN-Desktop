@@ -15,6 +15,7 @@ import (
 	"time"
 	"unicode"
 
+	"whitevpn-desktop/internal/mihomoconf"
 	"whitevpn-desktop/internal/model"
 	"whitevpn-desktop/internal/profiles"
 )
@@ -23,6 +24,7 @@ const (
 	whiteDNSVPNSubscriptionID              = model.BuiltInSubscriptionID
 	whiteVPNPrivateSubscriptionID          = model.PrivateBuiltInSubscriptionID
 	whiteDNSVPNSubscriptionName            = "WhiteVPN Public"
+	allSubscriptionsName                   = "All servers"
 	whiteVPNPrivateSubscriptionName        = "WhiteVPN Private"
 	whiteDNSVPNSubscriptionRefreshInterval = 3 * time.Hour
 
@@ -238,7 +240,11 @@ func (a *App) SelectSubscription(id string) (model.AppState, error) {
 	manualAvailable := id == model.ManualServerSourceID && slices.ContainsFunc(a.state.V2RayProfiles, func(profile model.V2RayProfile) bool {
 		return profile.SubscriptionID == ""
 	})
-	if _, ok := findV2RaySubscription(a.state, id); !ok && !model.IsBuiltInSubscription(id) && !manualAvailable {
+	// All is offered once there is more than one list to combine. With a single
+	// list it would be that list under another name, which is a choice that
+	// explains nothing.
+	everyAvailable := model.IsEverySubscription(id) && len(a.state.V2RaySubscriptions) > 1
+	if _, ok := findV2RaySubscription(a.state, id); !ok && !model.IsBuiltInSubscription(id) && !manualAvailable && !everyAvailable {
 		state := a.state
 		a.mu.Unlock()
 		return state, fmt.Errorf("that server source is not in the list")
@@ -282,6 +288,90 @@ func (a *App) selectedSubscriptionID() string {
 // subscriptionBody fetches the selected subscription, ready for the engine.
 func (a *App) subscriptionBody(ctx context.Context) (string, error) {
 	return a.subscriptionBodyFor(ctx, a.selectedSubscriptionID())
+}
+
+// everySubscriptionBody is the "All" source: every list's servers, merged.
+//
+// Each source is read exactly as it would be on its own — same fetch, same
+// snapshot fallback, same parser — and only then merged, so a list that is
+// down behaves here the way it does anywhere else instead of taking the whole
+// pool with it. A source that cannot be read is logged and skipped; the point
+// of All is to have more to choose from, and refusing everything because one
+// provider is unreachable would be the opposite.
+//
+// The merge is what stops two providers' "Germany 01" from being one name, and
+// what stops a server both of them resell from being measured, listed and
+// chosen as if it were two machines. See mihomoconf.MergeProxies.
+func (a *App) everySubscriptionBody(ctx context.Context) (string, error) {
+	sources := a.everySubscriptionSource()
+	if len(sources) == 0 {
+		return "", fmt.Errorf("there are no server lists to combine yet — add a subscription first")
+	}
+
+	merged := make([]mihomoconf.MergedSource, 0, len(sources))
+	var failures int
+	for _, source := range sources {
+		body, err := a.subscriptionBodyFor(ctx, source.id)
+		if err != nil {
+			failures++
+			a.appendRuntimeLog(fmt.Sprintf("combining every list: skipping %s: %v", source.name, err))
+			continue
+		}
+		proxies, _, err := mihomoconf.ParseSubscription(body)
+		if err != nil {
+			failures++
+			a.appendRuntimeLog(fmt.Sprintf("combining every list: %s held nothing usable: %v", source.name, err))
+			continue
+		}
+		merged = append(merged, mihomoconf.MergedSource{Name: source.name, Proxies: proxies})
+	}
+	if len(merged) == 0 {
+		return "", fmt.Errorf("none of the %d server lists could be read", len(sources))
+	}
+
+	document, err := mihomoconf.MergedDocument(mihomoconf.MergeProxies(merged))
+	if err != nil {
+		return "", err
+	}
+	if failures > 0 {
+		a.appendRuntimeLog(fmt.Sprintf("combining every list: %d of %d lists contributed", len(merged), len(sources)))
+	}
+	return document, nil
+}
+
+type subscriptionSource struct {
+	id   string
+	name string
+}
+
+// everySubscriptionSource is every list All draws from, in the order they are
+// merged — which is also the order that decides which copy of a duplicated
+// server survives.
+func (a *App) everySubscriptionSource() []subscriptionSource {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	sources := make([]subscriptionSource, 0, len(a.state.V2RaySubscriptions)+1)
+	for _, subscription := range a.state.V2RaySubscriptions {
+		if model.IsBuiltInSubscription(subscription.ID) && !a.builtInCatalogueUsableLocked(subscription.ID) {
+			continue
+		}
+		sources = append(sources, subscriptionSource{id: subscription.ID, name: subscription.Name})
+	}
+	for _, profile := range a.state.V2RayProfiles {
+		if profile.SubscriptionID == "" {
+			sources = append(sources, subscriptionSource{id: model.ManualServerSourceID, name: "Saved configs"})
+			break
+		}
+	}
+	return sources
+}
+
+// builtInCatalogueUsableLocked reports whether this build can reach a catalogue
+// at all, so a build without one does not spend a fetch failing.
+func (a *App) builtInCatalogueUsableLocked(id string) bool {
+	catalogue, known := builtInCatalogueFor(id)
+	return known && catalogue.available()
 }
 
 // subscriptionBodyWithFallback is subscriptionBody, and the one place this app
@@ -463,6 +553,9 @@ func (a *App) resolveSubscriptionBody(ctx context.Context, id string) (string, s
 
 // fetchSubscriptionBodyFor goes to wherever this subscription actually lives.
 func (a *App) fetchSubscriptionBodyFor(ctx context.Context, id string) (string, error) {
+	if model.IsEverySubscription(id) {
+		return a.everySubscriptionBody(ctx)
+	}
 	if id == model.ManualServerSourceID {
 		a.mu.Lock()
 		manualProfiles := make([]model.V2RayProfile, 0, len(a.state.V2RayProfiles))
@@ -696,6 +789,69 @@ func (a *App) ensureBuiltInCataloguesLocked() {
 	for _, catalogue := range builtInCatalogues() {
 		a.ensureBuiltInSubscriptionLocked(catalogue.id)
 	}
+	a.ensureAllSubscriptionRowLocked()
+}
+
+// ensureAllSubscriptionRowLocked adds or removes the "All" row.
+//
+// It is a row rather than something the page draws for itself, because then
+// selecting it, showing which is in use, and refusing to edit or delete it are
+// the behaviour every other row already has.
+//
+// Offered once somebody has a list of their own and something to combine it
+// with. Two conditions, and both earn their place.
+//
+// **At least one list they added.** This was asked for by people running
+// several providers, and the built-in pair is not that: combining them would
+// mix the private servers with the shared ones, which is the opposite of what
+// choosing Private is for, and the fallback already covers one of them being
+// down. A fresh install should have two rows, not three.
+//
+// **More than one list in total.** With a single list All would be that list
+// under another name, which is a choice that explains nothing.
+//
+// It appears last, after the lists it is made of.
+func (a *App) ensureAllSubscriptionRowLocked() {
+	real, own := 0, 0
+	for _, subscription := range a.state.V2RaySubscriptions {
+		if model.IsEverySubscription(subscription.ID) {
+			continue
+		}
+		real++
+		if !model.IsBuiltInSubscription(subscription.ID) {
+			own++
+		}
+	}
+	for _, profile := range a.state.V2RayProfiles {
+		if profile.SubscriptionID == "" {
+			own++
+			real++
+			break
+		}
+	}
+	idx := findV2RaySubscriptionIndex(a.state.V2RaySubscriptions, model.AllSubscriptionsID)
+
+	if real < 2 || own < 1 {
+		if idx != -1 {
+			a.state.V2RaySubscriptions = append(
+				a.state.V2RaySubscriptions[:idx], a.state.V2RaySubscriptions[idx+1:]...)
+			// Nothing to select any more, so the selection cannot stay on it.
+			if model.IsEverySubscription(a.state.SelectedSubscriptionID) {
+				a.state.SelectedSubscriptionID = model.DefaultAppState().SelectedSubscriptionID
+			}
+		}
+		return
+	}
+
+	if idx == -1 {
+		a.state.V2RaySubscriptions = append(a.state.V2RaySubscriptions, model.V2RaySubscription{
+			ID:   model.AllSubscriptionsID,
+			Name: allSubscriptionsName,
+		})
+		return
+	}
+	a.state.V2RaySubscriptions[idx].Name = allSubscriptionsName
+	a.state.V2RaySubscriptions[idx].URL = ""
 }
 
 func (a *App) ensureBuiltInSubscriptionLocked(id string) int {
