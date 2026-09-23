@@ -239,6 +239,35 @@ keys here, not copied literals.
 > nodes as of 2026-08-04. A link→mihomo converter is required, ported from
 > `SubConvConverter.kt`.
 
+### Switching connection mode from the tray
+
+Asked for in #103: changing between system proxy and tunnel mode meant closing
+the app and starting it again. It did not — a disconnect and reconnect was
+always enough — but nothing said so, because saving the setting produced no
+visible response at all. A control that appears to do nothing teaches people to
+reach for the biggest hammer they have.
+
+Both modes are now in the tray menu, and they are deliberately not the same
+kind of switch.
+
+**System proxy is live.** It is a setting on this machine, not something the
+engine holds, so pointing it at the engine or putting it back touches neither
+the core nor the connection to the server. It is disabled while the tunnel is up
+because the tunnel carries the whole machine and the connect path ignores a
+proxy setting there.
+
+**Tunnel mode reconnects, and says so on the item before it is clicked.** This
+one cannot be changed where it stands: a tunnel adapter needs Administrator, so
+the engine is spawned elevated or not according to the setting, and a running
+process cannot be given or relieved of that. The reconnect is automatic —
+making somebody do it by hand would be most of the inconvenience this was meant
+to remove — but silent would be worse, so the cost is on the label.
+
+The ticks are read back from the state on every refresh rather than left where
+the last click put them, so a change made on the Settings page shows here, and
+one the backend refused — a tunnel on a machine that cannot raise one — does not
+leave a tick claiming otherwise.
+
 ### "All servers", which the phone does not have
 
 Somebody running several providers is not thinking about several lists. They are

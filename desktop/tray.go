@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	_ "embed"
+	"fmt"
 	"runtime"
 	"strings"
 	"sync"
@@ -33,11 +34,13 @@ type trayState struct {
 	ready   bool
 	refresh chan struct{}
 
-	status  *systray.MenuItem
-	toggle  *systray.MenuItem
-	show    *systray.MenuItem
-	quit    *systray.MenuItem
-	stopped bool
+	status      *systray.MenuItem
+	toggle      *systray.MenuItem
+	systemProxy *systray.MenuItem
+	tunnel      *systray.MenuItem
+	show        *systray.MenuItem
+	quit        *systray.MenuItem
+	stopped     bool
 }
 
 // running reports whether there is an icon to restore the window from.
@@ -106,8 +109,14 @@ func (a *App) onTrayReady() {
 	a.tray.status.Disable()
 	systray.AddSeparator()
 	a.tray.toggle = systray.AddMenuItem(words.connect, "")
-	a.tray.show = systray.AddMenuItem(words.show, "")
 	systray.AddSeparator()
+	// The two mode switches, which behave differently for a reason the label
+	// has to carry: see toggleSystemProxyFromTray and toggleTunnelFromTray.
+	settings := a.GetAppState().WhiteVPN
+	a.tray.systemProxy = systray.AddMenuItemCheckbox(words.systemProxy, "", settings.SetSystemProxy)
+	a.tray.tunnel = systray.AddMenuItemCheckbox(words.tunnel, words.tunnelHint, settings.TunEnabled)
+	systray.AddSeparator()
+	a.tray.show = systray.AddMenuItem(words.show, "")
 	a.tray.quit = systray.AddMenuItem(words.quit, "")
 
 	a.tray.markReady(true)
@@ -123,7 +132,8 @@ func (a *App) onTrayReady() {
 	// So the clicks are watched from a goroutine of their own. systray's menu
 	// items are safe to use from any goroutine; it is only this callback that
 	// has to finish.
-	go a.watchTrayClicks(a.tray.toggle.ClickedCh, a.tray.show.ClickedCh, a.tray.quit.ClickedCh)
+	go a.watchTrayClicks(a.tray.toggle.ClickedCh, a.tray.show.ClickedCh, a.tray.quit.ClickedCh,
+		a.tray.systemProxy.ClickedCh, a.tray.tunnel.ClickedCh)
 }
 
 // watchTrayClicks turns menu clicks into actions until the tray quits.
@@ -132,11 +142,15 @@ func (a *App) onTrayReady() {
 // be exercised without standing up a real icon — which needs a desktop session
 // and a bus, and so would only ever be tested by hand on the one platform where
 // it broke.
-func (a *App) watchTrayClicks(toggle, show, quit <-chan struct{}) {
+func (a *App) watchTrayClicks(toggle, show, quit, systemProxy, tunnel <-chan struct{}) {
 	for {
 		select {
 		case <-toggle:
 			go a.toggleFromTray()
+		case <-systemProxy:
+			go a.toggleSystemProxyFromTray()
+		case <-tunnel:
+			go a.toggleTunnelFromTray()
 		case <-show:
 			a.showWindow()
 		case <-quit:
@@ -205,6 +219,144 @@ func (a *App) refreshTray() {
 	} else {
 		a.tray.toggle.Enable()
 	}
+
+	a.refreshTrayModes(state)
+}
+
+// refreshTrayModes puts the two mode items where the settings actually are.
+//
+// Read back from the state rather than left wherever the last click put them:
+// a change made on the Settings page has to show here too, and a change made
+// here that the backend refused — asking for a tunnel on a machine that cannot
+// raise one — must not leave a tick claiming otherwise.
+func (a *App) refreshTrayModes(state model.AppState) {
+	words := a.trayStrings()
+	settings := state.WhiteVPN
+
+	a.tray.systemProxy.SetTitle(words.systemProxy)
+	setChecked(a.tray.systemProxy, settings.SetSystemProxy)
+	// The tunnel carries the whole machine, so a proxy setting as well would be
+	// one hop too many and the connect path ignores it there. Disabled rather
+	// than left looking like a switch that does nothing.
+	if settings.TunEnabled {
+		a.tray.systemProxy.Disable()
+	} else {
+		a.tray.systemProxy.Enable()
+	}
+
+	a.tray.tunnel.SetTitle(words.tunnel)
+	setChecked(a.tray.tunnel, settings.TunEnabled)
+	// Mid-flight is the one time this should not be touched: it reconnects, and
+	// reconnecting something that is already connecting or stopping is how two
+	// engines end up fighting over one adapter.
+	switch state.Runtime.Status {
+	case model.RuntimeConnecting, model.RuntimeStopping:
+		a.tray.tunnel.Disable()
+	default:
+		a.tray.tunnel.Enable()
+	}
+}
+
+func setChecked(item *systray.MenuItem, checked bool) {
+	if checked {
+		item.Check()
+		return
+	}
+	item.Uncheck()
+}
+
+// toggleSystemProxyFromTray turns the machine's proxy setting on or off where
+// it stands.
+//
+// Live, and genuinely so: the system proxy is a setting on this machine, not
+// something the engine holds, so pointing it at the engine or putting it back
+// touches neither the core nor the connection to the server. Somebody who wants
+// their browser to stop going through the tunnel for a minute gets that without
+// losing the tunnel.
+//
+// It does nothing visible while the tunnel is up, because the tunnel carries
+// the whole machine and a proxy setting as well would be one hop too many —
+// which is why the connect path ignores it there. The item is disabled in that
+// state rather than lying about what it would do.
+func (a *App) toggleSystemProxyFromTray() {
+	a.mu.Lock()
+	settings := a.state.WhiteVPN
+	a.mu.Unlock()
+
+	next := settings
+	next.SetSystemProxy = !settings.SetSystemProxy
+	if _, err := a.SaveWhiteVPNSettings(next); err != nil {
+		a.appendRuntimeLog(fmt.Sprintf("could not change the system proxy setting: %v", err))
+		a.notifyTray()
+		return
+	}
+
+	// Applied to what is already running, which is the whole point of doing
+	// this from the tray. A change that only took effect on the next connection
+	// would be the Settings page again, in a smaller window.
+	state := a.GetAppState()
+	if state.Runtime.Status != model.RuntimeConnected || settings.TunEnabled {
+		a.notifyTray()
+		return
+	}
+	if next.SetSystemProxy {
+		if err := a.captureSystemProxy(state.Runtime.ListenPort); err != nil {
+			a.appendRuntimeLog(fmt.Sprintf("could not point this machine at the proxy: %v", err))
+		}
+	} else {
+		a.restoreSystemProxy()
+	}
+	a.notifyTray()
+}
+
+// toggleTunnelFromTray switches tunnel mode, and reconnects to do it.
+//
+// Unlike the system proxy this cannot be changed where it stands, and the
+// reason is not a shortcut taken here: a tunnel adapter needs Administrator, so
+// the engine is spawned elevated or not according to this setting, and a
+// process that is already running cannot be given or relieved of that. The
+// engine has to come up again.
+//
+// So the reconnect is automatic, and the menu item says so before it is clicked
+// rather than after. Doing it silently would drop somebody's connection with no
+// warning; making them do it by hand would be most of the inconvenience this is
+// meant to remove.
+func (a *App) toggleTunnelFromTray() {
+	a.mu.Lock()
+	settings := a.state.WhiteVPN
+	a.mu.Unlock()
+
+	next := settings
+	next.TunEnabled = !settings.TunEnabled
+	saved, err := a.SaveWhiteVPNSettings(next)
+	if err != nil {
+		a.appendRuntimeLog(fmt.Sprintf("could not change tunnel mode: %v", err))
+		a.notifyTray()
+		return
+	}
+	// settingsForThisMachine refuses the tunnel where there is no way to raise
+	// one, so asking for it can leave the setting where it was. Saying nothing
+	// would look like a menu item that does not work.
+	if saved.WhiteVPN.TunEnabled != next.TunEnabled {
+		a.appendRuntimeLog("tunnel mode is not available on this machine")
+		a.notifyTray()
+		return
+	}
+
+	if a.GetAppState().Runtime.Status != model.RuntimeConnected {
+		a.notifyTray()
+		return
+	}
+	a.appendRuntimeLog("tunnel mode changed — reconnecting to apply it")
+	if _, err := a.StopConnection(); err != nil {
+		a.appendRuntimeLog(fmt.Sprintf("could not disconnect to change tunnel mode: %v", err))
+		a.notifyTray()
+		return
+	}
+	if _, err := a.StartWhiteDNSVPNConnection(); err != nil {
+		a.appendRuntimeLog(fmt.Sprintf("could not reconnect after changing tunnel mode: %v", err))
+	}
+	a.notifyTray()
 }
 
 func (a *App) toggleFromTray() {
@@ -263,6 +415,9 @@ type trayWords struct {
 	retry        string
 	show         string
 	quit         string
+	systemProxy  string
+	tunnel       string
+	tunnelHint   string
 }
 
 // The tray is drawn by the system, not by the page, so its words cannot come
@@ -280,6 +435,11 @@ func (a *App) trayStrings() trayWords {
 		retry:        "Retry",
 		show:         "Open WhiteVPN",
 		quit:         "Quit",
+		systemProxy:  "System proxy",
+		tunnel:       "Tunnel mode",
+		// On the item itself, because this is the one that costs something and
+		// the cost should be visible before the click rather than after it.
+		tunnelHint: "Changing this reconnects",
 	}
 	if !strings.EqualFold(a.GetAppState().WhiteVPN.Language, "fa") {
 		return english
@@ -295,6 +455,9 @@ func (a *App) trayStrings() trayWords {
 		retry:        "تلاش دوباره",
 		show:         "باز کردن وایت‌وی‌پی‌ان",
 		quit:         "خروج",
+		systemProxy:  "پروکسی سیستم",
+		tunnel:       "حالت تونل",
+		tunnelHint:   "تغییر این گزینه اتصال را دوباره برقرار می‌کند",
 	}
 }
 
