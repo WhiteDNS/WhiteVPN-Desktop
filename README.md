@@ -47,8 +47,8 @@ Grab the asset for your machine from the
 
 | Platform | Asset |
 |---|---|
-| Windows 10/11, Intel or AMD | `*-windows-x64.zip` |
-| Windows on ARM (Snapdragon, Surface Pro X) | `*-windows-arm64-windows-on-arm.zip` |
+| Windows 10/11, Intel or AMD | `*-windows-x64.msi` to install, or `*-windows-x64.zip` to run in place |
+| Windows on ARM (Snapdragon, Surface Pro X) | `*-windows-arm64-windows-on-arm.msi` or `.zip` |
 | macOS, Apple Silicon | `*-macos-arm64.zip` |
 | macOS, Intel | `*-macos-amd64.zip` |
 | Debian 13+, Ubuntu 24.04+, Fedora 40+ | `*-linux-amd64.deb` / `.rpm`, or `*-linux-arm64.deb` / `.rpm` |

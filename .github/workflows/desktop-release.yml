@@ -231,10 +231,81 @@ jobs:
           path: ${{ steps.archive.outputs.paths }}
           if-no-files-found: error
 
+  # The MSI cannot be cross-compiled. WiX is a .NET tool that only produces MSIs
+  # on Windows, while every other Windows artifact here is built on macOS — so
+  # this job takes the executable the build already produced and wraps it,
+  # rather than building the app a second time.
+  msi:
+    name: whitevpn-desktop-windows-msi
+    needs: build
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - artifact: whitevpn-desktop-windows-x64
+            arch: x64
+          - artifact: whitevpn-desktop-windows-arm64-windows-on-arm
+            arch: arm64
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Resolve desktop version
+        id: desktop-version
+        shell: bash
+        env:
+          INPUT_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || '' }}
+        run: |
+          set -euo pipefail
+          version="$INPUT_VERSION"
+          if [ -z "$version" ] && [[ "${GITHUB_REF_NAME}" == v* ]]; then
+            version="${GITHUB_REF_NAME#v}"
+          fi
+          if [ -z "$version" ]; then
+            version="1.0.0-beta2"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Download the built application
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ matrix.artifact }}
+          path: downloaded
+
+      - name: Install WiX
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Pinned to v5: v7 refuses to run without accepting the Open Source
+          # Maintenance Fee EULA, which is a licensing decision and not one a
+          # build script should make on anybody's behalf.
+          dotnet tool install --global wix --version 5.0.2
+          wix extension add -g WixToolset.UI.wixext/5.0.2
+          wix extension add -g WixToolset.Util.wixext/5.0.2
+
+      - name: Build the MSI
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p desktop/build/bin
+          # The build job uploaded a zip; the MSI needs what is inside it.
+          unzip -o downloaded/*.zip -d desktop/build/bin
+          ls -lh desktop/build/bin
+          make -C desktop VERSION="${{ steps.desktop-version.outputs.version }}" package-windows-msi             MSI_ARCH="${{ matrix.arch }}"             MSI_ASSET_SUFFIX="$(echo '${{ matrix.artifact }}' | sed 's/^whitevpn-desktop-//')"
+          ls -lh desktop/build/releases/*.msi
+
+      - name: Upload the MSI
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: ${{ matrix.artifact }}-msi
+          path: desktop/build/releases/*.msi
+          if-no-files-found: error
+
   publish:
     name: Publish release assets
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: build
+    needs: [build, msi]
     runs-on: ubuntu-22.04
     permissions:
       contents: write
