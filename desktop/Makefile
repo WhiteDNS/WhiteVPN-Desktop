@@ -88,6 +88,9 @@ LINUX_WEBKIT ?= $(if $(findstring webkit2_41,$(LINUX_GO_TAGS)),4.1,4.0)
 LINUX_PACKAGE_FORMATS ?= deb,rpm
 LINUX_ASSET_SUFFIX ?= linux-$(LINUX_CLIENT_ARCH)$(if $(filter 4.1,$(LINUX_WEBKIT)),,-webkit40)
 LINUX_PACKAGE_OUTPUT_DIR ?= build/releases
+MSI_SOURCE_DIR ?= build/bin
+MSI_ASSET_SUFFIX ?= windows-x64
+MSI_ARCH ?= x64
 LINUX_DOCKER ?= docker
 LINUX_DOCKER_IMAGE ?= golang:1.26.5-bookworm
 LINUX_NODE_MAJOR ?= 24
@@ -395,6 +398,12 @@ package-linux: validate-version prepare-package
 	$(MAKE) prepare-embedded-core TARGET_GOOS=linux TARGET_GOARCH="$(LINUX_CLIENT_ARCH)"
 	@$(call wails_build_with_version,GOCACHE="$(GO_BUILD_CACHE)" $(WAILS) build -clean $(WAILS_RELEASE_FLAGS) $(LINUX_WAILS_TAG_FLAGS) $(WAILS_OPTIONAL_UPX_FLAGS) -platform $(LINUX_PLATFORMS))
 	$(MAKE) package-assets
+
+# The MSI is built from an already-built exe, on Windows, because WiX is a .NET
+# tool that only produces MSIs there — every other Windows artifact is
+# cross-compiled from macOS and cannot be.
+package-windows-msi: validate-version
+	APP_NAME="$(APP_NAME)" VERSION="$(APP_VERSION)" PACKAGE_SOURCE_DIR="$(MSI_SOURCE_DIR)" PACKAGE_OUTPUT_DIR="$(LINUX_PACKAGE_OUTPUT_DIR)" WINDOWS_ASSET_SUFFIX="$(MSI_ASSET_SUFFIX)" MSI_ARCH="$(MSI_ARCH)" ./scripts/package-windows-msi.sh
 
 package-linux-distros: package-linux
 	APP_NAME="$(APP_NAME)" VERSION="$(APP_VERSION)" PACKAGE_SOURCE_DIR="build/bin" PACKAGE_OUTPUT_DIR="$(LINUX_PACKAGE_OUTPUT_DIR)" LINUX_ARCH="$(LINUX_CLIENT_ARCH)" LINUX_WEBKIT="$(LINUX_WEBKIT)" LINUX_ASSET_SUFFIX="$(LINUX_ASSET_SUFFIX)" LINUX_PACKAGE_FORMATS="$(LINUX_PACKAGE_FORMATS)" ./scripts/package-linux-dist.sh

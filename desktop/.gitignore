@@ -53,6 +53,9 @@ build/windows/*
 !build/windows/wails.exe.manifest
 !build/windows/icon.ico
 !build/windows/info.json
+# The installer definition is source, not output — the release build reads it.
+!build/windows/installer/
+!build/windows/installer/**
 .cache/
 bin/
 dist/
