@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The Windows installer.
+
+  Windows shipped as a zip holding one self-contained exe, which works and
+  explains nothing: there is no Start menu entry, no uninstall entry, no obvious
+  place for it to live, and updating means remembering where the old copy was
+  put. An installer answers all four, and an MSI in particular is what a machine
+  managed by somebody else can be told to install.
+
+  There is one payload. The engine, wintun and the frontend are all embedded in
+  the executable, so the whole install is one file plus the shortcuts that make
+  it findable.
+
+  Per-machine, into Program Files. The app raises itself to administrator to
+  bring the tunnel up, so it is already an application that expects to be
+  installed for the machine rather than tucked into one profile — and a
+  per-machine MSI is the only shape that deployment tooling can push.
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+
+  <Package
+      Name="WhiteVPN Desktop"
+      Manufacturer="WhiteDNS"
+      Version="$(var.ProductVersion)"
+      UpgradeCode="7d1f4d2e-6a3b-4c58-9f0d-2b8e5a41c7e6"
+      Scope="perMachine"
+      Compressed="yes">
+
+    <!--
+      Upgrades replace, rather than installing a second copy beside the first.
+      AllowSameVersionUpgrades so that reinstalling the same version — which is
+      what somebody does when a build is replaced without the number moving —
+      repairs it instead of refusing.
+    -->
+    <MajorUpgrade
+        AllowSameVersionUpgrades="yes"
+        DowngradeErrorMessage="A newer version of WhiteVPN Desktop is already installed. Remove it first if you mean to go back." />
+
+    <MediaTemplate EmbedCab="yes" />
+
+    <!--
+      The app must not be running while its own executable is replaced.
+      Without this the installer would either fail on a locked file or leave the
+      old copy behind and say it succeeded, and the person would go on using a
+      version they thought they had replaced.
+    -->
+    <util:CloseApplication
+        xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util"
+        Id="CloseWhiteVPN"
+        Target="WhiteVPN Desktop.exe"
+        CloseMessage="yes"
+        RebootPrompt="no"
+        PromptToContinue="yes"
+        Description="WhiteVPN Desktop is running and has to close before it can be updated." />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="WhiteVPN Desktop" />
+    </StandardDirectory>
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="ApplicationProgramsFolder" Name="WhiteVPN Desktop" />
+    </StandardDirectory>
+
+    <Feature Id="Main" Title="WhiteVPN Desktop" Level="1">
+      <ComponentGroupRef Id="ApplicationFiles" />
+      <ComponentRef Id="StartMenuShortcut" />
+      <ComponentRef Id="DesktopShortcut" />
+    </Feature>
+
+    <ComponentGroup Id="ApplicationFiles" Directory="INSTALLFOLDER">
+      <Component Id="MainExecutable" Guid="*">
+        <File Id="WhiteVPNExe"
+              Source="$(var.SourceDir)\WhiteVPN Desktop.exe"
+              Name="WhiteVPN Desktop.exe"
+              KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+
+    <Component Id="StartMenuShortcut" Directory="ApplicationProgramsFolder" Guid="*">
+      <Shortcut Id="StartMenuWhiteVPN"
+                Name="WhiteVPN Desktop"
+                Description="Connect through WhiteVPN"
+                Target="[INSTALLFOLDER]WhiteVPN Desktop.exe"
+                WorkingDirectory="INSTALLFOLDER" />
+      <RemoveFolder Id="RemoveProgramsFolder" Directory="ApplicationProgramsFolder" On="uninstall" />
+      <!--
+        A per-machine package writing a per-user registry key is how a shortcut
+        component gets a KeyPath that Windows accepts; the file itself cannot be
+        one, because a shortcut is not the thing being tracked.
+      -->
+      <RegistryValue Root="HKCU" Key="Software\WhiteDNS\WhiteVPN Desktop"
+                     Name="StartMenuShortcut" Type="integer" Value="1" KeyPath="yes" />
+    </Component>
+
+    <Component Id="DesktopShortcut" Directory="DesktopFolder" Guid="*">
+      <Shortcut Id="DesktopWhiteVPN"
+                Name="WhiteVPN Desktop"
+                Description="Connect through WhiteVPN"
+                Target="[INSTALLFOLDER]WhiteVPN Desktop.exe"
+                WorkingDirectory="INSTALLFOLDER" />
+      <RegistryValue Root="HKCU" Key="Software\WhiteDNS\WhiteVPN Desktop"
+                     Name="DesktopShortcut" Type="integer" Value="1" KeyPath="yes" />
+    </Component>
+
+    <!--
+      The icon the Programs and Features list shows, taken from the executable
+      that is already carrying it rather than shipping a second copy.
+    -->
+    <Icon Id="WhiteVPNIcon" SourceFile="$(var.SourceDir)\WhiteVPN Desktop.exe" />
+    <Property Id="ARPPRODUCTICON" Value="WhiteVPNIcon" />
+    <Property Id="ARPURLINFOABOUT" Value="https://github.com/WhiteDNS/WhiteVPN-Desktop" />
+
+    <!--
+      Offered at the end of the install, unticked is not an option WiX's minimal
+      UI gives — so it is simply offered. Somebody installing a VPN client
+      usually means to use it now.
+    -->
+    <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
+    <ui:WixUI Id="WixUI_InstallDir" />
+  </Package>
+</Wix>
