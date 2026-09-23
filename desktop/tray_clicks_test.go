@@ -22,10 +22,12 @@ func TestTheTrayClickLoopStillServesRefreshes(t *testing.T) {
 	toggle := make(chan struct{})
 	show := make(chan struct{})
 	quit := make(chan struct{})
+	systemProxy := make(chan struct{})
+	tunnel := make(chan struct{})
 
 	done := make(chan struct{})
 	go func() {
-		app.watchTrayClicks(toggle, show, quit)
+		app.watchTrayClicks(toggle, show, quit, systemProxy, tunnel)
 		close(done)
 	}()
 
