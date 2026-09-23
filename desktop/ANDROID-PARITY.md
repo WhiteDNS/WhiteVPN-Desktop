@@ -232,11 +232,37 @@ keys here, not copied literals.
 | Selected subscription | `white_dns_user_subscriptions` / `selected_subscription`, default the built-in one | `[x]` |
 | Built-in catalogues, private and public | Two lists, the private one selected by default | `[x]` |
 | User subscriptions | Add, Edit, Test, Refresh, Delete per card | `[ ]` |
+| Every list at once | — | `[—]` desktop only; the phone connects through one subscription and has no equivalent |
 | Import formats | HTTPS URL (HTTP rejected), Clash/Xray JSON, mihomo YAML, or share links; 2 MB cap | `[x]` share links, mihomo YAML **and** JSON, sing-box JSON, Xray JSON or a list of Xray configs, and base64 around any of them. One entry point — `mihomoconf.ParseSubscription` — so everything downstream sees the same `[]Proxy` |
 
 > The live catalogue is **base64-encoded share links**, not mihomo YAML — 864
 > nodes as of 2026-08-04. A link→mihomo converter is required, ported from
 > `SubConvConverter.kt`.
+
+### "All servers", which the phone does not have
+
+Somebody running several providers is not thinking about several lists. They are
+thinking about one pool of servers and wanting the best of it, and having to
+guess which list today's working node is in is the app making its own
+bookkeeping their problem. So the sources are read one at a time, exactly as
+they are on their own, and merged into one body that everything downstream
+treats like any other subscription.
+
+Two things the merge has to handle. **Names collide** — providers name nodes for
+where they are, so "Germany 01" is in most lists, and the engine keys proxies by
+name; a repeat is qualified with the subscription it came from, which is also
+the answer to "where is this node from" that a merged list otherwise loses.
+**The same server appears twice** — providers resell each other, and one machine
+listed twice would be measured twice, shown twice, and chosen between as if it
+were two; the earlier list wins.
+
+Offered only once the user has a list of their own: combining the two built-in
+catalogues would mix the private servers with the shared ones, which is the
+opposite of what choosing Private is for.
+
+A merged list is never snapshotted. It is derived from lists that each keep
+their own snapshot, and a copy of it would freeze something that can disagree
+with what it was made from.
 
 ### The two built-in catalogues
 

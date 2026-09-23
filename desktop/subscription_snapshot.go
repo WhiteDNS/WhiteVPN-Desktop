@@ -173,5 +173,10 @@ func (a *App) forgetSubscriptionSnapshot(id string) {
 // time it is asked for, so it cannot fail to be available and a second copy of
 // it could only go stale.
 func subscriptionIsStorable(id string) bool {
-	return strings.TrimSpace(id) != model.ManualServerSourceID
+	id = strings.TrimSpace(id)
+	// Manual configs are already in the state, and a merged list is derived
+	// from the others rather than fetched — keeping a copy of either would
+	// freeze something that can disagree with what it was made from, and the
+	// sources it is built from each keep their own snapshot anyway.
+	return id != model.ManualServerSourceID && !model.IsEverySubscription(id)
 }

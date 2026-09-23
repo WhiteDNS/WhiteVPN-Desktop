@@ -54,6 +54,15 @@ const (
 	// stored as profiles, not as a subscription.
 	ManualServerSourceID = "manual"
 
+	// AllSubscriptionsID names every source at once: the servers from every
+	// subscription and every pasted config, in one list.
+	//
+	// Somebody with four providers added is not thinking about four lists. They
+	// are thinking about one pool of servers and wanting the best of it, and
+	// having to guess which list today's working node is in is the app making
+	// its own bookkeeping their problem.
+	AllSubscriptionsID = "all"
+
 	DefaultConnectionProfileID = "default"
 	DefaultResolverProfileID   = "resolver-default"
 	DefaultSettingsProfileID   = "settings-default"
@@ -83,6 +92,9 @@ const (
 // because it is the one this service would rather people were on: fewer users
 // per address, so less of the reputation damage that gets a shared exit blocked.
 var BuiltInSubscriptionIDs = []string{PrivateBuiltInSubscriptionID, BuiltInSubscriptionID}
+
+// IsEverySubscription reports whether this id means "all of them at once".
+func IsEverySubscription(id string) bool { return id == AllSubscriptionsID }
 
 // IsBuiltInSubscription reports whether this id names a catalogue the app ships
 // with rather than one somebody added.

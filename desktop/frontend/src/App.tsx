@@ -192,12 +192,16 @@ const minNoiseSize = 1;
 const maxNoiseSize = 1280;
 const whiteDNSVPNSubscriptionID = "whitedns-vpn";
 const whiteVPNPrivateSubscriptionID = "whitevpn-private";
+// Every list at once. Not a subscription of its own — a view over the others —
+// but it is listed as a row so that selecting it, showing it in use, and
+// refusing to edit or delete it are the behaviour every row already has.
+const allSubscriptionsID = "all";
 // The catalogues the app ships with. Neither can be edited or removed, and
 // neither shows an address, because the app holds theirs rather than storing
 // them. Mirrors model.BuiltInSubscriptionIDs.
 const builtInSubscriptionIDs = [whiteVPNPrivateSubscriptionID, whiteDNSVPNSubscriptionID];
 function isBuiltInSubscription(id: string): boolean {
-  return builtInSubscriptionIDs.includes(id);
+  return builtInSubscriptionIDs.includes(id) || id === allSubscriptionsID;
 }
 const manualServerSourceID = "manual";
 const manualConfigLinkPattern = /\b(?:vless|vmess|trojan|ss|shadowsocks|hysteria|hysteria2|hy2|anytls|wireguard|wg):\/\/\S+/i;
@@ -3884,9 +3888,11 @@ function V2RaySubscriptionsPage({
                             )}
                             <span className={cn("truncate text-xs", builtIn ? "text-muted-foreground" : "font-mono", inTheClear && "text-amber-600 dark:text-amber-400")} title={inTheClear ? t("subs.inTheClear") : undefined}>
                               {builtIn
-                                ? subscription.id === whiteVPNPrivateSubscriptionID
-                                  ? t("subs.builtIn.private")
-                                  : t("subs.builtIn.public")
+                                ? subscription.id === allSubscriptionsID
+                                  ? t("subs.all.hint")
+                                  : subscription.id === whiteVPNPrivateSubscriptionID
+                                    ? t("subs.builtIn.private")
+                                    : t("subs.builtIn.public")
                                 : subscription.url}
                             </span>
                           </span>

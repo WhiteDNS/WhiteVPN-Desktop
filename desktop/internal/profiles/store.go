@@ -532,6 +532,7 @@ func keepSelectionsForKnownSubscriptions(
 		known[id] = struct{}{}
 	}
 	known[model.ManualServerSourceID] = struct{}{}
+	known[model.AllSubscriptionsID] = struct{}{}
 	for _, subscription := range subscriptions {
 		known[subscription.ID] = struct{}{}
 	}
@@ -558,6 +559,9 @@ func normalizeSelectedSubscription(selected string, subscriptions []model.V2RayS
 		// into this state file yet.
 		return selected
 	}
+	if model.IsEverySubscription(selected) && len(subscriptions) > 1 {
+		return selected
+	}
 	for _, subscription := range subscriptions {
 		if subscription.ID == selected && selected != "" {
 			return selected
@@ -580,7 +584,8 @@ func normalizeV2RaySubscriptions(subscriptions []model.V2RaySubscription) []mode
 		// A subscription with no address is unusable and dropped - except the
 		// built-in catalogues, whose addresses the app keeps in code so that
 		// they are not carried in the state where they could be read.
-		if subscription.URL == "" && !model.IsBuiltInSubscription(subscription.ID) {
+		if subscription.URL == "" && !model.IsBuiltInSubscription(subscription.ID) &&
+			!model.IsEverySubscription(subscription.ID) {
 			continue
 		}
 		if _, ok := seen[subscription.ID]; ok {

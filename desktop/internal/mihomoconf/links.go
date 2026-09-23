@@ -1437,6 +1437,13 @@ type nameRegistry struct {
 
 func newNameRegistry() *nameRegistry { return &nameRegistry{seen: map[string]int{}} }
 
+// taken reports whether this exact name has been handed out already, which is
+// what lets a merge qualify only the names that need it.
+func (r *nameRegistry) taken(name string) bool {
+	_, present := r.seen[name]
+	return present
+}
+
 func (r *nameRegistry) register(name string) string {
 	index, present := r.seen[name]
 	if !present {
