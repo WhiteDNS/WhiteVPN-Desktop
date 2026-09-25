@@ -15,11 +15,33 @@ CORE_DIR="${FLCLASH_DIR}/core"
 MIHOMO_DIR="${CORE_DIR}/Clash.Meta"
 
 FLCLASH_REPO="https://github.com/chen08209/FlClash.git"
+# FlClash and its mihomo patch are pinned separately and deliberately do not
+# move together.
+#
+# The patch had to advance for v1.19.30: the v0.8.94 one calls dns.ReCreateServer
+# with the signature it had before, and the build fails to compile. The v0.8.95
+# patch fixes that.
+#
+# The tree must not. FlClash rewrote its action protocol in v0.8.95 — action.go
+# gone, message.go and method.go in its place — and internal/engine speaks the
+# older one. What that combination looks like is worse than a build failure:
+# every call returns success, so validateConfig accepts unparseable YAML and
+# reports nothing wrong. The positive tests all still pass, because they assert
+# that a good config is accepted and it is. Only the negative control caught it.
+#
+# Moving the tree therefore means porting internal/engine to the new protocol
+# first, in its own change, with those negative tests as the evidence.
 FLCLASH_COMMIT="7c831855efedceb1a72bd0b4c18da026593d0853"
 MIHOMO_REPO="https://github.com/MetaCubeX/mihomo.git"
-MIHOMO_TAG="v1.19.29"
+MIHOMO_TAG="v1.19.30"
 FLCLASH_PATCH_REPO="https://github.com/chen08209/Clash.Meta.git"
-FLCLASH_PATCH_COMMIT="80362fc1895dcf60b79b562896653046e0687413"
+FLCLASH_PATCH_COMMIT="0f7f05adff5e2c49775a112dcfe05a6aa36fda0c"
+
+# The one hunk the FlClash commit and mihomo v1.19.30 both touch, and the
+# recorded answer to it. Kept beside the pins so that moving one without the
+# other is visible.
+KNOWN_CONFLICT="hub/executor/executor.go"
+NTP_PATCH="${ROOT_DIR}/scripts/patches/flclash-ntp-after-dns.patch"
 
 log() { printf '%s\n' "$*"; }
 die() { printf '%s\n' "$*" >&2; exit 1; }
@@ -48,6 +70,16 @@ actual_flclash="$(git -C "${FLCLASH_DIR}" rev-parse HEAD)"
   die "FlClash is at ${actual_flclash}, expected ${FLCLASH_COMMIT}"
 
 # --- mihomo: the engine itself ----------------------------------------------
+# A tree fetched for an older pin does not know the new tag, and the checks below
+# would stop with an accurate complaint and no way forward. This is a build input
+# rather than anything anybody edits — it is produced entirely by the clone just
+# below — so the answer to "wrong version on disk" is to fetch the right one.
+if [[ -f "${MIHOMO_DIR}/go.mod" ]] &&
+  ! git -C "${MIHOMO_DIR}" rev-parse --verify "${MIHOMO_TAG}^{commit}" >/dev/null 2>&1; then
+  log "Engine source on disk predates ${MIHOMO_TAG}; fetching it again."
+  rm -rf "${MIHOMO_DIR}"
+fi
+
 if [[ ! -f "${MIHOMO_DIR}/go.mod" ]]; then
   if [[ -e "${MIHOMO_DIR}" && -n "$(find "${MIHOMO_DIR}" -mindepth 1 -maxdepth 1 2>/dev/null)" ]]; then
     die "mihomo checkout is present but incomplete: ${MIHOMO_DIR}"
@@ -61,10 +93,31 @@ if [[ ! -f "${MIHOMO_DIR}/go.mod" ]]; then
   # CI runner that has not been told who it is, and every developer who has
   # just installed git. It goes on the command line so nothing outside this
   # tree is configured on the way past.
-  git -c commit.gpgsign=false \
+  if ! git -c commit.gpgsign=false \
     -c user.name="WhiteVPN Desktop build" \
     -c user.email="build@localhost" \
-    -C "${MIHOMO_DIR}" cherry-pick "${FLCLASH_PATCH_COMMIT}"
+    -C "${MIHOMO_DIR}" cherry-pick "${FLCLASH_PATCH_COMMIT}"; then
+    # One hunk is known to collide and has a known answer. Anything else is a
+    # change upstream made that nobody has looked at, and guessing at it would
+    # produce an engine whose behaviour no one chose.
+    conflicted="$(git -C "${MIHOMO_DIR}" diff --diff-filter=U --name-only)"
+    [[ "${conflicted}" == "${KNOWN_CONFLICT}" ]] ||
+      die "cherry-picking the FlClash commit onto ${MIHOMO_TAG} conflicts where this script has no recorded answer:
+${conflicted}
+Resolve it by hand, then record the resolution the way ${NTP_PATCH##*/} records the known one."
+
+    log "Resolving the known ${KNOWN_CONFLICT} conflict..."
+    # FlClash's side first, so its edits to the surrounding lines survive; the
+    # patch then puts mihomo's newer NTP ordering back on top of them.
+    git -C "${MIHOMO_DIR}" checkout --theirs "${KNOWN_CONFLICT}"
+    git -C "${MIHOMO_DIR}" apply "${NTP_PATCH}" ||
+      die "the recorded resolution no longer applies: ${NTP_PATCH}"
+    git -C "${MIHOMO_DIR}" add "${KNOWN_CONFLICT}"
+    git -c commit.gpgsign=false \
+      -c user.name="WhiteVPN Desktop build" \
+      -c user.email="build@localhost" \
+      -C "${MIHOMO_DIR}" cherry-pick --continue --no-edit
+  fi
 fi
 
 # Same checks Android's script makes, for the same reason.
