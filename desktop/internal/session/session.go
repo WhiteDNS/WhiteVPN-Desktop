@@ -15,6 +15,7 @@ import (
 	yaml "gopkg.in/yaml.v3"
 
 	"whitevpn-desktop/internal/engine"
+	"whitevpn-desktop/internal/fragment"
 	"whitevpn-desktop/internal/mihomoconf"
 )
 
@@ -98,7 +99,8 @@ type Options struct {
 	// Noise pads WireGuard proxies so their shape is less recognisable. It
 	// reaches nothing else, because the noise is AmneziaWG's and mihomo has
 	// nowhere to put it on a vless or trojan proxy.
-	Noise mihomoconf.AmneziaNoise
+	Noise     mihomoconf.AmneziaNoise
+	Fragments fragment.Settings
 
 	// FrontingIP reaches every eligible node through this address instead of the
 	// one its name resolves to, while still presenting the name. Empty means the
@@ -113,6 +115,15 @@ type Options struct {
 	// PipeSecurityDescriptor widens the Windows control channel for unelevated
 	// development. Leave empty in production.
 	PipeSecurityDescriptor string
+}
+
+func (o Options) Clone() Options {
+	o.Prefer = append([]string(nil), o.Prefer...)
+	o.Exclude = append([]string(nil), o.Exclude...)
+	o.SplitTunnel.Processes = append([]string(nil), o.SplitTunnel.Processes...)
+	o.Direct.Domains = append([]string(nil), o.Direct.Domains...)
+	o.Direct.IPs = append([]string(nil), o.Direct.IPs...)
+	return o
 }
 
 // Session is a connected engine.
@@ -133,7 +144,8 @@ type Session struct {
 	// seeded is how many of the sampled nodes answered before the group was
 	// selected. It is worth logging: a connect where nothing answered says
 	// something about the network, not about the catalogue.
-	seeded int
+	seeded       int
+	fragmentMode string
 
 	// tunnelUnverified is set when the tunnel was accepted without being checked,
 	// which happens on platforms that have no way to read an adapter's routes yet.
@@ -146,6 +158,9 @@ type Session struct {
 // Seeded is how many sampled nodes answered a delay test before the automatic
 // group was asked to choose.
 func (s *Session) Seeded() int { return s.seeded }
+
+// FragmentMode is the variant that actually connected, including fallback.
+func (s *Session) FragmentMode() string { return s.fragmentMode }
 
 // TunnelUnverified is non-nil when the tunnel is up but could not be inspected,
 // so the caller can say so instead of implying it was checked.
@@ -219,6 +234,23 @@ func (s *Session) Engine() *engine.Process { return s.process }
 // answers startListener with success even when it could not create a tunnel, and
 // a config it accepts may still name a server that refuses to talk.
 func Connect(ctx context.Context, opts Options) (*Session, error) {
+	connected, err := ConnectOwned(ctx, opts)
+	if err != nil {
+		if connected != nil {
+			_ = connected.Close()
+		}
+		return nil, err
+	}
+	return connected, nil
+}
+
+// ConnectOwned transfers partial startup ownership to the caller on failure.
+// The main connection manager must join Stop before allowing another owner.
+func ConnectOwned(ctx context.Context, opts Options) (*Session, error) {
+	return connectFragmentVariants(ctx, opts, connectOwnedOnce)
+}
+
+func connectOwnedOnce(ctx context.Context, opts Options) (*Session, error) {
 	opts = withDefaults(opts)
 
 	document, candidates, err := PrepareConfig(opts)
@@ -240,7 +272,7 @@ func Connect(ctx context.Context, opts Options) (*Session, error) {
 	// failures included, goes to stdout. See corereason.go.
 	reasons := newCoreReasonTap()
 
-	process, err := engine.Spawn(ctx, engine.SpawnOptions{
+	process, err := engine.SpawnOwned(ctx, engine.SpawnOptions{
 		CorePath:       opts.CorePath,
 		WorkingDir:     opts.HomeDir,
 		ConnectTimeout: 20 * time.Second,
@@ -251,10 +283,9 @@ func Connect(ctx context.Context, opts Options) (*Session, error) {
 		Elevated:           opts.Tun.Enabled,
 		SecurityDescriptor: opts.PipeSecurityDescriptor,
 	})
-	if err != nil {
+	if process == nil {
 		return nil, err
 	}
-
 	session := &Session{
 		process:    process,
 		mixedPort:  opts.MixedPort,
@@ -266,12 +297,14 @@ func Connect(ctx context.Context, opts Options) (*Session, error) {
 		automatic: len(candidates) > 0 && len(opts.Prefer) == 0,
 		reasons:   reasons,
 	}
+	if err != nil {
+		return session, err
+	}
 	// Any failure from here on leaves an engine running, so it has to be stopped
 	// rather than abandoned: an abandoned one keeps its listeners, and on the TUN
 	// path its adapter and routes as well.
 	if err := session.start(ctx, opts); err != nil {
-		_ = session.Close()
-		return nil, err
+		return session, err
 	}
 	return session, nil
 }
@@ -658,6 +691,13 @@ func (s *Session) Close() error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
+	return s.Stop(ctx)
+}
+
+func (s *Session) Stop(ctx context.Context) error {
+	if s.process == nil {
+		return nil
+	}
 	return s.process.Stop(ctx)
 }
 
@@ -697,6 +737,10 @@ func PrepareConfig(opts Options) (string, []string, error) {
 		// Before fronting, which only rewrites addresses: the two are
 		// independent and a WireGuard node can have both.
 		proxies, _ = mihomoconf.ApplyAmneziaNoise(proxies, opts.Noise)
+		proxies, err = mihomoconf.ApplyFragments(proxies, opts.Fragments)
+		if err != nil {
+			return "", nil, fmt.Errorf("session: fragment settings: %w", err)
+		}
 		if opts.FrontingIP != "" {
 			// Nodes fronting cannot be applied to are left reachable at their own
 			// address rather than dropped: a front that covers most of the list is
@@ -728,6 +772,9 @@ func PrepareConfig(opts Options) (string, []string, error) {
 		}
 		group = mihomoconf.SelectGroup
 	} else if looksLikeMihomoDocument(body) {
+		if opts.Fragments.Enabled {
+			return "", nil, fmt.Errorf("session: fragments require inline proxy definitions; import the provider's nodes first")
+		}
 		// A mihomo document whose proxies could not be read as a list — the
 		// usual reason is `proxy-providers`, where the nodes are fetched by the
 		// engine rather than written inline. There is nothing to extract, so it

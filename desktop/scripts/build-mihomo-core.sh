@@ -14,8 +14,8 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 THIRD_PARTY_DIR="${MIHOMO_THIRD_PARTY_DIR:-${ROOT_DIR}/third_party}"
-CORE_DIR="${THIRD_PARTY_DIR}/flclash/core"
-MIHOMO_TAG="v1.19.29"
+CORE_DIR="${THIRD_PARTY_DIR}/flclash-whitevpn/core"
+source "${ROOT_DIR}/scripts/mihomo-pins.sh"
 
 TARGET_GOOS="${TARGET_GOOS:-$(go env GOOS)}"
 TARGET_GOARCH="${TARGET_GOARCH:-$(go env GOARCH)}"
@@ -30,6 +30,10 @@ binary="mihomo-${TARGET_GOOS}-${TARGET_GOARCH}"
 [[ "${TARGET_GOOS}" == "windows" ]] && binary="${binary}.exe"
 
 mkdir -p "${DEST_DIR}"
+if [[ "${FORCE_MIHOMO_CORE_BUILD:-0}" != "1" && -f "${DEST_DIR}/${binary}" && -f "${DEST_DIR}/${binary}.build-id" && "$(<"${DEST_DIR}/${binary}.build-id")" == "${MIHOMO_BUILD_ID}" ]]; then
+  printf 'Pinned engine already built: %s\n' "${DEST_DIR}/${binary}"
+  exit 0
+fi
 printf 'Building mihomo %s for %s/%s...\n' "${MIHOMO_TAG}" "${TARGET_GOOS}" "${TARGET_GOARCH}"
 
 (
@@ -38,16 +42,19 @@ printf 'Building mihomo %s for %s/%s...\n' "${MIHOMO_TAG}" "${TARGET_GOOS}" "${T
   # replace directive at the pinned upstream tree leaves it slightly out of
   # date. Android's build script tidies for the same reason.
   go mod tidy
+  go mod verify
+  CGO_ENABLED=0 go test -tags=with_gvisor github.com/metacubex/mihomo/adapter/outbound -run Fragment
   CGO_ENABLED=0 GOOS="${TARGET_GOOS}" GOARCH="${TARGET_GOARCH}" \
     go build \
     -tags=with_gvisor \
     -trimpath \
-    -ldflags "-X github.com/metacubex/mihomo/constant.Version=${MIHOMO_TAG} -w -s" \
+    -ldflags "-X github.com/metacubex/mihomo/constant.Version=${MIHOMO_TAG}-whitevpn-fragments-${MIHOMO_COMMIT:0:12} -w -s" \
     -o "${DEST_DIR}/${binary}" \
     .
 )
 
 chmod 755 "${DEST_DIR}/${binary}" 2>/dev/null || true
+printf '%s\n' "${MIHOMO_BUILD_ID}" > "${DEST_DIR}/${binary}.build-id"
 printf 'Built %s\n' "${DEST_DIR}/${binary}"
 
 # mihomo creates the Windows adapter through wintun, which it loads from beside

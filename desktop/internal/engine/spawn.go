@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"os/exec"
+	"sync"
 	"time"
 )
 
@@ -96,10 +97,16 @@ type Process struct {
 	child    childProcess
 	listener net.Listener
 	exited   chan error
+	exitDone chan struct{}
+	stopMu   sync.Mutex
 }
 
 // Exited carries the core's exit status, once.
 func (p *Process) Exited() <-chan error { return p.exited }
+
+// ExitDone broadcasts confirmed process exit; it is safe to observe and retry
+// cleanup without consuming the one-shot exit-status channel.
+func (p *Process) ExitDone() <-chan struct{} { return p.exitDone }
 
 // PID is the core's process id, or zero once it has gone.
 func (p *Process) PID() int {
@@ -115,6 +122,21 @@ func (p *Process) PID() int {
 // endpoint as its only argument and dials back. So the endpoint is created and
 // listened on here first, then handed over.
 func Spawn(ctx context.Context, opts SpawnOptions) (*Process, error) {
+	p, err := SpawnOwned(ctx, opts)
+	if err != nil {
+		if p != nil {
+			cleanup, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			_ = p.Stop(cleanup)
+			cancel()
+		}
+		return nil, err
+	}
+	return p, nil
+}
+
+// SpawnOwned returns the process even when its callback/handshake fails. The
+// caller remains responsible for confirmed cleanup of that partial startup.
+func SpawnOwned(ctx context.Context, opts SpawnOptions) (*Process, error) {
 	if opts.CorePath == "" {
 		return nil, errors.New("engine: CorePath is required")
 	}
@@ -188,24 +210,20 @@ func Spawn(ctx context.Context, opts SpawnOptions) (*Process, error) {
 		child = ordinaryChild{cmd: cmd}
 	}
 
-	conn, exited, err := acceptWithin(listener, child, opts.ConnectTimeout)
+	p := &Process{child: child, listener: listener, exited: make(chan error, 1), exitDone: make(chan struct{})}
+	go func() { err := child.Wait(); p.exited <- err; close(p.exitDone) }()
+	conn, err := acceptWithin(ctx, listener, p.exitDone, opts.ConnectTimeout)
 	if err != nil {
 		_ = listener.Close()
-		_ = child.Kill()
 		cleanupEndpoint(endpoint)
-		return nil, err
+		return p, err
 	}
-
-	return &Process{
-		Client:   NewClient(conn, opts.EventBuffer),
-		child:    child,
-		listener: listener,
-		exited:   exited,
-	}, nil
+	p.Client = NewClient(conn, opts.EventBuffer)
+	return p, nil
 }
 
 // acceptWithin waits for the core to dial back, giving up early if it dies.
-func acceptWithin(listener net.Listener, child childProcess, timeout time.Duration) (net.Conn, chan error, error) {
+func acceptWithin(ctx context.Context, listener net.Listener, exited <-chan struct{}, timeout time.Duration) (net.Conn, error) {
 	type accepted struct {
 		conn net.Conn
 		err  error
@@ -216,25 +234,21 @@ func acceptWithin(listener net.Listener, child childProcess, timeout time.Durati
 		accepts <- accepted{conn, err}
 	}()
 
-	exited := make(chan error, 1)
-	waited := make(chan error, 1)
-	go func() { waited <- child.Wait() }()
-
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
 
 	select {
 	case a := <-accepts:
 		if a.err != nil {
-			return nil, nil, fmt.Errorf("engine: accept: %w", a.err)
+			return nil, fmt.Errorf("engine: accept: %w", a.err)
 		}
-		// Keep forwarding the exit status now that someone may care about it.
-		go func() { exited <- <-waited }()
-		return a.conn, exited, nil
-	case err := <-waited:
-		return nil, nil, fmt.Errorf("%w: %v", ErrCoreExited, err)
+		return a.conn, nil
+	case <-exited:
+		return nil, ErrCoreExited
 	case <-timer.C:
-		return nil, nil, fmt.Errorf("engine: core did not connect within %s", timeout)
+		return nil, fmt.Errorf("engine: core did not connect within %s", timeout)
+	case <-ctx.Done():
+		return nil, ctx.Err()
 	}
 }
 
@@ -242,6 +256,19 @@ func acceptWithin(listener net.Listener, child childProcess, timeout time.Durati
 // tunnel adapter and routes behind, which is the mess crash recovery exists for
 // and is better not created in the first place.
 func (p *Process) Stop(ctx context.Context) error {
+	p.stopMu.Lock()
+	defer p.stopMu.Unlock()
+	select {
+	case <-p.exitDone:
+		if p.Client != nil {
+			_ = p.Client.Close()
+		}
+		if p.listener != nil {
+			_ = p.listener.Close()
+		}
+		return nil
+	default:
+	}
 	if p.Client != nil {
 		shutdownCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 		_ = p.Shutdown(shutdownCtx)
@@ -263,12 +290,12 @@ func (p *Process) Stop(ctx context.Context) error {
 	// mode, does not. Kill is the last resort for a core wedged badly enough
 	// that it is no longer reading its own socket.
 	select {
-	case err := <-p.exited:
-		return err
+	case <-p.exitDone:
+		return nil
 	case <-time.After(5 * time.Second):
-		return p.killAfterFailedShutdown(errors.New("engine: core did not exit cleanly"))
+		return p.killAfterFailedShutdown(ctx, errors.New("engine: core did not exit cleanly"))
 	case <-ctx.Done():
-		return p.killAfterFailedShutdown(ctx.Err())
+		return p.killAfterFailedShutdown(ctx, ctx.Err())
 	}
 }
 
@@ -281,9 +308,14 @@ func (p *Process) Stop(ctx context.Context) error {
 // machine has no internet and nothing on screen explains why". Reporting it is
 // the least that is owed; silently discarding the error would leave that state
 // with no trace at all.
-func (p *Process) killAfterFailedShutdown(cause error) error {
+func (p *Process) killAfterFailedShutdown(ctx context.Context, cause error) error {
 	if err := p.child.Kill(); err != nil {
 		return fmt.Errorf("%w, and could not be stopped (%v): its tunnel may still be up — end the mihomo process (pid %d) in Task Manager", cause, err, p.PID())
 	}
-	return fmt.Errorf("%w and was stopped", cause)
+	select {
+	case <-p.exitDone:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }

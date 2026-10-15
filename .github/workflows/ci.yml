@@ -154,9 +154,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            desktop/third_party/flclash
+            desktop/third_party/flclash-whitevpn
             desktop/cores
-          key: engine-${{ runner.os }}-${{ hashFiles('desktop/scripts/setup-mihomo-core.sh', 'desktop/scripts/build-mihomo-core.sh', 'desktop/scripts/patches/*.patch') }}
+          key: engine-${{ runner.os }}-${{ hashFiles('desktop/scripts/setup-mihomo-core.sh', 'desktop/scripts/build-mihomo-core.sh', 'desktop/scripts/mihomo-pins.sh') }}
 
       - name: Build the engine
         working-directory: desktop

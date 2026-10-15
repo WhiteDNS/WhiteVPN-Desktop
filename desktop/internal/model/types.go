@@ -317,7 +317,8 @@ type SettingsProfile struct {
 }
 
 type RuntimeStatus struct {
-	Status string `json:"status"`
+	FragmentMode string `json:"fragmentMode,omitempty"`
+	Status       string `json:"status"`
 	// Engine names what is running: "mihomo" for the engine the phone app uses,
 	// empty for the Xray path.
 	//

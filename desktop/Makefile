@@ -276,9 +276,7 @@ prepare-embedded-core:
 	@set -e; \
 	core="mihomo-$(TARGET_GOOS)-$(TARGET_GOARCH)"; \
 	if [ "$(TARGET_GOOS)" = "windows" ]; then core="$$core.exe"; fi; \
-	if [ ! -f "cores/$$core" ]; then \
-		$(MAKE) mihomo-core TARGET_GOOS="$(TARGET_GOOS)" TARGET_GOARCH="$(TARGET_GOARCH)"; \
-	fi; \
+	$(MAKE) mihomo-core TARGET_GOOS="$(TARGET_GOOS)" TARGET_GOARCH="$(TARGET_GOARCH)"; \
 	chmod 755 "cores/$$core"; \
 	printf 'Embedding engine %s\n' "cores/$$core"
 

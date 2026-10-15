@@ -40,6 +40,7 @@ import {
   Youtube,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { FragmentSettingsPanel } from "./FragmentSettingsPanel";
 import type { ReactNode } from "react";
 
 import {
@@ -2420,6 +2421,14 @@ function WhiteDNSVPNPage({
                 wrote to the V2Ray settings profile, which only the Xray path
                 reads. Under the engine this app now runs they changed nothing.
                 One place to change a setting is worth more than two. */}
+            <DashboardRow
+              icon={<SlidersHorizontal className="size-4" />}
+              label={t("fragments.title")}
+              value={runtime.status === "connected" && runtime.fragmentMode
+                ? t(`fragments.mode.${runtime.fragmentMode}` as StringKey)
+                : t(state.whiteVpn.fragments?.enabled ? "fragments.on" : "fragments.off")}
+              onClick={() => { sessionStorage.setItem("whitevpn-settings-section", "fragments"); onNavigate("settings"); }}
+            />
             <p className="pt-1 text-xs text-muted-foreground">{t("vpn.moreSettings")}</p>
             <Button variant="outline" size="sm" className="justify-self-start" onClick={() => onNavigate("settings")}>
               <Settings className="size-3.5" />
@@ -6392,6 +6401,13 @@ function WhiteVPNSettingsPage({
 
   const dnsMode = draft.dnsPrivacy.mode;
 
+  useEffect(() => {
+    if (stored && sessionStorage.getItem("whitevpn-settings-section") === "fragments") {
+      sessionStorage.removeItem("whitevpn-settings-section");
+      document.getElementById("fragment-settings")?.scrollIntoView({ block: "start" });
+    }
+  }, [stored]);
+
   return (
     <PageShell
       eyebrow="WhiteVPN"
@@ -6531,6 +6547,14 @@ function WhiteVPNSettingsPage({
         </div>
         <FieldDescription>{t("settings.tlsIntegrity.description")}</FieldDescription>
       </SettingsSection>
+
+      <div id="fragment-settings" className="scroll-mt-4">
+        <SettingsSection title={t("fragments.title")} description={t("fragments.description")}>
+          <FragmentSettingsPanel settings={draft.fragments} savedSettings={stored.fragments} saving={saving} t={t}
+            onChange={(fragments) => patch({ fragments })}
+            onApply={(fragments) => save({ ...draftRef.current, fragments })} />
+        </SettingsSection>
+      </div>
 
       <SettingsSection title={t("settings.dns.title")} description={t("settings.dns.description")}>
         <FieldGroup className="grid gap-4 md:grid-cols-3">

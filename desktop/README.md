@@ -26,13 +26,20 @@ to have been invisible in the shipping app the whole time. Anything that still
 reads a field from that era is a bug; several were found by users noticing a
 number that could not be true.
 
-The engine is not vendored. `make mihomo-core` fetches FlClash and mihomo at
-their pinned refs, applies the FlClash commit, and builds a plain executable
+The engine is not vendored. `make mihomo-core` fetches the WhiteDNS forks of
+FlClash and mihomo at the Android 1.7.1 commits in `scripts/mihomo-pins.sh`,
+using Go 1.26.8, and builds a plain executable
 with `CGO_ENABLED=0` and `-tags=with_gvisor`. The result lands in
 `cores/mihomo-<goos>-<goarch>` and is embedded into the app binary, so a
 release is one file rather than a file and a folder that has to stay beside it.
 
-Override the binary during development with `WHITEVPN_MIHOMO_BIN`.
+Sources live under `third_party/flclash-whitevpn`; previous source checkouts are
+preserved. A `.build-id` beside each binary prevents packaging an older cached
+core after the pins change. Set `FORCE_MIHOMO_CORE_BUILD=1` to rebuild unchanged
+pins. Override the binary during development with `WHITEVPN_MIHOMO_BIN`; that
+binary must support the WhiteVPN `fragments` extension when it is enabled.
+
+See [fragmentation implementation and verification](../docs/implementation/fragmentation.md).
 
 ## Verifying a change
 

@@ -20,6 +20,7 @@ import type {
   ValidatorState,
   LegacyImportOffer,
   WhiteVPNSettings,
+  FragmentSettings,
   WhiteVPNNodeList,
   UpdateStatus,
   ConnectionSelection,
@@ -35,6 +36,9 @@ type WailsNotificationOptions = {
 };
 
 type AppApi = {
+  GetFragmentPresets(): Promise<string[]>;
+  GetDefaultFragmentSettings(): Promise<FragmentSettings>;
+  ValidateFragmentSettings(settings: FragmentSettings): Promise<FragmentSettings>;
   GetAppState(): Promise<AppState>;
   CheckFirewallStatus(): Promise<FirewallStatus>;
   GetSystemLANIP(): Promise<string>;
@@ -181,6 +185,9 @@ export const backend = {
   getWhiteVpnSettings: () => app().GetWhiteVPNSettings(),
   tunnelSupported: () => app().TunnelSupported(),
   saveWhiteVpnSettings: (settings: WhiteVPNSettings) => app().SaveWhiteVPNSettings(settings),
+  getFragmentPresets: () => app().GetFragmentPresets(),
+  getDefaultFragmentSettings: () => app().GetDefaultFragmentSettings(),
+  validateFragmentSettings: (settings: FragmentSettings) => app().ValidateFragmentSettings(settings),
   getPrivacyPolicyVersion: () => app().GetPrivacyPolicyVersion(),
   acceptPrivacyPolicy: () => app().AcceptPrivacyPolicy(),
   getAppVersion: () => app().GetAppVersion(),
