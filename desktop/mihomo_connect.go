@@ -53,6 +53,14 @@ func (m *mihomoState) current() *session.Session {
 // through the proxy, so the status the user sees is not the engine's opinion of
 // itself.
 func (a *App) startWhiteDNSVPNWithMihomo() (model.AppState, error) {
+	// A failed fragment attempt can retain an engine whose cleanup needs retry.
+	if previous := a.mihomo.current(); previous != nil {
+		if err := previous.Close(); err != nil {
+			return a.GetAppState(), fmt.Errorf("previous engine cleanup: %w", err)
+		}
+		a.mihomo.swap(nil)
+		a.restoreSystemProxy()
+	}
 	ctx, cancel := a.beginConnect()
 	defer cancel()
 
@@ -114,7 +122,7 @@ func (a *App) startWhiteDNSVPNWithMihomo() (model.AppState, error) {
 		return a.GetAppState(), err
 	}
 
-	connected, err := session.Connect(ctx, session.Options{
+	connected, err := session.ConnectOwned(ctx, session.Options{
 		CorePath:     corePath,
 		HomeDir:      homeDir,
 		MixedPort:    mixedPort,
@@ -133,6 +141,7 @@ func (a *App) startWhiteDNSVPNWithMihomo() (model.AppState, error) {
 		// that carries traffic while being read is the failure it exists for.
 		VerifyTLSIntegrity: settings.TLSIntegrityEnabled,
 		Noise:              amneziaNoiseFor(settings),
+		Fragments:          settings.Fragments,
 		FrontingIP:         frontingIP,
 		DNSPrivacy:         dnsPrivacyMode(settings.DNSPrivacy.Mode),
 		DoHURL:             settings.DNSPrivacy.DoHURL,
@@ -142,6 +151,12 @@ func (a *App) startWhiteDNSVPNWithMihomo() (model.AppState, error) {
 		CoreStderr:         mihomoLogWriter{app: a},
 	})
 	if err != nil {
+		if connected != nil {
+			if cleanupErr := connected.Close(); cleanupErr != nil {
+				a.mihomo.swap(connected)
+				err = fmt.Errorf("%w; engine cleanup: %v", err, cleanupErr)
+			}
+		}
 		a.reportConnectFailure(ctx, err.Error())
 		return a.GetAppState(), err
 	}
@@ -176,6 +191,7 @@ func (a *App) startWhiteDNSVPNWithMihomo() (model.AppState, error) {
 	a.state.Runtime.ProxyProtocol = "mixed"
 	a.state.Runtime.LocalProxyIP = "127.0.0.1"
 	a.state.Runtime.PublicProxyIP = sharedAddress
+	a.state.Runtime.FragmentMode = connected.FragmentMode()
 	a.mu.Unlock()
 	a.recordConnectedNode(connected.Selected())
 	if proxyOnly(settings) {
@@ -417,6 +433,7 @@ func (a *App) stopMihomo() bool {
 	a.restoreSystemProxy()
 	a.mu.Lock()
 	a.state.Runtime.Engine = ""
+	a.state.Runtime.FragmentMode = ""
 	a.mu.Unlock()
 	a.handleRuntimeState(model.RuntimeDisconnected, "Disconnected")
 	return true

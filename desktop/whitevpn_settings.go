@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 
+	"whitevpn-desktop/internal/fragment"
+
 	"whitevpn-desktop/internal/model"
 )
 
@@ -39,7 +41,17 @@ func settingsForThisMachine(settings model.WhiteVPNSettings) model.WhiteVPNSetti
 // something through - is corrected once, here, instead of reaching the engine
 // and failing there where the cause is much harder to see.
 func (a *App) SaveWhiteVPNSettings(settings model.WhiteVPNSettings) (model.AppState, error) {
+	if settings.Fragments.RawJSON == "" && !settings.Fragments.Enabled {
+		settings.Fragments = fragment.Default()
+	}
+	valid, err := fragment.Validate(settings.Fragments)
+	if err != nil {
+		return a.GetAppState(), fmt.Errorf("fragment settings: %w", err)
+	}
+	settings.Fragments = valid
 	a.mu.Lock()
+	previousFragments := a.state.WhiteVPN.Fragments
+	connected := a.state.Runtime.Engine == EngineMihomo && a.state.Runtime.Status == model.RuntimeConnected
 	// The parked selections are never taken from the caller. They are not a
 	// setting anybody edits — they are what the subscription switch put aside —
 	// and the interface does not carry the field at all, so a settings save
@@ -56,5 +68,26 @@ func (a *App) SaveWhiteVPNSettings(settings model.WhiteVPNSettings) (model.AppSt
 	}
 	// The tray speaks the app's language too.
 	a.notifyTray()
+	if connected && previousFragments != normalized.Fragments && (previousFragments.Enabled || normalized.Fragments.Enabled) {
+		return a.RefreshWhiteDNSVPNConnection()
+	}
 	return state, nil
+}
+
+func (a *App) GetFragmentPresets() []string {
+	presets := fragment.Presets()
+	for i, raw := range presets {
+		valid, _ := fragment.Validate(fragment.Settings{RawJSON: raw})
+		presets[i] = valid.RawJSON
+	}
+	return presets
+}
+
+func (a *App) GetDefaultFragmentSettings() fragment.Settings {
+	valid, _ := fragment.Validate(fragment.Default())
+	return valid
+}
+
+func (a *App) ValidateFragmentSettings(settings fragment.Settings) (fragment.Settings, error) {
+	return fragment.Validate(settings)
 }

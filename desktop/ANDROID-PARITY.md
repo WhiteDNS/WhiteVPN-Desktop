@@ -8,6 +8,9 @@ on the phone and where it lands on the desktop.
 Source of truth: `WhiteDNS/WhiteVPN` at `main`. Verified against commit `760973b`
 on 2026-08-04. Re-check this file whenever that repo's settings change.
 
+Fragmentation was checked separately against Android 1.7.1, commit `b134027`,
+on 2026-10-15. Other checklist entries retain the baseline above.
+
 Status: `[ ]` not started · `[~]` partial · `[x]` done · `[—]` deliberately dropped
 
 ---
@@ -153,6 +156,21 @@ noise settings reach WireGuard proxies and nothing else — that is not a shortc
 the noise is AmneziaWG's and mihomo has nowhere to put it on a vless or trojan
 proxy, and Android draws the same line. The interface says so rather than letting
 someone turn it on and wonder.
+
+### Connection fragments (Android 1.7.1)
+
+`[x]` Disabled by default. Settings and the VPN dashboard expose the same six
+FinalMask presets; raw JSON, ALPN and cipher-suite overrides are editable.
+Validation formats JSON, bounds stages/ranges/delays, and migrates the 1.7.0
+`maxSplit: 0` value to 256. VLESS REALITY retains a valid fingerprint; unsafe
+fingerprint selection is not exposed. Blank TLS overrides retain server values.
+
+Connection and measuring engines apply the same settings. Main startup retries
+full settings, fragments with server TLS settings, then normal; each failed
+engine must exit before retry, and the dashboard reports the actual variant.
+Saving a changed active setting reconnects. Datagram transports are unchanged.
+Provider-only YAML without inline nodes is explicitly refused while fragments
+are enabled. The subscription-fetch fragment fallback remains independent.
 
 ### 2.2 WARP / Amnezia noise (`settings_warp_section`)
 

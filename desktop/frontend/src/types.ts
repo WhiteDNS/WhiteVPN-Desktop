@@ -292,6 +292,7 @@ export interface ProxyCountryLookupResult {
 }
 
 export interface RuntimeStatus {
+ fragmentMode?: "full" | "fragments-only" | "normal";
   status: RuntimeStatusName;
   engine: string;
   runtimeType: RuntimeType;
@@ -771,6 +772,7 @@ export type WhiteVPNSettings = {
   splitTunnel: SplitTunnelSettings;
   directRouting: DirectRoutingSettings;
   tlsIntegrityEnabled: boolean;
+  fragments: FragmentSettings;
   amneziaNoise: AmneziaNoiseSettings;
   frontingIps: string[];
   dnsPrivacy: DNSPrivacySettings;
@@ -784,3 +786,5 @@ export type WhiteVPNSettings = {
   listenPort: number;
   acceptedPrivacyPolicyVersion: number;
 };
+
+export type FragmentSettings = { enabled: boolean; rawJson: string; alpn: string; cipherSuites: string; };
