@@ -1,0 +1,91 @@
+name: Arch Linux
+
+# The Linux jobs in ci.yml and the release both build on Ubuntu, against
+# Debian's libraries and a pinned Go and Node. Arch is where this app is
+# actually packaged (packaging/arch/PKGBUILD) and it moves first: a newer
+# glibc, a newer Go, webkit2gtk-4.1 with no 4.0 left in the repositories. This
+# builds the app the way an Arch machine would, so a break there is a failed
+# run rather than a bug report from a user who built it themselves.
+#
+# Both architectures, because linux/arm64 is only ever cross-compiled today
+# (ci.yml's cross-compile job) and cross-compiling proves the Go code builds,
+# not that the cgo/WebKit side links and packages on a real arm64 host.
+#
+# Deliberately no release wiring: nothing here is uploaded to a release, and
+# the release workflow does not depend on it.
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: arch-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Arch ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    # Arch's own image is x86_64 only; aarch64 is Arch Linux ARM, which is a
+    # separate project and a separate image.
+    container: ${{ matrix.image }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            goarch: amd64
+            runner: ubuntu-latest
+            image: archlinux:latest
+          - arch: aarch64
+            goarch: arm64
+            runner: ubuntu-24.04-arm
+            image: menci/archlinuxarm:base
+    steps:
+      # Arch has no webkit2gtk-4.0 package, so this is a 4.1 build; that is what
+      # the PKGBUILD depends on too.
+      # --disable-sandbox: pacman 7 confines itself with Landlock, which the
+      # container is not permitted to set up, and it treats that as fatal.
+      - name: Install build dependencies
+        run: pacman -Syu --disable-sandbox --needed --noconfirm base-devel git go nodejs npm gtk3 webkit2gtk-4.1 zip
+
+      - uses: actions/checkout@v7
+
+      - name: Install frontend dependencies
+        run: npm ci --prefix desktop/frontend
+
+      - name: Install Wails CLI
+        working-directory: desktop
+        run: |
+          go install "github.com/wailsapp/wails/v2/cmd/wails@$(go list -m -f '{{.Version}}' github.com/wailsapp/wails/v2)"
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      # package-linux builds the engine for the same target first, so this
+      # covers mihomo as well as the app.
+      - name: Build
+        working-directory: desktop
+        run: |
+          make package-linux \
+            LINUX_PLATFORMS=linux/${{ matrix.goarch }} \
+            LINUX_CLIENT_ARCH=${{ matrix.goarch }} \
+            LINUX_GO_TAGS=webkit2_41
+
+      - name: Report what was built
+        working-directory: desktop
+        run: |
+          set -euo pipefail
+          ls -l build/bin cores
+          file "build/bin/WhiteVPN Desktop"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: whitevpn-desktop-arch-${{ matrix.arch }}
+          path: desktop/build/bin/
+          if-no-files-found: error
+          retention-days: 14
