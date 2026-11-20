@@ -193,6 +193,8 @@ func (a *App) SaveV2RaySubscription(subscription model.V2RaySubscription) (model
 	}
 	subscription.CredentialRequired = false
 	subscription.DisplayURL = ""
+	// A subscription saved here is fetched from its URL; only warp.go writes a body.
+	subscription.Body, subscription.Inline = "", false
 	if !nameProvided {
 		subscription.Name = defaultV2RaySubscriptionName(parsedURL)
 	}

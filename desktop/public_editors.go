@@ -20,6 +20,8 @@ func (a *App) GetV2RaySubscriptionForEdit(id string) (model.V2RaySubscription, e
 		return model.V2RaySubscription{}, fmt.Errorf("subscription not found")
 	}
 	sub.PublicOnly = false
+	// An inline body holds a private key; its own editor (warp.go) keeps it in Go.
+	sub.Inline, sub.Body = sub.Body != "", ""
 	return sub, nil
 }
 

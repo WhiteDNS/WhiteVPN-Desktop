@@ -596,7 +596,7 @@ func normalizeV2RaySubscriptions(subscriptions []model.V2RaySubscription) []mode
 		// A subscription with no address is unusable and dropped - except the
 		// built-in catalogues, whose addresses the app keeps in code so that
 		// they are not carried in the state where they could be read.
-		if subscription.URL == "" && !subscription.CredentialRequired && !model.IsBuiltInSubscription(subscription.ID) &&
+		if subscription.URL == "" && subscription.Body == "" && !subscription.CredentialRequired && !model.IsBuiltInSubscription(subscription.ID) &&
 			!model.IsEverySubscription(subscription.ID) {
 			continue
 		}

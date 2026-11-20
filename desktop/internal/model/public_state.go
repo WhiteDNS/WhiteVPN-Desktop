@@ -61,8 +61,9 @@ func V2RayCredentialsReady(p V2RayProfile) bool {
 func PublicSubscription(s V2RaySubscription) V2RaySubscription {
 	if !s.PublicOnly {
 		s.DisplayURL = DisplayURL(s.URL)
+		s.Inline = s.Body != ""
 	}
-	s.URL = ""
+	s.URL, s.Body = "", ""
 	s.PublicOnly = true
 	s.LastError = PublicText(s.LastError)
 	return s

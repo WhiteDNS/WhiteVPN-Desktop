@@ -111,6 +111,15 @@ export interface V2RaySubscription {
   lastError: string;
   importedCount: number;
   allowInsecureTls: boolean;
+  // Made by the app rather than fetched (WARP); the body itself stays in Go.
+  inline?: boolean;
+}
+
+export interface WarpSettings {
+  name: string;
+  server: string;
+  port: number;
+  noise: boolean;
 }
 
 export interface V2RayPingResult {

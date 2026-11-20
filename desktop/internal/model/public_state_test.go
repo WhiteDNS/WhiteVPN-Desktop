@@ -134,3 +134,15 @@ func TestPublicSettingsRequiredArraysSerializeEmptyRatherThanNull(t *testing.T) 
 		t.Fatal("wire round trip changed required arrays to null")
 	}
 }
+
+func TestPublicSubscriptionHidesAnInlineBodyAndSaysThereIsOne(t *testing.T) {
+	sub := PublicSubscription(V2RaySubscription{ID: "warp", Name: "WARP", Body: "private-key: 'body-sensitive-marker'"})
+	assertNoSensitiveMarker(t, sub)
+	if !sub.Inline || !PublicSubscription(sub).Inline {
+		t.Fatal("public subscription lost the inline marker")
+	}
+	s := DefaultAppState()
+	s.V2RaySubscriptions = []V2RaySubscription{{ID: "warp", Name: "WARP", Body: "body-sensitive-marker"}}
+	assertNoSensitiveMarker(t, s)
+	assertNoSensitiveMarker(t, s.BackupState())
+}

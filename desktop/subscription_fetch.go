@@ -45,6 +45,9 @@ func (a *App) fetchSubscriptionDocument(ctx context.Context, subscription model.
 	if subscription.CredentialRequired || subscription.PublicOnly {
 		return "", model.ErrCredentialsRequired
 	}
+	if subscription.Body != "" {
+		return subscription.Body, nil
+	}
 	var directErr, proxiedErr error
 	skipVerify := subscription.AllowInsecureTLS
 
