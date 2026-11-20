@@ -26,7 +26,12 @@ func TestTheEngineReadsAChainedConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("convert: %v", err)
 	}
-	proxiesYAML, _, err := mihomoconf.BuildProxiesYAMLWithChain(proxies, mihomoconf.SplitTunnel{}, mihomoconf.Chain{ExitNode: "Second Hop"})
+	planned, chain, err := mihomoconf.PlanChain([]mihomoconf.ChainSource{{ID: "sub", Proxies: proxies}},
+		mihomoconf.ChainHop{}, mihomoconf.ChainHop{Ref: mihomoconf.ChainRef{SubscriptionID: "sub", Node: "Second Hop"}})
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+	proxiesYAML, _, err := mihomoconf.BuildProxiesYAMLWithRouting(planned, mihomoconf.Routing{Chain: chain})
 	if err != nil {
 		t.Fatalf("build: %v", err)
 	}

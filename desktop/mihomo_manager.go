@@ -251,9 +251,13 @@ func (a *App) syncManagedRuntime() {
 func (a *App) syncManagedRuntimeLocked() {
 	snapshot := a.connectionManager().Snapshot()
 	a.mu.Lock()
-	if snapshot.Generation!=a.state.Runtime.SessionGeneration && snapshot.Phase==sessionmanager.Connecting {
-		a.state.Runtime.Stats=model.TrafficStats{}
-		a.state.Runtime.NodeName=""; a.state.Runtime.NodeECH=false; a.state.Runtime.ExitIP=""; a.state.Runtime.ExitCountryCode=""; a.state.Runtime.ExitChecked=false
+	if snapshot.Generation != a.state.Runtime.SessionGeneration && snapshot.Phase == sessionmanager.Connecting {
+		a.state.Runtime.Stats = model.TrafficStats{}
+		a.state.Runtime.NodeName = ""
+		a.state.Runtime.NodeECH = false
+		a.state.Runtime.ExitIP = ""
+		a.state.Runtime.ExitCountryCode = ""
+		a.state.Runtime.ExitChecked = false
 	}
 	a.state.Runtime.SessionID = snapshot.SessionID
 	a.state.Runtime.SessionGeneration = snapshot.Generation
@@ -262,7 +266,9 @@ func (a *App) syncManagedRuntimeLocked() {
 	a.state.Runtime.ActiveSourceID = ""
 	a.state.Runtime.FragmentMode = ""
 	if snapshot.Phase == sessionmanager.Connected {
-		if current := a.mihomo.current(); current != nil { a.state.Runtime.FragmentMode = current.FragmentMode() }
+		if current := a.mihomo.current(); current != nil {
+			a.state.Runtime.FragmentMode = current.FragmentMode()
+		}
 	}
 	if snapshot.Route != nil {
 		a.state.Runtime.ActiveSourceID = snapshot.Route.SourceID

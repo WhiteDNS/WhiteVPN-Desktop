@@ -356,12 +356,16 @@ func PlanChain(sources []ChainSource, entry, exit ChainHop) ([]Proxy, Chain, err
 
 // compatibleChainCandidates keeps the candidates with no issue, and returns
 // one of the issues that ruled the rest out, for the error when none is left.
+// Same is reported only when it is all there was: an Automatic pool always
+// holds the other node itself, and that says nothing about why the rest failed.
 func compatibleChainCandidates(candidates []chainCandidate, issueOf func(chainCandidate) ChainIssue) ([]chainCandidate, ChainIssue) {
 	kept := make([]chainCandidate, 0, len(candidates))
 	var last ChainIssue
 	for _, candidate := range candidates {
 		if issue := issueOf(candidate); issue != "" {
-			last = issue
+			if issue != ChainIssueSame || last == "" {
+				last = issue
+			}
 			continue
 		}
 		kept = append(kept, candidate)
