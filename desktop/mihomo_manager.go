@@ -60,17 +60,35 @@ func (b *mihomoBackend) Prepare(ctx context.Context, p sessionmanager.Plan) (ses
 	if err != nil {
 		return p, err
 	}
-	body, usedID, err := a.subscriptionBodyWithFallback(ctx)
-	if err != nil {
-		return p, err
-	}
-	nodes, err := whiteVPNNodesFromSubscription(body)
-	if err != nil {
-		return p, err
-	}
-	prefer := preferredNodeNames(nodes, settings)
-	if len(prefer) == 0 && selectionIsNarrowed(settings) {
-		return p, fmt.Errorf("no node matches the chosen location or connection")
+	var (
+		body, usedID string
+		nodes        []model.WhiteVPNNode
+		prefer       []string
+		exclude      []string
+		chain        mihomoconf.Chain
+	)
+	if settings.Chain.Active() {
+		// The chain names its own two nodes, from whichever lists they are in,
+		// so the VPN page's subscription, location and connection do not apply.
+		usedID = p.Route.SourceID
+		body, chain, err = a.chainSubscription(ctx, settings.Chain)
+		if err != nil {
+			return p, err
+		}
+	} else {
+		body, usedID, err = a.subscriptionBodyWithFallback(ctx)
+		if err != nil {
+			return p, err
+		}
+		nodes, err = whiteVPNNodesFromSubscription(body)
+		if err != nil {
+			return p, err
+		}
+		prefer = preferredNodeNames(nodes, settings)
+		if len(prefer) == 0 && selectionIsNarrowed(settings) {
+			return p, fmt.Errorf("no node matches the chosen location or connection")
+		}
+		exclude = a.hiddenNodeNames(usedID)
 	}
 	port, err := chooseProxyPort(settings)
 	// A fixed proxy port owned by the old session will be released before Start.
@@ -86,8 +104,8 @@ func (b *mihomoBackend) Prepare(ctx context.Context, p sessionmanager.Plan) (ses
 		fronting = settings.FrontingIPs[0]
 	}
 	opts := session.Options{CorePath: core, HomeDir: filepath.Join(a.configDir, "mihomo"), MixedPort: port,
-		Subscription: body, Prefer: prefer, Exclude: a.hiddenNodeNames(usedID), AllowLAN: settings.AllowLAN,
-		Chain: mihomoconf.Chain{ExitNode: settings.ChainExitNode}, SplitTunnel: splitTunnelFor(settings), Direct: directRouteFor(settings),
+		Subscription: body, Prefer: prefer, Exclude: exclude, AllowLAN: settings.AllowLAN,
+		Chain: chain, SplitTunnel: splitTunnelFor(settings), Direct: directRouteFor(settings),
 		VerifyTLSIntegrity: settings.TLSIntegrityEnabled, Noise: amneziaNoiseFor(settings), FrontingIP: fronting,
 		Fragments: settings.Fragments, AutoECH: settings.AutoECH,
 		DNSPrivacy: dnsPrivacyMode(settings.DNSPrivacy.Mode), DoHURL: settings.DNSPrivacy.DoHURL, DoTEndpoint: settings.DNSPrivacy.DoTEndpoint, Tun: tunOptionsFor(settings)}
@@ -102,7 +120,11 @@ func (b *mihomoBackend) Prepare(ctx context.Context, p sessionmanager.Plan) (ses
 	if err := b.Preflight(ctx, p); err != nil {
 		return p, err
 	}
-	a.storeWhiteVPNNodes(usedID, nodes, time.Now().UTC())
+	// A chain's document is not stored: it is two lists' configs under new
+	// names, and filed under one subscription it would replace that list's.
+	if !chain.Active() {
+		a.storeWhiteVPNNodes(usedID, nodes, time.Now().UTC())
+	}
 	return p, nil
 }
 
@@ -229,9 +251,13 @@ func (a *App) syncManagedRuntime() {
 func (a *App) syncManagedRuntimeLocked() {
 	snapshot := a.connectionManager().Snapshot()
 	a.mu.Lock()
-	if snapshot.Generation!=a.state.Runtime.SessionGeneration && snapshot.Phase==sessionmanager.Connecting {
-		a.state.Runtime.Stats=model.TrafficStats{}
-		a.state.Runtime.NodeName=""; a.state.Runtime.NodeECH=false; a.state.Runtime.ExitIP=""; a.state.Runtime.ExitCountryCode=""; a.state.Runtime.ExitChecked=false
+	if snapshot.Generation != a.state.Runtime.SessionGeneration && snapshot.Phase == sessionmanager.Connecting {
+		a.state.Runtime.Stats = model.TrafficStats{}
+		a.state.Runtime.NodeName = ""
+		a.state.Runtime.NodeECH = false
+		a.state.Runtime.ExitIP = ""
+		a.state.Runtime.ExitCountryCode = ""
+		a.state.Runtime.ExitChecked = false
 	}
 	a.state.Runtime.SessionID = snapshot.SessionID
 	a.state.Runtime.SessionGeneration = snapshot.Generation
@@ -240,7 +266,9 @@ func (a *App) syncManagedRuntimeLocked() {
 	a.state.Runtime.ActiveSourceID = ""
 	a.state.Runtime.FragmentMode = ""
 	if snapshot.Phase == sessionmanager.Connected {
-		if current := a.mihomo.current(); current != nil { a.state.Runtime.FragmentMode = current.FragmentMode() }
+		if current := a.mihomo.current(); current != nil {
+			a.state.Runtime.FragmentMode = current.FragmentMode()
+		}
 	}
 	if snapshot.Route != nil {
 		a.state.Runtime.ActiveSourceID = snapshot.Route.SourceID

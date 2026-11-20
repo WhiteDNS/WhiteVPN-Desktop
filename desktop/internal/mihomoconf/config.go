@@ -198,6 +198,7 @@ type Routing struct {
 	// Split decides which programs are carried.
 	Split SplitTunnel
 	// Chain optionally sends traffic through a second node before it leaves.
+	// Its proxies are already among the ones given; see PlanChain.
 	Chain Chain
 }
 
@@ -209,17 +210,12 @@ func BuildProxiesYAML(proxies []Proxy, split SplitTunnel) (string, error) {
 	return document, err
 }
 
-// BuildProxiesYAMLWithChain is BuildProxiesYAML, and optionally a second hop.
-func BuildProxiesYAMLWithChain(proxies []Proxy, split SplitTunnel, chain Chain) (string, []string, error) {
-	return BuildProxiesYAMLWithRouting(proxies, Routing{Split: split, Chain: chain})
-}
-
 // BuildProxiesYAMLWithRouting renders the document with every routing decision
 // applied.
 //
 // It also returns the names the first hop may be chosen from, which is not the
-// full list once a chain is in play: the exit's own node is taken out, and a
-// datagram exit narrows it further to nodes that can carry UDP. A caller
+// full list once a chain is in play: it is node 1's choices, which PlanChain
+// has already narrowed to the configs that can carry node 2. A caller
 // selecting a proxy has to select from these, or it would name one the group
 // does not contain.
 func BuildProxiesYAMLWithRouting(proxies []Proxy, routing Routing) (string, []string, error) {
@@ -248,37 +244,37 @@ func BuildProxiesYAMLWithRouting(proxies []Proxy, routing Routing) (string, []st
 	}
 
 	// Where traffic leaves. Without a chain that is the selection group itself;
-	// with one it is the exit proxy, which reaches its own server through that
-	// group — so the group stays the first hop and Automatic keeps working.
+	// with one it is node 2, which reaches its own server through that group —
+	// so the group stays node 1 and Automatic keeps working.
 	exitTarget := SelectGroup
 	firstHopNames := names
+	groups := []any{}
 	if chain.Active() {
-		exit, allowed, err := buildChain(unique, names, chain)
-		if err != nil {
-			return "", nil, err
+		for _, name := range append(append([]string{}, chain.Entries...), chain.Exits...) {
+			if !seen[name] {
+				return "", nil, &ChainError{Reason: fmt.Sprintf("the chain names %q, which is not in the configuration", name)}
+			}
 		}
-		unique = append(unique, exit)
-		firstHopNames = allowed
+		if len(chain.Entries) == 0 {
+			return "", nil, &ChainError{Reason: "the chain has no node 1"}
+		}
+		firstHopNames = chain.Entries
 		exitTarget = ChainExitName
+		if len(chain.Exits) > 1 {
+			groups = append(groups, urlTestGroup(ChainExitName, chain.Exits))
+		}
 	}
 
 	document := map[string]any{
 		"proxies": toNodes(unique),
-		"proxy-groups": []any{
+		"proxy-groups": append([]any{
 			map[string]any{
 				"name":    SelectGroup,
 				"type":    "select",
 				"proxies": append([]string{AutoGroup}, firstHopNames...),
 			},
-			map[string]any{
-				"name":      AutoGroup,
-				"type":      "url-test",
-				"url":       DelayTestURL,
-				"interval":  autoInterval,
-				"tolerance": autoTolerance,
-				"proxies":   firstHopNames,
-			},
-		},
+			urlTestGroup(AutoGroup, firstHopNames),
+		}, groups...),
 		// Order is the whole of a rule list's meaning, because mihomo takes the
 		// first rule that fits.
 		//
@@ -299,6 +295,17 @@ func BuildProxiesYAMLWithRouting(proxies []Proxy, routing Routing) (string, []st
 		return "", nil, err
 	}
 	return string(encoded), firstHopNames, nil
+}
+
+func urlTestGroup(name string, members []string) map[string]any {
+	return map[string]any{
+		"name":      name,
+		"type":      "url-test",
+		"url":       DelayTestURL,
+		"interval":  autoInterval,
+		"tolerance": autoTolerance,
+		"proxies":   members,
+	}
 }
 
 // concatRules joins the rule groups in the order they must be matched.

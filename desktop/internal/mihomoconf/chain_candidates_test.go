@@ -8,7 +8,7 @@ import "testing"
 // would arrive at connect time as the engine refusing a selection nobody could
 // see was invalid.
 func TestTheCandidatesReturnedAreWhatTheGroupActuallyHolds(t *testing.T) {
-	document, candidates, err := BuildProxiesYAMLWithChain(chainProxies(), SplitTunnel{}, Chain{ExitNode: "TCP Two"})
+	document, candidates, err := buildExitChain(chainProxies(), SplitTunnel{}, "TCP Two")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -27,7 +27,7 @@ func TestTheCandidatesReturnedAreWhatTheGroupActuallyHolds(t *testing.T) {
 // The datagram case: candidates and group membership have to agree, or the
 // session selects something the engine has never heard of.
 func TestTheCandidatesNarrowWithTheGroupForAUDPExit(t *testing.T) {
-	_, candidates, err := BuildProxiesYAMLWithChain(chainProxies(), SplitTunnel{}, Chain{ExitNode: "Wire One"})
+	_, candidates, err := buildExitChain(chainProxies(), SplitTunnel{}, "Wire One")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,7 +39,7 @@ func TestTheCandidatesNarrowWithTheGroupForAUDPExit(t *testing.T) {
 
 // Without a chain the candidates are simply everything, as they always were.
 func TestWithoutAChainEveryNodeIsACandidate(t *testing.T) {
-	_, candidates, err := BuildProxiesYAMLWithChain(chainProxies(), SplitTunnel{}, Chain{})
+	_, candidates, err := buildExitChain(chainProxies(), SplitTunnel{}, "")
 	if err != nil {
 		t.Fatal(err)
 	}

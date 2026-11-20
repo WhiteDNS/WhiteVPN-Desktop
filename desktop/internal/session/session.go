@@ -40,18 +40,18 @@ type Options struct {
 	// Direct names destinations that never enter the tunnel — the user's own
 	// domain and address lists. Empty means everything goes through.
 	//
-	// Like Chain, only the link-based path honours it: a subscription arriving
-	// as a whole mihomo document brings its own rules, and inserting ours above
+	// Only a subscription this app reads proxies out of honours it — share
+	// links, or a document with its proxies written inline. One passed through
+	// as it is (proxy-providers) brings its own rules, and inserting ours above
 	// them would be rewriting somebody else's routing.
 	Direct mihomoconf.DirectRoute
 
 	// Chain sends traffic through a second node before the internet. Empty means
 	// one hop, which is the ordinary case.
 	//
-	// Only the link-based path honours it. A subscription that arrives as a whole
-	// mihomo document brings its own groups and rules, and rewriting somebody
-	// else's routing to insert a hop is a different and much larger promise than
-	// the one this makes.
+	// It names proxies in Subscription, which for a chain is the document
+	// mihomoconf.PlanChain built from the two nodes' subscriptions — links or
+	// YAML, it does not matter by then.
 	Chain mihomoconf.Chain
 
 	DNSPrivacy  mihomoconf.DNSPrivacyMode
@@ -125,6 +125,8 @@ func (o Options) Clone() Options {
 	o.SplitTunnel.Processes = append([]string(nil), o.SplitTunnel.Processes...)
 	o.Direct.Domains = append([]string(nil), o.Direct.Domains...)
 	o.Direct.IPs = append([]string(nil), o.Direct.IPs...)
+	o.Chain.Entries = append([]string(nil), o.Chain.Entries...)
+	o.Chain.Exits = append([]string(nil), o.Chain.Exits...)
 	return o
 }
 
@@ -782,9 +784,9 @@ func PrepareConfig(opts Options) (string, []string, error) {
 		}
 		proxiesYAML = document
 		// What the first hop may be, which is not every node once a chain is in
-		// play: the exit's own is taken out so both ends cannot be one machine,
-		// and a datagram exit narrows it to nodes that can carry UDP. Selecting
-		// outside this would name a proxy the group does not contain.
+		// play: only node 1's choices, already narrowed to those that can carry
+		// node 2. Selecting outside this would name a proxy the group does not
+		// contain.
 		candidates = append([]string(nil), firstHop...)
 		if len(opts.Prefer) > 0 {
 			preferred := intersect(candidates, opts.Prefer)
@@ -795,6 +797,9 @@ func PrepareConfig(opts Options) (string, []string, error) {
 		}
 		group = mihomoconf.SelectGroup
 	} else if looksLikeMihomoDocument(body) {
+		if opts.Chain.Active() {
+			return "", nil, fmt.Errorf("session: a chain needs inline proxy definitions")
+		}
 		if opts.Fragments.Enabled {
 			return "", nil, fmt.Errorf("session: fragments require inline proxy definitions; import the provider's nodes first")
 		}

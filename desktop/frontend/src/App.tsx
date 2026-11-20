@@ -162,6 +162,10 @@ import type {
   V2RayProtocol,
   V2RaySettingsProfile,
   V2RaySubscription,
+  ChainHop,
+  ChainIssue,
+  ChainOptions,
+  ChainSlot,
 } from "./types";
 import { backend, initializeNotifications, onRuntimeEvent, openExternalUrl, sendFirewallNotification } from "./wails";
 
@@ -2402,24 +2406,32 @@ function WhiteDNSVPNPage({
             <CardDescription className="text-xs">{t("vpn.rows.description")}</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-2 p-3 pt-0">
-            <DashboardRow
-              icon={<Globe className="size-4" />}
-              label={t("vpn.location")}
-              value={
-                state.whiteVpn.countryCode
-                  ? `${flagFromCountryCode(state.whiteVpn.countryCode)} ${countryName(state.whiteVpn.countryCode, language, t("vpn.nodes.unknownCountry"))}`
-                  : t("vpn.automatic")
-              }
-              disabled={selectionSaving}
-              onClick={() => openNodeDialog("location")}
-            />
-            <DashboardRow
-              icon={<Wifi className="size-4" />}
-              label={t("vpn.connection")}
-              value={selectedNodeLabel}
-              disabled={selectionSaving}
-              onClick={() => openNodeDialog("connection")}
-            />
+            {/* A chain names its own two nodes, so the location and connection
+                rows would be choices that change nothing. */}
+            {state.whiteVpn.chain && state.whiteVpn.chain.exit.mode !== "off" ? (
+              <ChainRows state={state} onState={onState} onError={onError} t={t} />
+            ) : (
+              <>
+                <DashboardRow
+                  icon={<Globe className="size-4" />}
+                  label={t("vpn.location")}
+                  value={
+                    state.whiteVpn.countryCode
+                      ? `${flagFromCountryCode(state.whiteVpn.countryCode)} ${countryName(state.whiteVpn.countryCode, language, t("vpn.nodes.unknownCountry"))}`
+                      : t("vpn.automatic")
+                  }
+                  disabled={selectionSaving}
+                  onClick={() => openNodeDialog("location")}
+                />
+                <DashboardRow
+                  icon={<Wifi className="size-4" />}
+                  label={t("vpn.connection")}
+                  value={selectedNodeLabel}
+                  disabled={selectionSaving}
+                  onClick={() => openNodeDialog("connection")}
+                />
+              </>
+            )}
 
             {/* The tunnel, DNS privacy and split tunnel used to sit here and
                 wrote to the V2Ray settings profile, which only the Xray path
@@ -2507,6 +2519,319 @@ function WhiteDNSVPNPage({
         </Alert>
       )}
     </PageShell>
+  );
+}
+
+function chainHopLabel(hop: ChainHop, state: AppState, t: TranslateFn): string {
+  if (hop.mode === "off") {
+    return t("chain.none");
+  }
+  if (hop.mode === "automatic") {
+    return t("vpn.automatic");
+  }
+  const subscription = state.v2raySubscriptions.find((entry) => entry.id === hop.subscriptionId)?.name;
+  return subscription ? `${subscription} · ${hop.node}` : hop.node || "";
+}
+
+// The two chain nodes, as rows that open the picker. Shown on the settings page
+// and, while a chain is on, on the VPN page in place of the rows it overrides.
+function ChainRows({
+  state,
+  onState,
+  onError,
+  t,
+}: {
+  state: AppState;
+  onState: (state: AppState) => void;
+  onError: (message: string) => void;
+  t: TranslateFn;
+}) {
+  const [slot, setSlot] = useState<ChainSlot | null>(null);
+  const chain = state.whiteVpn.chain;
+  const busy = state.runtime.status === "connecting" || state.runtime.status === "stopping";
+
+  async function choose(hop: ChainHop) {
+    if (!slot) {
+      return;
+    }
+    const next = { ...chain, [slot]: hop };
+    setSlot(null);
+    try {
+      onState(await backend.saveConnectionChain(next));
+    } catch (err) {
+      onError(messageFromError(err));
+    }
+  }
+
+  return (
+    <>
+      <p className="text-xs font-medium">{t("chain.route")}</p>
+      <DashboardRow
+        icon={<Shield className="size-4" />}
+        label={t("chain.node1")}
+        value={chainHopLabel(chain.entry, state, t)}
+        disabled={busy}
+        onClick={() => setSlot("entry")}
+      />
+      <DashboardRow
+        icon={<Globe className="size-4" />}
+        label={t("chain.node2")}
+        value={chainHopLabel(chain.exit, state, t)}
+        disabled={busy}
+        onClick={() => setSlot("exit")}
+      />
+      <p className="text-xs text-muted-foreground">{isolateLatin(t("chain.help"))}</p>
+      <ChainPickerDialog
+        slot={slot}
+        current={slot ? chain[slot] : null}
+        t={t}
+        onClose={() => setSlot(null)}
+        onChoose={(hop) => void choose(hop)}
+        onError={onError}
+      />
+    </>
+  );
+}
+
+function delayOrder(node: WhiteVPNNode): number {
+  return node.delayOk ? node.delayMs : Number.MAX_SAFE_INTEGER;
+}
+
+// One list of every subscription's configs, the user's own on top, as on the
+// phone. A config that cannot sit next to the other node's fixed choice is
+// shown, dimmed, with the reason, rather than hidden.
+function ChainPickerDialog({
+  slot,
+  current,
+  t,
+  onClose,
+  onChoose,
+  onError,
+}: {
+  slot: ChainSlot | null;
+  current: ChainHop | null;
+  t: TranslateFn;
+  onClose: () => void;
+  onChoose: (hop: ChainHop) => void;
+  onError: (message: string) => void;
+}) {
+  const [options, setOptions] = useState<ChainOptions | null>(null);
+  const [search, setSearch] = useState("");
+  const [testing, setTesting] = useState<string | null>(null);
+  const [sorted, setSorted] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!slot) {
+      return;
+    }
+    let live = true;
+    setOptions(null);
+    setSearch("");
+    backend
+      .listChainOptions(slot)
+      .then((loaded) => live && setOptions(loaded))
+      .catch(() => live && setOptions({ groups: [], incomplete: true }));
+    return () => {
+      live = false;
+    };
+  }, [slot]);
+
+  // A group's test reports one config at a time, through the same events the
+  // Servers page listens to.
+  useEffect(() => {
+    if (!slot) {
+      return;
+    }
+    const unsubscribers = [
+      onRuntimeEvent<NodeMeasurement>("nodes:test", (measurement) =>
+        setOptions((currentOptions) =>
+          currentOptions && {
+            ...currentOptions,
+            groups: currentOptions.groups.map((group) =>
+              group.subscriptionId !== measurement.subscriptionId
+                ? group
+                : { ...group, nodes: group.nodes.map((node) => (node.name === measurement.node.name ? measurement.node : node)) },
+            ),
+          },
+        ),
+      ),
+      onRuntimeEvent<unknown>("nodes:test-done", () => setTesting(null)),
+      onRuntimeEvent<string>("nodes:test-error", (message) => {
+        setTesting(null);
+        onError(message);
+      }),
+    ];
+    return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slot]);
+
+  async function test(subscriptionId: string, names: string[]) {
+    setTesting(subscriptionId);
+    setSorted((list) => (list.includes(subscriptionId) ? list : [...list, subscriptionId]));
+    try {
+      // Zeros are the backend's defaults.
+      await backend.startNodeTest({
+        subscriptionId,
+        nodes: names,
+        reachability: false,
+        delay: true,
+        speed: false,
+        reachabilityTimeoutMs: 0,
+        reachabilityWorkers: 0,
+        delayTimeoutMs: 0,
+        delayWorkers: 0,
+        delayUrl: "",
+        speedBudgetMs: 0,
+        speedUrl: "",
+      });
+    } catch (err) {
+      setTesting(null);
+      onError(messageFromError(err));
+    }
+  }
+
+  function issueText(issue: ChainIssue): string {
+    switch (issue) {
+      case "same":
+        return t("chain.issue.same");
+      case "shared":
+        return t("chain.issue.shared");
+      default:
+        return t(slot === "exit" ? "chain.issue.udpFirst" : "chain.issue.udpSecond");
+    }
+  }
+
+  const needle = search.trim().toLowerCase();
+  function renderGroup(group: ChainOptions["groups"][number]) {
+    let nodes = group.nodes.filter(
+      (node) =>
+        !needle ||
+        (node.label || node.name).toLowerCase().includes(needle) ||
+        node.name.toLowerCase().includes(needle) ||
+        node.type.toLowerCase().includes(needle),
+    );
+    if (!nodes.length) {
+      return null;
+    }
+    if (sorted.includes(group.subscriptionId)) {
+      nodes = [...nodes].sort((a, b) => delayOrder(a) - delayOrder(b));
+    }
+    const running = testing === group.subscriptionId;
+    return (
+      <div key={group.subscriptionId} className="grid gap-1.5">
+        <div className="flex items-center justify-between gap-2 pt-2">
+          <span className="min-w-0 truncate text-sm font-semibold" dir="auto">
+            {group.name} ({nodes.length})
+          </span>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="h-7 shrink-0 px-2.5 text-xs"
+            disabled={testing !== null}
+            onClick={() => void test(group.subscriptionId, group.nodes.map((node) => node.name))}
+          >
+            <Gauge className={cn("size-3.5", running && "animate-pulse")} />
+            {running ? t("chain.testing") : t("chain.test")}
+          </Button>
+        </div>
+        {nodes.map((node) => {
+          const issue = group.issues?.[node.name];
+          const selected =
+            current?.mode === "fixed" && current.subscriptionId === group.subscriptionId && current.node === node.name;
+          return (
+            <button
+              type="button"
+              key={node.name}
+              disabled={Boolean(issue)}
+              onClick={() => onChoose({ mode: "fixed", subscriptionId: group.subscriptionId, node: node.name })}
+              className={cn(
+                "flex w-full flex-col gap-0.5 rounded-md border px-3 py-2 text-start transition-colors hover:bg-muted/60 disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:bg-transparent",
+                selected ? "border-emerald-500/60 bg-emerald-500/10" : "bg-background/60",
+              )}
+            >
+              <span className="flex min-w-0 items-center gap-2">
+                <span className="min-w-0 flex-1 truncate text-sm" dir="auto" title={node.name}>
+                  {node.label || node.name}
+                </span>
+                <Badge variant="outline" className="h-5 shrink-0 px-1.5 text-[10px] uppercase">
+                  {node.type}
+                </Badge>
+                {node.delayTested && (
+                  <span className="shrink-0 font-mono text-xs text-muted-foreground">
+                    {node.delayOk ? `${node.delayMs} ms` : t("chain.failed")}
+                  </span>
+                )}
+                {selected && <Check className="size-4 shrink-0 text-emerald-600" />}
+              </span>
+              {issue && <span className="text-xs font-medium text-destructive">{isolateLatin(issueText(issue))}</span>}
+            </button>
+          );
+        })}
+      </div>
+    );
+  }
+
+  const groups = options?.groups ?? [];
+  const mine = groups.filter((group) => group.userMade).map(renderGroup).filter(Boolean);
+  const builtIn = groups.filter((group) => !group.userMade).map(renderGroup).filter(Boolean);
+
+  return (
+    <Dialog open={slot !== null} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-h-[calc(100svh-4rem)] grid-rows-[auto_auto_minmax(0,1fr)_auto] overflow-hidden sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>{t(slot === "exit" ? "chain.node2" : "chain.node1")}</DialogTitle>
+          <DialogDescription>{t("chain.route")}</DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-2">
+          <div className="relative">
+            <Search className="pointer-events-none absolute start-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t("chain.search")} className="ps-8" />
+          </div>
+          {options?.incomplete && (
+            <Alert variant="destructive">
+              <AlertCircle />
+              <AlertDescription>{t("chain.picker.unavailable")}</AlertDescription>
+            </Alert>
+          )}
+        </div>
+        <ScrollArea className="min-h-0">
+          <div className="grid gap-1.5 pe-3">
+            {!needle && (
+              <>
+                {slot === "exit" && (
+                  <SelectableRow selected={current?.mode === "off"} onClick={() => onChoose({ mode: "off" })}>
+                    <span className="text-sm font-medium">{t("chain.none")}</span>
+                    <span className="text-xs text-muted-foreground">{t("chain.none.detail")}</span>
+                  </SelectableRow>
+                )}
+                <SelectableRow selected={current?.mode === "automatic"} onClick={() => onChoose({ mode: "automatic" })}>
+                  <span className="text-sm font-medium">{t("vpn.automatic")}</span>
+                  <span className="text-xs text-muted-foreground">{t("chain.automatic.detail")}</span>
+                </SelectableRow>
+              </>
+            )}
+            {mine.length > 0 && (
+              <>
+                <p className="pt-3 text-sm font-semibold">{t("chain.myProfiles")}</p>
+                <div className="grid gap-1.5 rounded-lg border border-emerald-500/40 bg-emerald-500/5 px-3 pb-3">{mine}</div>
+              </>
+            )}
+            {builtIn}
+            {!options && <p className="px-1 py-6 text-center text-sm text-muted-foreground">{t("vpn.nodes.loading")}</p>}
+            {options && !mine.length && !builtIn.length && (
+              <p className="px-1 py-6 text-center text-sm text-muted-foreground">{t("vpn.nodes.none")}</p>
+            )}
+          </div>
+          <ScrollBar orientation="vertical" />
+        </ScrollArea>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onClose}>
+            {t("common.close")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -6416,18 +6741,6 @@ function WhiteVPNSettingsPage({
       .catch(() => setTunnelAvailable(false));
   }, []);
 
-  // The nodes a second hop can be chosen from: the selected subscription's, the
-  // list the connection itself is built from. Loaded here rather than passed in,
-  // because this is the only page that needs them and a settings page that
-  // waits on the Servers page having been opened would be a settings page that
-  // sometimes offers nothing.
-  const [chainNodes, setChainNodes] = useState<WhiteVPNNode[]>([]);
-  useEffect(() => {
-    void backend
-      .listWhiteVpnNodes(false)
-      .then((list) => setChainNodes((list.nodes || []).filter((node) => !node.hidden)))
-      .catch(() => setChainNodes([]));
-  }, [state.selectedSubscriptionId]);
 
   const [frontingDraft, setFrontingDraft] = useState("");
   const [processDraft, setProcessDraft] = useState("");
@@ -6588,38 +6901,8 @@ function WhiteVPNSettingsPage({
         </>
       }
     >
-      <SettingsSection title={t("settings.chain.title")} description={t("settings.chain.description")}>
-        <Field>
-          <FieldLabel>{t("settings.chain.exit")}</FieldLabel>
-          <Select
-            value={draft.chainExitNode || "off"}
-            onValueChange={(value) => patch({ chainExitNode: value === "off" ? "" : value })}
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent position="popper">
-              <SelectItem value="off">{t("settings.chain.off")}</SelectItem>
-              {chainNodes.map((node) => (
-                <SelectItem key={node.name} value={node.name}>
-                  {node.label || node.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <FieldDescription>
-            {draft.chainExitNode ? t("settings.chain.on.description") : t("settings.chain.off.description")}
-          </FieldDescription>
-        </Field>
-        {/* The chosen node may have left the subscription since it was picked,
-            which the connect path refuses rather than works around — so it is
-            said here, where it can still be changed. */}
-        {draft.chainExitNode && !chainNodes.some((node) => node.name === draft.chainExitNode) && (
-          <Alert variant="destructive">
-            <AlertCircle />
-            <AlertDescription>{t("settings.chain.missing", { name: draft.chainExitNode })}</AlertDescription>
-          </Alert>
-        )}
+      <SettingsSection title={t("chain.title")} description={t("chain.description")}>
+        <ChainRows state={state} onState={onState} onError={onError} t={t} />
       </SettingsSection>
 
       <SettingsSection title={t("settings.connection.title")} description={t("settings.connection.description")}>

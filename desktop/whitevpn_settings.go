@@ -70,6 +70,8 @@ func (a *App) SaveWhiteVPNSettings(settings model.WhiteVPNSettings) (model.AppSt
 	// from the page would arrive with it empty and wipe every other
 	// subscription's filter on the way past.
 	settings.SubscriptionSelections = a.state.WhiteVPN.SubscriptionSelections
+	// Likewise the chain, which has its own call: see SaveConnectionChain.
+	settings.Chain, settings.ChainExitNode = a.state.WhiteVPN.Chain, a.state.WhiteVPN.ChainExitNode
 	normalized := settingsForThisMachine(model.NormalizeWhiteVPNSettings(settings))
 	a.state.WhiteVPN = normalized
 	state, err := a.saveLocked()

@@ -656,24 +656,37 @@ const strings = {
     en: "The connection has stopped, but this desktop is still pointed at it, so nothing here can reach the internet. Connecting again will fix it, and so will restarting the app — on macOS both ask for your administrator password, which is what has to be approved for the settings to go back.",
     fa: "اتصال قطع شده، ولی این دستگاه هنوز به آن اشاره می‌کند و برای همین هیچ برنامه‌ای به اینترنت نمی‌رسد. اتصال دوباره این را درست می‌کند، راه‌اندازی مجدد برنامه هم همین‌طور — روی مک هر دو رمز مدیر را می‌پرسند، و همان چیزی است که باید تأیید شود تا تنظیمات برگردد.",
   },
-  "settings.chain.title": { en: "Connection chaining", fa: "زنجیره کردن اتصال" },
-  "settings.chain.description": {
-    en: "Send traffic through a second node before it reaches the internet. The connection chosen on the VPN page becomes the first hop; the node chosen here becomes the one traffic leaves from.",
-    fa: "ترافیک را قبل از رسیدن به اینترنت از یک سرور دوم رد کنید. اتصالی که در صفحهٔ وی‌پی‌ان انتخاب کرده‌اید هاپ اول می‌شود و سروری که اینجا انتخاب می‌کنید جایی است که ترافیک از آن خارج می‌شود.",
+  // The connection chain, worded as in WhiteVPN for Android 1.8.0-beta.2.
+  "chain.title": { en: "Connection chaining", fa: "زنجیرهٔ اتصال" },
+  "chain.description": {
+    en: "Send traffic through two configs, each from any subscription. With no node 2 the connection is the usual single hop.",
+    fa: "ترافیک از دو کانفیگ عبور می‌کند که هر کدام می‌تواند از هر اشتراکی باشد. بدون نود ۲، اتصال همان یک هاپ معمولی است.",
   },
-  "settings.chain.exit": { en: "Second hop", fa: "هاپ دوم" },
-  "settings.chain.off": { en: "Off — one hop", fa: "خاموش — یک هاپ" },
-  "settings.chain.off.description": {
-    en: "Traffic leaves from the connection chosen on the VPN page, as usual.",
-    fa: "ترافیک مثل همیشه از اتصالی که در صفحهٔ وی‌پی‌ان انتخاب شده خارج می‌شود.",
+  "chain.route": { en: "Device → Node 1 → Node 2 → Internet", fa: "دستگاه ← نود ۱ ← نود ۲ ← اینترنت" },
+  "chain.help": {
+    en: "A good pair: WARP as node 1 and a public config as node 2. Two hops are slower than one.",
+    fa: "ترکیب پیشنهادی: نود ۱ را WARP و نود ۲ را یک کانفیگ عمومی بگذارید. دو هاپ از یک هاپ کندتر است.",
   },
-  "settings.chain.on.description": {
-    en: "Two hops are slower than one, and every node has to carry the traffic of the one after it. If the second hop uses WireGuard or Hysteria2, only nodes that can carry UDP are offered as the first — the rest could not carry it at all.",
-    fa: "دو هاپ کندتر از یکی است و هر سرور باید ترافیک سرور بعدی را هم حمل کند. اگر هاپ دوم WireGuard یا Hysteria2 باشد، فقط سرورهایی به‌عنوان هاپ اول پیشنهاد می‌شوند که بتوانند UDP را حمل کنند — بقیه اصلاً نمی‌توانند.",
+  "chain.node1": { en: "Node 1 (entry)", fa: "نود ۱ (ورود)" },
+  "chain.node2": { en: "Node 2 (exit)", fa: "نود ۲ (خروج)" },
+  "chain.myProfiles": { en: "My profiles", fa: "پروفایل‌های من" },
+  "chain.none": { en: "No node 2", fa: "بدون نود ۲" },
+  "chain.none.detail": { en: "Use node 1 only", fa: "فقط از نود ۱ استفاده شود" },
+  "chain.automatic.detail": {
+    en: "Fastest working config from all subscriptions",
+    fa: "سریع‌ترین کانفیگ سالم از همهٔ اشتراک‌ها",
   },
-  "settings.chain.missing": {
-    en: "\"{name}\" is not in this subscription any more. Choose another second hop, or turn chaining off — connecting will refuse until then.",
-    fa: "«{name}» دیگر در این اشتراک نیست. هاپ دوم دیگری انتخاب کنید یا زنجیره را خاموش کنید — تا آن موقع اتصال برقرار نمی‌شود.",
+  "chain.search": { en: "Search configs by name or type", fa: "جستجوی کانفیگ با نام یا نوع" },
+  "chain.test": { en: "Test", fa: "تست" },
+  "chain.testing": { en: "Testing…", fa: "در حال تست…" },
+  "chain.failed": { en: "failed", fa: "ناموفق" },
+  "chain.issue.same": { en: "This config is already the other node", fa: "این کانفیگ همین حالا نود دیگر است" },
+  "chain.issue.shared": { en: "Shares an inner proxy with the other node", fa: "با نود دیگر پراکسی داخلی مشترک دارد" },
+  "chain.issue.udpFirst": { en: "Needs UDP, but node 1 is TCP only", fa: "به UDP نیاز دارد، اما نود ۱ فقط TCP دارد" },
+  "chain.issue.udpSecond": { en: "TCP only, but node 2 needs UDP", fa: "فقط TCP دارد، اما نود ۲ به UDP نیاز دارد" },
+  "chain.picker.unavailable": {
+    en: "Connections could not be downloaded. Check the internet and try again.",
+    fa: "دریافت کانفیگ‌ها ممکن نشد. اینترنت را بررسی کنید و دوباره امتحان کنید.",
   },
   "settings.routing.mode": { en: "How traffic reaches the tunnel", fa: "ترافیک چطور به تونل برسد" },
   "settings.routing.systemProxy": { en: "System proxy — the whole machine", fa: "پراکسی سیستم — کل دستگاه" },

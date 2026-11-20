@@ -26,6 +26,9 @@ import type {
   UpdateStatus,
   ConnectionSelection,
   NodeTestRequest,
+  ChainOptions,
+  ChainSettings,
+  ChainSlot,
 } from "./types";
 import type { EngineAvailability, EngineProfile, EngineProfileSummary } from "./engine-profiles";
 
@@ -107,6 +110,8 @@ type AppApi = {
   GetLocalProxyEndpoint(): Promise<string>;
   ListWhiteVPNNodes(refresh: boolean): Promise<WhiteVPNNodeList>;
   ListSubscriptionNodes(subscriptionId: string, refresh: boolean): Promise<WhiteVPNNodeList>;
+  ListChainOptions(slot: ChainSlot): Promise<ChainOptions>;
+  SaveConnectionChain(chain: ChainSettings): Promise<AppState>;
   ManualNodeProfile(profileId: string): Promise<V2RayProfile>;
   CopyNodeToManual(subscriptionId: string, nodeName: string): Promise<V2RayImportResult>;
   SetNodesHidden(subscriptionId: string, nodeNames: string[], hidden: boolean): Promise<WhiteVPNNodeList>;
@@ -221,6 +226,8 @@ export const backend = {
   getLocalProxyEndpoint: () => app().GetLocalProxyEndpoint(),
   listWhiteVpnNodes: (refresh: boolean) => app().ListWhiteVPNNodes(refresh),
   listSubscriptionNodes: (subscriptionId: string, refresh: boolean) => app().ListSubscriptionNodes(subscriptionId, refresh),
+  listChainOptions: (slot: ChainSlot) => app().ListChainOptions(slot),
+  saveConnectionChain: (chain: ChainSettings) => app().SaveConnectionChain(chain),
   manualNodeProfile: (profileId: string) => app().ManualNodeProfile(profileId),
   copyNodeToManual: (subscriptionId: string, nodeName: string) => app().CopyNodeToManual(subscriptionId, nodeName),
   setNodesHidden: (subscriptionId: string, nodeNames: string[], hidden: boolean) =>
