@@ -775,6 +775,26 @@ export type NodeTestRequest = {
   speedUrl: string;
 };
 
+// Mirrors model.ChainSettings: device → node 1 (entry) → node 2 (exit) →
+// internet. Node 2 off is the ordinary single-hop connection.
+export type ChainHopMode = "off" | "automatic" | "fixed";
+export type ChainHop = { mode: ChainHopMode; subscriptionId?: string; node?: string };
+export type ChainSettings = { entry: ChainHop; exit: ChainHop };
+export type ChainSlot = "entry" | "exit";
+export type ChainIssue = "same" | "shared" | "udp";
+
+export type ChainOptionGroup = {
+  subscriptionId: string;
+  name: string;
+  // Not a built-in catalogue: WARP, an added provider, saved configs.
+  userMade: boolean;
+  nodes: WhiteVPNNode[];
+  // By node name: why it cannot fill this slot next to the other fixed node.
+  issues?: Record<string, ChainIssue>;
+};
+
+export type ChainOptions = { groups: ChainOptionGroup[]; incomplete: boolean };
+
 export type WhiteVPNNodeList = {
   nodes: WhiteVPNNode[];
   updatedAt: string;
@@ -809,8 +829,8 @@ export type WhiteVPNSettings = {
   dnsPrivacy: DNSPrivacySettings;
   killSwitch: KillSwitchSettings;
   language: string;
-  // The node traffic leaves from when chaining. Empty means one hop.
-  chainExitNode: string;
+  // Saved through saveConnectionChain only; a settings save keeps the stored one.
+  chain: ChainSettings;
   tunEnabled: boolean;
   setSystemProxy: boolean;
   allowLan: boolean;
