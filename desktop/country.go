@@ -24,27 +24,39 @@ type proxyCountryCacheEntry struct {
 }
 
 func (a *App) LookupProxyCountry() (model.ProxyCountryLookupResult, error) {
+	return a.lookupProxyCountryContext(context.Background())
+}
+
+func (a *App) lookupProxyCountryContext(ctx context.Context) (model.ProxyCountryLookupResult,error) {
 	proxyConfig, err := a.activeProxyConfig()
 	if err != nil {
 		return model.ProxyCountryLookupResult{}, err
 	}
-	if result, err, ok := a.cachedProxyCountry(proxyConfig.cacheKey()); ok {
+	key:=proxyConfig.cacheKey()
+	a.mu.Lock()
+	if a.state.Runtime.SessionID!="" { key=a.state.Runtime.SessionID+"|"+a.state.Runtime.NodeName+"|"+key }
+	a.mu.Unlock()
+	if result, err, ok := a.cachedProxyCountry(key); ok {
 		return result, err
 	}
 
-	result, err := a.lookupProxyCountry(proxyConfig)
-	a.storeProxyCountry(proxyConfig.cacheKey(), result, err)
+	result, err := a.lookupProxyCountryWithContext(ctx,proxyConfig)
+	a.storeProxyCountry(key, result, err)
 	return result, err
 }
 
 func (a *App) lookupProxyCountry(proxyConfig runtimeProxyConfig) (model.ProxyCountryLookupResult, error) {
+	return a.lookupProxyCountryWithContext(context.Background(),proxyConfig)
+}
+
+func (a *App) lookupProxyCountryWithContext(lifetime context.Context, proxyConfig runtimeProxyConfig) (model.ProxyCountryLookupResult,error) {
 	client, err := httpClientThroughProxy(proxyConfig)
 	if err != nil {
 		return model.ProxyCountryLookupResult{Proxy: proxyConfig.Address}, err
 	}
 	defer closeHTTPClientIdleConnections(client)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	ctx, cancel := context.WithTimeout(lifetime, 8*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, proxyCountryLookupURL, nil)
 	if err != nil {

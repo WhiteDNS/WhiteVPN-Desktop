@@ -3,6 +3,8 @@ package model
 import (
 	"encoding/json"
 	"strings"
+
+	"whitevpn-desktop/internal/fragment"
 )
 
 // The settings WhiteVPN for Android exposes, so that someone moving from the
@@ -52,9 +54,10 @@ type AmneziaNoiseSettings struct {
 
 // DNSPrivacySettings is the encrypted-DNS choice.
 type DNSPrivacySettings struct {
-	Mode        string `json:"mode"`
-	DoHURL      string `json:"dohUrl"`
-	DoTEndpoint string `json:"dotEndpoint"`
+	CredentialRequired bool   `json:"credentialRequired,omitempty"`
+	Mode               string `json:"mode"`
+	DoHURL             string `json:"dohUrl"`
+	DoTEndpoint        string `json:"dotEndpoint"`
 }
 
 // ConnectionSelection is the dashboard's node choice: which node to connect
@@ -132,6 +135,7 @@ type SubscriptionSelection struct {
 
 // WhiteVPNSettings is everything the phone lets a user change.
 type WhiteVPNSettings struct {
+	PublicOnly bool `json:"publicOnly,omitempty"`
 	// Dashboard rows. CountryCode and Connection belong to whichever
 	// subscription is selected; see SubscriptionSelections.
 	CountryCode string              `json:"countryCode"`
@@ -160,6 +164,7 @@ type WhiteVPNSettings struct {
 
 	// Settings sections, in the order the phone shows them.
 	TLSIntegrityEnabled bool                 `json:"tlsIntegrityEnabled"`
+	Fragments           fragment.Settings    `json:"fragments"`
 	AmneziaNoise        AmneziaNoiseSettings `json:"amneziaNoise"`
 	FrontingIPs         []string             `json:"frontingIps"`
 	DNSPrivacy          DNSPrivacySettings   `json:"dnsPrivacy"`
@@ -254,6 +259,7 @@ func DefaultWhiteVPNSettings() WhiteVPNSettings {
 		SplitTunnel:         SplitTunnelSettings{Mode: SplitTunnelOff, Processes: []string{}},
 		DirectRouting:       DefaultDirectRouting(),
 		TLSIntegrityEnabled: false,
+		Fragments:           fragment.Default(),
 		AmneziaNoise: AmneziaNoiseSettings{
 			Enabled: false,
 			Count:   DefaultNoiseCount,
@@ -316,6 +322,13 @@ func (s *WhiteVPNSettings) UnmarshalJSON(data []byte) error {
 // clamped noise size looks like the app ignoring what was typed.
 func NormalizeWhiteVPNSettings(settings WhiteVPNSettings) WhiteVPNSettings {
 	defaults := DefaultWhiteVPNSettings()
+	if strings.TrimSpace(settings.Fragments.RawJSON) == "" {
+		settings.Fragments = defaults.Fragments
+	} else if valid, err := fragment.Validate(settings.Fragments); err == nil {
+		settings.Fragments = valid
+	} else {
+		settings.Fragments = defaults.Fragments
+	}
 
 	switch settings.SplitTunnel.Mode {
 	case SplitTunnelOff, SplitTunnelBypass, SplitTunnelVPNOnly:
@@ -359,12 +372,16 @@ func NormalizeWhiteVPNSettings(settings WhiteVPNSettings) WhiteVPNSettings {
 		settings.DNSPrivacy.Mode = DNSPrivacyAutomatic
 	}
 	if trimmed := strings.TrimSpace(settings.DNSPrivacy.DoHURL); trimmed == "" {
-		settings.DNSPrivacy.DoHURL = defaults.DNSPrivacy.DoHURL
+		if !settings.DNSPrivacy.CredentialRequired {
+			settings.DNSPrivacy.DoHURL = defaults.DNSPrivacy.DoHURL
+		}
 	} else {
 		settings.DNSPrivacy.DoHURL = trimmed
 	}
 	if trimmed := strings.TrimSpace(settings.DNSPrivacy.DoTEndpoint); trimmed == "" {
-		settings.DNSPrivacy.DoTEndpoint = defaults.DNSPrivacy.DoTEndpoint
+		if !settings.DNSPrivacy.CredentialRequired {
+			settings.DNSPrivacy.DoTEndpoint = defaults.DNSPrivacy.DoTEndpoint
+		}
 	} else {
 		settings.DNSPrivacy.DoTEndpoint = trimmed
 	}
@@ -442,7 +459,6 @@ func SwapSubscriptionSelection(settings WhiteVPNSettings, from, to string) White
 	// written above disappears on its own when there was nothing to keep.
 	return NormalizeWhiteVPNSettings(settings)
 }
-
 
 // NormalizeConnectionSelection tidies one subscription's choice.
 func NormalizeConnectionSelection(selection ConnectionSelection) ConnectionSelection {

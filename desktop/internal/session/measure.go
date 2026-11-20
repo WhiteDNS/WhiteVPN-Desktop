@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"whitevpn-desktop/internal/engine"
+	"whitevpn-desktop/internal/fragment"
 	"whitevpn-desktop/internal/mihomoconf"
 )
 
@@ -39,6 +40,7 @@ type MeasureOptions struct {
 	// FrontingIP is applied as it is for a real connection, so a measurement
 	// reflects how the node will actually be reached.
 	FrontingIP string
+	Fragments  fragment.Settings
 
 	CoreStdout io.Writer
 	CoreStderr io.Writer
@@ -78,6 +80,7 @@ func StartMeasurer(ctx context.Context, opts MeasureOptions) (*Measurer, error) 
 		HomeDir:      opts.HomeDir,
 		Subscription: opts.Subscription,
 		FrontingIP:   opts.FrontingIP,
+		Fragments:    opts.Fragments,
 		MixedPort:    mixedPort,
 		ControlPort:  controlPort,
 		// No tunnel: a measuring engine must never touch the machine's routing,

@@ -1,0 +1,82 @@
+{
+  "passed": 581,
+  "failed": 0,
+  "skipped": 8,
+  "packages": 11,
+  "skips": [
+    {
+      "Package": "whitevpn-desktop/internal/appdata",
+      "Test": "TestEnsureAppDataWritableRepairsDarwinWithAdministratorPrompt"
+    },
+    {
+      "Package": "whitevpn-desktop/internal/mihomoconf",
+      "Test": "TestLiveCatalogueConverts"
+    },
+    {
+      "Package": "whitevpn-desktop/internal/session",
+      "Test": "TestLiveAutomaticLetsTheEngineChoose"
+    },
+    {
+      "Package": "whitevpn-desktop/internal/session",
+      "Test": "TestLiveConnectionOutlivesItsConnectContext"
+    },
+    {
+      "Package": "whitevpn-desktop/internal/session",
+      "Test": "TestLiveConnectionCarriesTraffic"
+    },
+    {
+      "Package": "whitevpn-desktop/internal/session",
+      "Test": "TestLiveMeasurerStartsAndMeasures"
+    },
+    {
+      "Package": "whitevpn-desktop",
+      "Test": "TestFindMihomoCoreExplainsItselfWhenAbsent"
+    },
+    {
+      "Package": "whitevpn-desktop",
+      "Test": "TestFindMihomoCoreAcceptsAnOverride"
+    }
+  ],
+  "skipReasons": [
+    {
+      "package": "whitevpn-desktop/internal/appdata",
+      "test": "TestEnsureAppDataWritableRepairsDarwinWithAdministratorPrompt",
+      "reason": "permissions_test.go:38: the macOS repair command can only be checked on a host with POSIX paths"
+    },
+    {
+      "package": "whitevpn-desktop/internal/mihomoconf",
+      "test": "TestLiveCatalogueConverts",
+      "reason": "catalogue_test.go:31: set WHITEVPN_CATALOGUE_URL and WHITEVPN_CATALOGUE_KEY to run this"
+    },
+    {
+      "package": "whitevpn-desktop/internal/session",
+      "test": "TestLiveAutomaticLetsTheEngineChoose",
+      "reason": "automatic_live_test.go:28: set WHITEVPN_CATALOGUE_URL and WHITEVPN_CATALOGUE_KEY to run this"
+    },
+    {
+      "package": "whitevpn-desktop/internal/session",
+      "test": "TestLiveConnectionOutlivesItsConnectContext",
+      "reason": "lifetime_live_test.go:26: set WHITEVPN_MEASURE_LIVE=1 to run against a real engine"
+    },
+    {
+      "package": "whitevpn-desktop/internal/session",
+      "test": "TestLiveConnectionCarriesTraffic",
+      "reason": "live_test.go:38: set WHITEVPN_CATALOGUE_URL and WHITEVPN_CATALOGUE_KEY to run this"
+    },
+    {
+      "package": "whitevpn-desktop/internal/session",
+      "test": "TestLiveMeasurerStartsAndMeasures",
+      "reason": "measure_live_test.go:22: set WHITEVPN_MEASURE_LIVE=1 to run against a real engine"
+    },
+    {
+      "package": "whitevpn-desktop",
+      "test": "TestFindMihomoCoreExplainsItselfWhenAbsent",
+      "reason": "mihomo_connect_test.go:19: Windows intentionally uses only the embedded elevated core"
+    },
+    {
+      "package": "whitevpn-desktop",
+      "test": "TestFindMihomoCoreAcceptsAnOverride",
+      "reason": "mihomo_connect_test.go:34: Windows intentionally uses only the embedded elevated core"
+    }
+  ]
+}

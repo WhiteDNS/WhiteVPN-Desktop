@@ -117,13 +117,15 @@ func NormalizeImportType(value string) string {
 }
 
 type ConnectionProfile struct {
-	ID                string `json:"id"`
-	Name              string `json:"name"`
-	ImportType        string `json:"importType"`
-	Domain            string `json:"domain"`
-	EncryptionKey     string `json:"encryptionKey"`
-	EncryptionMethod  int    `json:"encryptionMethod"`
-	ResolverProfileID string `json:"resolverProfileId"`
+	PublicOnly         bool   `json:"publicOnly,omitempty"`
+	CredentialRequired bool   `json:"credentialRequired,omitempty"`
+	ID                 string `json:"id"`
+	Name               string `json:"name"`
+	ImportType         string `json:"importType"`
+	Domain             string `json:"domain"`
+	EncryptionKey      string `json:"encryptionKey"`
+	EncryptionMethod   int    `json:"encryptionMethod"`
+	ResolverProfileID  string `json:"resolverProfileId"`
 }
 
 type ResolverProfile struct {
@@ -138,6 +140,9 @@ type ResolverProfile struct {
 }
 
 type V2RayProfile struct {
+	PublicOnly               bool   `json:"publicOnly,omitempty"`
+	CredentialRequired       bool   `json:"credentialRequired,omitempty"`
+	CredentialsReady         bool   `json:"credentialsReady,omitempty"`
 	ID                       string `json:"id"`
 	Name                     string `json:"name"`
 	SubscriptionID           string `json:"subscriptionId"`
@@ -207,12 +212,15 @@ type V2RaySettingsProfile struct {
 }
 
 type V2RaySubscription struct {
-	ID            string `json:"id"`
-	Name          string `json:"name"`
-	URL           string `json:"url"`
-	LastUpdatedAt string `json:"lastUpdatedAt"`
-	LastError     string `json:"lastError"`
-	ImportedCount int    `json:"importedCount"`
+	PublicOnly         bool   `json:"publicOnly,omitempty"`
+	CredentialRequired bool   `json:"credentialRequired,omitempty"`
+	DisplayURL         string `json:"displayUrl,omitempty"`
+	ID                 string `json:"id"`
+	Name               string `json:"name"`
+	URL                string `json:"url"`
+	LastUpdatedAt      string `json:"lastUpdatedAt"`
+	LastError          string `json:"lastError"`
+	ImportedCount      int    `json:"importedCount"`
 
 	// AllowInsecureTLS fetches this subscription without verifying the server's
 	// certificate.
@@ -244,6 +252,8 @@ type V2RayDuplicateRemovalResult struct {
 }
 
 type SettingsProfile struct {
+	PublicOnly                       bool    `json:"publicOnly,omitempty"`
+	CredentialRequired               bool    `json:"credentialRequired,omitempty"`
 	ID                               string  `json:"id"`
 	Name                             string  `json:"name"`
 	ImportType                       string  `json:"importType"`
@@ -317,7 +327,13 @@ type SettingsProfile struct {
 }
 
 type RuntimeStatus struct {
-	Status string `json:"status"`
+	SessionID         string `json:"sessionId,omitempty"`
+	SessionGeneration uint64 `json:"sessionGeneration,omitempty"`
+	ConnectionPhase   string `json:"connectionPhase,omitempty"`
+	ReleasePending    bool   `json:"releasePending,omitempty"`
+	ActiveSourceID    string `json:"activeSourceId,omitempty"`
+	FragmentMode      string `json:"fragmentMode,omitempty"`
+	Status            string `json:"status"`
 	// Engine names what is running: "mihomo" for the engine the phone app uses,
 	// empty for the Xray path.
 	//
@@ -591,6 +607,7 @@ type ProxyCountryLookupResult struct {
 
 // WhiteVPNNode is one node of the catalogue, as the connection dialog shows it.
 type WhiteVPNNode struct {
+	CredentialRequired bool `json:"credentialRequired,omitempty"`
 	// Name is the exact proxy name. It is the node's identity: what the engine
 	// selects by, and what the stored choice records.
 	Name string `json:"name"`

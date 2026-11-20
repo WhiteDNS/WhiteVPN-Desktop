@@ -206,6 +206,7 @@ func (a *App) refreshTray() {
 	}
 
 	a.tray.status.SetTitle(label)
+	if state.Runtime.ReleasePending { toggle=words.disconnect }
 	a.tray.toggle.SetTitle(toggle)
 	a.tray.show.SetTitle(words.show)
 	a.tray.quit.SetTitle(words.quit)
@@ -360,7 +361,9 @@ func (a *App) toggleTunnelFromTray() {
 }
 
 func (a *App) toggleFromTray() {
-	switch a.GetAppState().Runtime.Status {
+	state:=a.GetAppState()
+	if state.Runtime.ReleasePending { _,_=a.StopConnection(); return }
+	switch state.Runtime.Status {
 	case model.RuntimeConnected, model.RuntimeConnecting:
 		_, _ = a.StopConnection()
 	default:

@@ -2,8 +2,8 @@
 
 A desktop VPN client for Windows, macOS and Linux, built to behave like
 [WhiteVPN for Android](https://github.com/WhiteDNS/WhiteVPN) and to run the same
-engine underneath it: [mihomo](https://github.com/MetaCubeX/mihomo), through
-[FlClash](https://github.com/chen08209/FlClash)'s protocol glue.
+engine underneath it: [WhiteDNS/mihomo](https://github.com/WhiteDNS/mihomo/tree/whitedns), through
+[WhiteDNS/FlClash](https://github.com/WhiteDNS/FlClash/tree/whitedns)'s protocol glue.
 
 Someone who has used the phone app should find the same options here, under
 recognisable names, producing the same behaviour. Where the desktop needs
@@ -18,6 +18,11 @@ server workbench — it is added deliberately and recorded as a divergence in
 
 ## What it does
 
+- **Connection fragments** — Android 1.7.1's six FinalMask presets, custom JSON,
+  ALPN and cipher overrides for TCP proxies. Available on the VPN dashboard and
+  in Settings; an active connection restarts when changes are applied. If needed,
+  connection startup retries with server TLS settings and then without fragments,
+  and the dashboard reports the mode that actually connected.
 - **Connects through a subscription** — either built-in catalogue, private or
   public, or any `vless://`, `vmess://`, `trojan://`, `ss://`, `hysteria2://`,
   `anytls://`, `socks://` or `wireguard://` list you add. Which of the two

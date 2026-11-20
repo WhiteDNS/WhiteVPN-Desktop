@@ -3,14 +3,16 @@ package main
 import (
 	"fmt"
 
+	"whitevpn-desktop/internal/fragment"
 	"whitevpn-desktop/internal/model"
+	"whitevpn-desktop/internal/sessionmanager"
 )
 
 // GetWhiteVPNSettings returns the settings the phone app exposes.
 func (a *App) GetWhiteVPNSettings() model.WhiteVPNSettings {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	return settingsForThisMachine(model.NormalizeWhiteVPNSettings(a.state.WhiteVPN))
+	return model.PublicWhiteVPNSettings(settingsForThisMachine(model.NormalizeWhiteVPNSettings(a.state.WhiteVPN)))
 }
 
 // settingsForThisMachine drops what this build cannot do.
@@ -39,7 +41,28 @@ func settingsForThisMachine(settings model.WhiteVPNSettings) model.WhiteVPNSetti
 // something through - is corrected once, here, instead of reaching the engine
 // and failing there where the cause is much harder to see.
 func (a *App) SaveWhiteVPNSettings(settings model.WhiteVPNSettings) (model.AppState, error) {
+	if settings.Fragments.RawJSON == "" && !settings.Fragments.Enabled {
+		settings.Fragments = fragment.Default()
+	}
+	valid, err := fragment.Validate(settings.Fragments)
+	if err != nil {
+		return a.GetAppState(), fmt.Errorf("fragment settings: %w", err)
+	}
+	settings.Fragments = valid
 	a.mu.Lock()
+	previousFragments := a.state.WhiteVPN.Fragments
+	if settings.PublicOnly {
+		settings.DNSPrivacy.DoHURL = a.state.WhiteVPN.DNSPrivacy.DoHURL
+		settings.DNSPrivacy.DoTEndpoint = a.state.WhiteVPN.DNSPrivacy.DoTEndpoint
+		settings.DNSPrivacy.CredentialRequired = a.state.WhiteVPN.DNSPrivacy.CredentialRequired
+	} else if settings.DNSPrivacy.CredentialRequired {
+		if (settings.DNSPrivacy.Mode == model.DNSPrivacyDoH && settings.DNSPrivacy.DoHURL == "") || (settings.DNSPrivacy.Mode == model.DNSPrivacyDoT && settings.DNSPrivacy.DoTEndpoint == "") {
+			a.mu.Unlock()
+			return a.GetAppState(), model.ErrCredentialsRequired
+		}
+		settings.DNSPrivacy.CredentialRequired = false
+	}
+	settings.PublicOnly = false
 	// The parked selections are never taken from the caller. They are not a
 	// setting anybody edits — they are what the subscription switch put aside —
 	// and the interface does not carry the field at all, so a settings save
@@ -56,5 +79,29 @@ func (a *App) SaveWhiteVPNSettings(settings model.WhiteVPNSettings) (model.AppSt
 	}
 	// The tray speaks the app's language too.
 	a.notifyTray()
+	if previousFragments != normalized.Fragments && (previousFragments.Enabled || normalized.Fragments.Enabled) {
+		snapshot := a.connectionManager().Snapshot()
+		if snapshot.Phase == sessionmanager.Connected && snapshot.Route != nil && snapshot.Route.Kind == "mihomo" {
+			return a.connectMihomo(true)
+		}
+	}
 	return state, nil
+}
+
+func (a *App) GetFragmentPresets() []string {
+	presets := fragment.Presets()
+	for i, raw := range presets {
+		valid, _ := fragment.Validate(fragment.Settings{RawJSON: raw})
+		presets[i] = valid.RawJSON
+	}
+	return presets
+}
+
+func (a *App) GetDefaultFragmentSettings() fragment.Settings {
+	valid, _ := fragment.Validate(fragment.Default())
+	return valid
+}
+
+func (a *App) ValidateFragmentSettings(settings fragment.Settings) (fragment.Settings, error) {
+	return fragment.Validate(settings)
 }

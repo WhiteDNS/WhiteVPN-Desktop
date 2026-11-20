@@ -330,6 +330,7 @@ func (a *App) startMeasurer(ctx context.Context, subscriptionID string) (*sessio
 		HomeDir:      filepath.Join(a.configDir, "mihomo-measure"),
 		Subscription: subscription,
 		FrontingIP:   frontingIP,
+		Fragments:    settings.Fragments,
 	})
 	if err != nil {
 		return nil, err

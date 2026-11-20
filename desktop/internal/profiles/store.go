@@ -27,8 +27,9 @@ const (
 )
 
 type Store struct {
-	path string
-	mu   sync.Mutex
+	path      string
+	mu        sync.Mutex
+	protected *protectedState
 }
 
 func NewStore(path string) *Store {
@@ -38,6 +39,9 @@ func NewStore(path string) *Store {
 func (s *Store) Load() (model.AppState, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.protected != nil {
+		return s.loadProtectedLocked()
+	}
 
 	raw, err := os.ReadFile(s.path)
 	if errors.Is(err, os.ErrNotExist) {
@@ -222,10 +226,13 @@ func (s *Store) prepareStateLocked(state model.AppState, preserveRuntime bool) (
 }
 
 func (s *Store) writeStateLocked(state model.AppState) error {
+	if s.protected != nil {
+		return s.writeProtectedLocked(state)
+	}
 	if err := os.MkdirAll(filepath.Dir(s.path), 0o755); err != nil {
 		return err
 	}
-	raw, err := json.MarshalIndent(state, "", "  ")
+	raw, err := json.MarshalIndent(privateAppState(state), "", "  ")
 	if err != nil {
 		return err
 	}
@@ -468,7 +475,12 @@ func normalizeSettingsProfiles(profiles []model.SettingsProfile) []model.Setting
 		seen[profile.ID] = struct{}{}
 		if profile.ID == model.DefaultSettingsProfileID {
 			defaultSeen = true
-			out = append(out, model.DefaultSettingsProfile())
+			defaults := model.DefaultSettingsProfile()
+			defaults.CredentialRequired = profile.CredentialRequired
+			if profile.CredentialRequired {
+				defaults.SOCKSUsername, defaults.SOCKSPassword = "", ""
+			}
+			out = append(out, defaults)
 			continue
 		}
 		out = append(out, profile)
@@ -584,7 +596,7 @@ func normalizeV2RaySubscriptions(subscriptions []model.V2RaySubscription) []mode
 		// A subscription with no address is unusable and dropped - except the
 		// built-in catalogues, whose addresses the app keeps in code so that
 		// they are not carried in the state where they could be read.
-		if subscription.URL == "" && !model.IsBuiltInSubscription(subscription.ID) &&
+		if subscription.URL == "" && !subscription.CredentialRequired && !model.IsBuiltInSubscription(subscription.ID) &&
 			!model.IsEverySubscription(subscription.ID) {
 			continue
 		}
@@ -942,10 +954,10 @@ func normalizeSettingsProfile(profile model.SettingsProfile) model.SettingsProfi
 	if profile.ListenPort <= 0 || profile.ListenPort > 65535 {
 		profile.ListenPort = defaults.ListenPort
 	}
-	if profile.SOCKSUsername == "" {
+	if profile.SOCKSUsername == "" && !profile.CredentialRequired {
 		profile.SOCKSUsername = defaults.SOCKSUsername
 	}
-	if profile.SOCKSPassword == "" {
+	if profile.SOCKSPassword == "" && !profile.CredentialRequired {
 		profile.SOCKSPassword = defaults.SOCKSPassword
 	}
 	profile.SingBoxEnabled = true

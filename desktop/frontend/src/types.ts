@@ -2,6 +2,8 @@ export type RuntimeStatusName = "disconnected" | "connecting" | "connected" | "s
 export type RuntimeType = "" | "masterdns" | "v2ray";
 
 export interface ConnectionProfile {
+  publicOnly?: boolean;
+  credentialRequired?: boolean;
   id: string;
   name: string;
   importType: ImportType;
@@ -27,6 +29,9 @@ export interface ResolverProfile {
 export type V2RayProtocol = "vless" | "vmess" | "trojan" | "shadowsocks" | "hysteria2" | "anytls" | "wireguard" | "socks" | "http";
 
 export interface V2RayProfile {
+  publicOnly?: boolean;
+  credentialRequired?: boolean;
+  credentialsReady?: boolean;
   id: string;
   name: string;
   subscriptionId: string;
@@ -96,6 +101,9 @@ export interface V2RaySettingsProfile {
 }
 
 export interface V2RaySubscription {
+  publicOnly?: boolean;
+  credentialRequired?: boolean;
+  displayUrl?: string;
   id: string;
   name: string;
   url: string;
@@ -157,6 +165,8 @@ export interface V2RayWhiteIPGenerateResult {
 }
 
 export interface SettingsProfile {
+  publicOnly?: boolean;
+  credentialRequired?: boolean;
   id: string;
   name: string;
   importType: ImportType;
@@ -292,6 +302,12 @@ export interface ProxyCountryLookupResult {
 }
 
 export interface RuntimeStatus {
+  sessionId?: string;
+  sessionGeneration?: number;
+  connectionPhase?: string;
+  releasePending?: boolean;
+  activeSourceId?: string;
+  fragmentMode?: "full" | "fragments-only" | "normal";
   status: RuntimeStatusName;
   engine: string;
   runtimeType: RuntimeType;
@@ -634,6 +650,7 @@ export type AmneziaNoiseSettings = {
 };
 
 export type DNSPrivacySettings = {
+  credentialRequired?: boolean;
   mode: DNSPrivacyMode;
   dohUrl: string;
   dotEndpoint: string;
@@ -676,6 +693,8 @@ export type UpdateStatus = {
 // One node of the catalogue. `name` is its identity — what the engine selects
 // by — and `label` is the same name with the flag and channel marker removed.
 export type WhiteVPNNode = {
+  shareAvailable?: boolean;
+  credentialRequired?: boolean;
   name: string;
   label: string;
   type: string;
@@ -766,11 +785,13 @@ export type DirectRoutingSettings = {
 };
 
 export type WhiteVPNSettings = {
+  publicOnly?: boolean;
   countryCode: string;
   connection: ConnectionSelection;
   splitTunnel: SplitTunnelSettings;
   directRouting: DirectRoutingSettings;
   tlsIntegrityEnabled: boolean;
+  fragments: FragmentSettings;
   amneziaNoise: AmneziaNoiseSettings;
   frontingIps: string[];
   dnsPrivacy: DNSPrivacySettings;
@@ -783,4 +804,11 @@ export type WhiteVPNSettings = {
   allowLan: boolean;
   listenPort: number;
   acceptedPrivacyPolicyVersion: number;
+};
+
+export type FragmentSettings = {
+  enabled: boolean;
+  rawJson: string;
+  alpn: string;
+  cipherSuites: string;
 };

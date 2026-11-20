@@ -187,6 +187,15 @@ func fetchWhiteDNSVPNSubscriptionDocument(ctx context.Context, catalogue builtIn
 }
 
 func (a *App) StartWhiteDNSVPNConnection() (model.AppState, error) {
+	if err := a.sourceCredentialError(a.selectedSubscriptionID()); err != nil {
+		return a.GetAppState(), err
+	}
+	a.mu.Lock()
+	dns := a.state.WhiteVPN.DNSPrivacy
+	a.mu.Unlock()
+	if dns.CredentialRequired && dns.Mode != model.DNSPrivacyAutomatic {
+		return a.GetAppState(), model.ErrCredentialsRequired
+	}
 	// The gate is enforced here and not only in the interface. A gate that only
 	// the interface applies is one that is not really there.
 	if state := a.GetAppState(); !privacyPolicyAccepted(state) {
@@ -195,7 +204,7 @@ func (a *App) StartWhiteDNSVPNConnection() (model.AppState, error) {
 
 	a.mu.Lock()
 	if a.state.Runtime.Status != model.RuntimeDisconnected && a.state.Runtime.Status != model.RuntimeFailed {
-		state := a.state
+		state := a.publicStateLocked()
 		a.mu.Unlock()
 		return state, nil
 	}
@@ -208,10 +217,10 @@ func (a *App) StartWhiteDNSVPNConnection() (model.AppState, error) {
 // exclude and picks its node when it connects, so stopping and starting again is
 // what refreshing means here.
 func (a *App) RefreshWhiteDNSVPNConnection() (model.AppState, error) {
-	if _, err := a.StopConnection(); err != nil {
-		return a.GetAppState(), err
+	if !privacyPolicyAccepted(a.GetAppState()) {
+		return a.GetAppState(), fmt.Errorf("the privacy policy has not been accepted yet")
 	}
-	return a.StartWhiteDNSVPNConnection()
+	return a.connectMihomo(true)
 }
 
 func (a *App) SaveWhiteDNSVPNFrontingIPs(rawText string) (model.AppState, error) {
@@ -245,21 +254,21 @@ func (a *App) SelectSubscription(id string) (model.AppState, error) {
 	// explains nothing.
 	everyAvailable := model.IsEverySubscription(id) && len(a.state.V2RaySubscriptions) > 1
 	if _, ok := findV2RaySubscription(a.state, id); !ok && !model.IsBuiltInSubscription(id) && !manualAvailable && !everyAvailable {
-		state := a.state
+		state := a.publicStateLocked()
 		a.mu.Unlock()
 		return state, fmt.Errorf("that server source is not in the list")
 	}
 	if a.state.SelectedSubscriptionID == id {
-		state := a.state
+		state := a.publicStateLocked()
 		a.mu.Unlock()
 		return state, nil
 	}
-	if a.mihomo.current() != nil {
+	if a.mihomo.current() != nil || a.hasManagedOwner() {
 		// The running tunnel was built from the current subscription's servers
 		// and cannot be moved onto another's. Changing the setting under it
 		// would leave the app naming one subscription while carrying traffic
 		// through a different one.
-		state := a.state
+		state := a.publicStateLocked()
 		a.mu.Unlock()
 		return state, fmt.Errorf("disconnect before changing the subscription: the connection is running on the current one")
 	}
@@ -404,6 +413,9 @@ func (a *App) subscriptionBodyWithFallback(ctx context.Context) (string, string,
 	if err == nil {
 		return body, selected, nil
 	}
+	if errors.Is(err, model.ErrCredentialsRequired) {
+		return "", selected, err
+	}
 
 	candidates := a.fallbackSubscriptionIDs(selected)
 	if len(candidates) == 0 {
@@ -465,7 +477,7 @@ func (a *App) fallbackSubscriptionIDs(exclude string) []string {
 		}
 	}
 	for _, subscription := range a.state.V2RaySubscriptions {
-		if !model.IsBuiltInSubscription(subscription.ID) && strings.TrimSpace(subscription.URL) != "" {
+		if !subscription.CredentialRequired && !model.IsBuiltInSubscription(subscription.ID) && strings.TrimSpace(subscription.URL) != "" {
 			add(subscription.ID)
 		}
 	}
@@ -518,6 +530,9 @@ func (a *App) subscriptionBodyFor(ctx context.Context, id string) (string, error
 
 // resolveSubscriptionBody is subscriptionBodyFor, and where the body came from.
 func (a *App) resolveSubscriptionBody(ctx context.Context, id string) (string, snapshotOrigin, error) {
+	if err := a.sourceCredentialError(id); err != nil {
+		return "", originRefreshed, err
+	}
 	fetch := a.fetchSubscriptionBodyFor
 	if a.fetchSubscriptionHook != nil {
 		fetch = a.fetchSubscriptionHook
@@ -898,7 +913,7 @@ func (a *App) refreshBuiltInCatalogue(id string) (model.V2RaySubscriptionRefresh
 	a.mu.Lock()
 	idx := a.ensureBuiltInSubscriptionLocked(id)
 	if idx == -1 {
-		state := a.state
+		state := a.publicStateLocked()
 		a.mu.Unlock()
 		return model.V2RaySubscriptionRefreshResult{State: state}, fmt.Errorf("unknown built-in catalogue %q", id)
 	}

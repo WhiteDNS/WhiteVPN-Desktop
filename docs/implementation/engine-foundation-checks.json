@@ -1,0 +1,33 @@
+{
+  "date": "2026-10-04",
+  "scope": "engine profile foundation and standalone session manager contract",
+  "goToolchain": "go1.26.5",
+  "windowsAMD64": {
+    "goBuildExit": 0,
+    "goVetExit": 0,
+    "testsPassed": 616,
+    "testsFailed": 0,
+    "testsSkipped": 8,
+    "packagesPassed": 14,
+    "newPackageRaceTestsExit": 0,
+    "profileAPIRaceTestsExit": 0,
+    "realDPAPIAndACLTests": true
+  },
+  "frontend": {
+    "typeScriptExit": 0,
+    "productionBuildExit": 0
+  },
+  "crossBuild": {
+    "windowsARM64InternalPackagesExit": 0,
+    "linuxAMD64InternalPackagesExit": 0
+  },
+  "acceptanceLimits": {
+    "legacyCredentialMigrationComplete": false,
+    "globalPublicAppStateComplete": false,
+    "mihomoManagerAdapterIntegrated": false,
+    "newEngineRuntimeIntegrated": false,
+    "engineProfileUIImplemented": false,
+    "nativeHelpersPackaged": false,
+    "physicalARM64RuntimeTested": false
+  }
+}

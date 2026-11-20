@@ -14,9 +14,12 @@ import (
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"whitevpn-desktop/internal/appdata"
+	"whitevpn-desktop/internal/engineprofiles"
 	"whitevpn-desktop/internal/firewall"
 	"whitevpn-desktop/internal/model"
 	"whitevpn-desktop/internal/profiles"
+	"whitevpn-desktop/internal/securestore"
+	"whitevpn-desktop/internal/sessionmanager"
 )
 
 type firewallChecker func(context.Context) model.FirewallStatus
@@ -41,6 +44,13 @@ type App struct {
 	store     *profiles.Store
 	configDir string
 
+	engineDataMu      sync.RWMutex
+	engineProfilesMu  sync.Mutex
+	engineProfiles    *engineprofiles.Store
+	engineProfilesErr error
+	snapshotMu        sync.Mutex
+	snapshotProtector securestore.Protector
+
 	mu                         sync.Mutex
 	state                      model.AppState
 	v2rayTestMu                sync.Mutex
@@ -59,9 +69,15 @@ type App struct {
 
 	legacyImport profiles.LegacyImport
 
-	mihomo  mihomoState
-	tray    trayState
-	measure measureState
+	mihomo            mihomoState
+	connectionOnce    sync.Once
+	connection        *sessionmanager.Manager
+	connectionBackend sessionmanager.Backend // test seam; production always uses the Mihomo adapter
+	connectionEvents  sync.Mutex
+	managedMu         sync.Mutex
+	managedMihomo     *managedMihomoSession
+	tray              trayState
+	measure           measureState
 	// Cached so opening a page does not spend one of GitHub's sixty
 	// unauthenticated requests an hour.
 	updates updateCheckCache
@@ -99,15 +115,23 @@ func NewApp() (*App, error) {
 	if err := ensureAppDataWritable(context.Background(), configDir); err != nil {
 		return nil, err
 	}
+	return newAppInConfigDir(configDir)
+}
+
+func newAppInConfigDir(configDir string) (*App, error) {
 	statePath := filepath.Join(configDir, "state.json")
 	// Look for a WhiteDNS Desktop install to inherit from, but only before this
 	// app has a state file of its own - after that the user has made their own
 	// choices here and we must not second-guess them.
-	firstRun := false
-	if _, err := os.Stat(statePath); os.IsNotExist(err) {
-		firstRun = true
+	store, err := profiles.NewPlatformStore(statePath)
+	if err != nil {
+		return nil, err
 	}
-	store := profiles.NewStore(statePath)
+	hasState, err := store.HasStoredState()
+	if err != nil {
+		return nil, err
+	}
+	firstRun := !hasState
 	app := &App{
 		store:               store,
 		configDir:           configDir,
@@ -121,6 +145,15 @@ func NewApp() (*App, error) {
 		return nil, err
 	}
 	app.state = forgetBuiltInCatalogueProfiles(forgetBuiltInSubscriptionURL(state))
+	if store.IsProtected() {
+		app.snapshotProtector, err = securestore.NewUserProtector("subscription-snapshots-v1")
+		if err != nil {
+			return nil, err
+		}
+		if err := app.migrateSubscriptionSnapshots(); err != nil {
+			return nil, err
+		}
+	}
 	// The catalogue has to be in the list from the first launch, not from the
 	// first refresh.
 	//
@@ -135,6 +168,7 @@ func NewApp() (*App, error) {
 	if firstRun {
 		app.legacyImport = profiles.ReadLegacyImport(legacyWhiteDNSStatePath())
 	}
+	app.initEngineProfiles()
 	return app, nil
 }
 
@@ -165,7 +199,7 @@ func (a *App) ImportLegacyProfiles() (model.AppState, error) {
 	offer := a.legacyImport
 	a.legacyImport = profiles.LegacyImport{}
 	if !offer.Available {
-		return a.state, nil
+		return a.publicStateLocked(), nil
 	}
 	a.state = forgetBuiltInCatalogueProfiles(forgetBuiltInSubscriptionURL(offer.Apply(a.state)))
 	return a.saveLocked()
@@ -200,8 +234,10 @@ func (a *App) shutdown(ctx context.Context) {
 func (a *App) GetAppState() model.AppState {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	return a.state
+	return a.publicStateLocked()
 }
+
+func (a *App) publicStateLocked() model.AppState { return model.AppState(a.state.Public()) }
 
 func (a *App) CheckFirewallStatus() model.FirewallStatus {
 	return a.checkFirewallStatus(context.Background())
@@ -227,13 +263,21 @@ func (a *App) StopConnection() (model.AppState, error) {
 	// on its own and reports itself disconnected.
 	a.cancelConnect()
 	a.beginStopping()
-
-	if !a.stopMihomo() {
-		// Nothing was running; there is still a status to settle, because a
-		// cancelled connect leaves one behind.
-		a.handleRuntimeState(model.RuntimeDisconnected, "Disconnected")
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	err := a.connectionManager().Stop(ctx)
+	// Legacy pointers exist in tests and an older in-process adoption helper;
+	// production ownership now always comes from the manager adapter.
+	if err == nil && a.currentManagedMihomo() == nil {
+		if current := a.mihomo.current(); current != nil {
+			if err = current.Stop(ctx); err == nil {
+				a.mihomo.swap(nil)
+				a.restoreSystemProxy()
+			}
+		}
 	}
-	return a.GetAppState(), nil
+	a.syncManagedRuntime()
+	return a.GetAppState(), err
 }
 
 // beginStopping marks a running runtime as on its way down, and reports whether
@@ -272,7 +316,7 @@ func (a *App) ClearRuntimeLogsForType(runtimeType string) model.AppState {
 		a.state.Runtime.V2RayLogs = []string{}
 	}
 	runtimeState := a.state.Runtime
-	next := a.state
+	next := a.publicStateLocked()
 	a.mu.Unlock()
 	a.emit("runtime:state", runtimeState)
 	return next
@@ -280,24 +324,39 @@ func (a *App) ClearRuntimeLogsForType(runtimeType string) model.AppState {
 
 func (a *App) ExportBackup() (string, error) {
 	a.mu.Lock()
-	state := a.state
-	a.mu.Unlock()
-	return a.store.ExportBackup(state)
+	defer a.mu.Unlock()
+	// Export reads private slices/maps. Keep the snapshot stable against edits,
+	// just as Save and Import do; serialization uses the backup policy below.
+	return a.store.ExportBackup(a.state)
 }
 
 func (a *App) ImportBackup(rawText string) (model.AppState, error) {
+	var state model.AppState
+	err := a.connectionManager().WhileIdle(context.Background(), func() error {
+		var err error
+		state, err = a.importBackupWhileIdle(rawText)
+		return err
+	})
+	if err != nil {
+		return a.GetAppState(), err
+	}
+	return state, nil
+}
+
+func (a *App) importBackupWhileIdle(rawText string) (model.AppState, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.state.Runtime.Status != model.RuntimeDisconnected && a.state.Runtime.Status != model.RuntimeFailed {
-		return a.state, fmt.Errorf("backup can only be restored while disconnected")
+	if (a.state.Runtime.Status != model.RuntimeDisconnected && a.state.Runtime.Status != model.RuntimeFailed) || a.mihomo.current() != nil {
+		return a.publicStateLocked(), fmt.Errorf("backup can only be restored while disconnected")
 	}
 
 	next, err := a.store.ImportBackup(rawText)
 	if err != nil {
-		return a.state, err
+		return a.publicStateLocked(), err
 	}
 	a.state = forgetBuiltInCatalogueProfiles(forgetBuiltInSubscriptionURL(next))
-	return a.state, nil
+	a.forgetAllCachedNodes()
+	return a.publicStateLocked(), nil
 }
 
 func (a *App) Quit() {
@@ -355,10 +414,10 @@ func (a *App) saveLocked() (model.AppState, error) {
 	a.state = profiles.NormalizeStatePreservingRuntime(a.state)
 	next, err := a.store.SaveState(a.state)
 	if err != nil {
-		return a.state, err
+		return a.publicStateLocked(), err
 	}
 	a.state = next
-	return a.state, nil
+	return a.publicStateLocked(), nil
 }
 
 func (a *App) handleLog(line string) {
@@ -624,6 +683,11 @@ func (a *App) currentRuntime() model.RuntimeStatus {
 }
 
 func (a *App) emit(name string, payload any) {
+	// String-only notices/errors do not have a model JSON boundary of their own.
+	// They can contain URLs from network errors, including subscription tokens.
+	if message, ok := payload.(string); ok {
+		payload = model.PublicText(message)
+	}
 	if a.emitHook != nil {
 		a.emitHook(name, payload)
 	}

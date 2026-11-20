@@ -1,0 +1,10 @@
+[
+  {
+    "architecture": "amd64",
+    "exit": 0
+  },
+  {
+    "architecture": "arm64",
+    "exit": 0
+  }
+]

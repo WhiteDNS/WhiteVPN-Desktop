@@ -29,7 +29,13 @@ import (
 // An empty ID adds a config rather than changing one, which is what the same
 // form does when it is opened on nothing.
 func (a *App) SaveManualNode(profile model.V2RayProfile) (model.WhiteVPNNodeList, error) {
+	if profile.PublicOnly {
+		return a.snapshotWhiteVPNNodes(model.ManualServerSourceID), fmt.Errorf("open the profile editor before saving connection details")
+	}
 	profile.SubscriptionID = ""
+	// This is an explicit editor action. Real input is validated below before a
+	// credential-required placeholder can be replaced by a usable config.
+	profile.CredentialRequired = false
 
 	if id := strings.TrimSpace(profile.ID); id != "" {
 		existing, ok := a.manualProfileByID(id)

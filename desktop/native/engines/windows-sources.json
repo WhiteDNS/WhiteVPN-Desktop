@@ -1,0 +1,92 @@
+{
+  "schemaVersion": 1,
+  "targetPlatforms": ["windows/amd64", "windows/arm64"],
+  "androidReference": {
+    "repository": "https://github.com/WhiteDNS/WhiteVPN",
+    "commit": "bf4adc5f72b36b9443ae5457782f4f1648984efc",
+    "version": "1.7.0-beta.1",
+    "versionCode": 86
+  },
+  "status": "source-inputs; not a packaged runtime availability manifest",
+  "engines": [
+    {
+      "kind": "ssh",
+      "baseRequired": true,
+      "runtimeKind": "go-adapter",
+      "module": "golang.org/x/crypto",
+      "version": "v0.53.0",
+      "integrationStatus": "pending"
+    },
+    {
+      "kind": "psiphon",
+      "baseRequired": true,
+      "runtimeKind": "worker",
+      "repository": "https://github.com/CluvexStudio/psiphon-tunnel-core",
+      "commit": "83aa73b9b982e7421e00117f5b0c5aceb5dda452",
+      "buildProbe": "library compiled for windows/amd64 and windows/arm64",
+      "integrationStatus": "pending"
+    },
+    {
+      "kind": "tor",
+      "baseRequired": true,
+      "runtimeKind": "daemon-and-transports",
+      "torSource": {
+        "url": "https://archive.torproject.org/tor-package-archive/tor-0.4.9.13.tar.gz",
+        "sha256": "5e748d3272cdf44a7d7741173f371c8def3d96eecb77e93c89c50663ce9cc792"
+      },
+      "baseTransports": ["direct", "obfs4", "snowflake"],
+      "lyrebird": {
+        "repository": "https://gitlab.torproject.org/tpo/anti-censorship/pluggable-transports/lyrebird.git",
+        "commit": "ad08585d979f72a1019470e4e2b18e9ed2550274"
+      },
+      "snowflakeVersion": "v2.14.1",
+      "conjure": {
+        "repository": "https://gitlab.torproject.org/tpo/anti-censorship/pluggable-transports/conjure.git",
+        "commit": "505cb48152e89e12a608ec6a0101af8a2d266fb1",
+        "tier": "full-parity-extension",
+        "buildProbe": "failed: Windows DTLS socket API compatibility"
+      },
+      "integrationStatus": "pending; Tor core ARM64 still requires native build"
+    },
+    {
+      "kind": "dns",
+      "baseRequired": true,
+      "runtimeKind": "worker",
+      "baseEngines": ["dnstt", "vaydns", "masterdns"],
+      "zeddnsSource": {
+        "derivation": "Android native engine builder and DoT verification patch at androidReference.commit",
+        "windowsBuildRecipe": "pending"
+      },
+      "vaydns": {
+        "repository": "https://github.com/anonvector/vaydns.git",
+        "commit": "a0ff70110d5e96686ab8f4c8e1c44cd09be07a75"
+      },
+      "masterdns": {
+        "repository": "https://github.com/CluvexStudio/MasterDnsVPN.git",
+        "commit": "50b447bc41e6c930a0027507a1a9f492b6fc63b9"
+      },
+      "buildProbe": "zeddns and MasterDNS libraries compiled for both Windows targets",
+      "integrationStatus": "pending"
+    },
+    {
+      "kind": "amneziawg",
+      "baseRequired": true,
+      "runtimeKind": "native-worker",
+      "module": "github.com/amnezia-vpn/amneziawg-go/v3",
+      "version": "v3.1.20260814",
+      "driver": "official signed Wintun; separate AMD64 and ARM64 artifacts",
+      "buildProbe": "device and tun packages compiled for both Windows targets",
+      "integrationStatus": "pending"
+    },
+    {
+      "kind": "ikev2",
+      "baseRequired": true,
+      "runtimeKind": "windows-vpn-ras",
+      "baseAuth": ["eap_mschapv2", "certificate-path-validated-by-fixture"],
+      "extensions": ["psk", "additional-android-identities"],
+      "integrationStatus": "pending Windows server/certificate compatibility spike"
+    }
+  ],
+  "artifactHashes": "populated by future target-specific packaging; not established by library probes",
+  "licenseAudit": "required before distribution of native/helper artifacts"
+}

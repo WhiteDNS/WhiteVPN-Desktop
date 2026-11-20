@@ -94,6 +94,9 @@ func IsExportableV2RayProfile(profile model.V2RayProfile) bool {
 	if strings.TrimSpace(profile.Server) == "" {
 		return false
 	}
+	if profile.CredentialRequired || profile.PublicOnly {
+		return false
+	}
 	switch profile.Protocol {
 	case model.V2RayProtocolTrojan, model.V2RayProtocolShadowsocks:
 		return strings.TrimSpace(profile.Password) != ""
@@ -111,6 +114,9 @@ func IsExportableV2RayProfile(profile model.V2RayProfile) bool {
 }
 
 func validateV2RayProfileForExport(profile model.V2RayProfile) error {
+	if profile.CredentialRequired || profile.PublicOnly {
+		return model.ErrCredentialsRequired
+	}
 	if strings.TrimSpace(profile.Server) == "" {
 		return fmt.Errorf("V2Ray server is required")
 	}

@@ -40,6 +40,7 @@ import {
   Youtube,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { FragmentSettingsPanel } from "./FragmentSettingsPanel";
 import type { ReactNode } from "react";
 
 import {
@@ -347,6 +348,9 @@ function normalizeV2RayProfile(profile: V2RayProfile): V2RayProfile {
 }
 
 const v2rayProfileStableKeys: Array<keyof V2RayProfile> = [
+  "publicOnly",
+  "credentialsReady",
+  "credentialRequired",
   "id",
   "name",
   "subscriptionId",
@@ -2048,9 +2052,9 @@ function WhiteDNSVPNPage({
   // Another runtime holding the machine is not this page's connection, so its
   // status must not drive this page's button.
   const otherRuntimeActive = runtimeBusy && !active;
-  const connectState = otherRuntimeActive ? "connect" : connectButtonState(runtime.status, pending);
+  const connectState = runtime.releasePending && pending !== "stop" ? "disconnect" : otherRuntimeActive ? "connect" : connectButtonState(runtime.status, pending);
   const startsConnection = connectState === "connect" || connectState === "retry";
-  const setupStatus = otherRuntimeActive ? "connecting" : connectCardStatus(connectState);
+  const setupStatus = runtime.releasePending ? "failed" : otherRuntimeActive ? "connecting" : connectCardStatus(connectState);
   const setupStatusLabel = otherRuntimeActive ? t("connect.busy") : translatedStatusLabel(t, setupStatus);
   // While connected, where it is actually listening; otherwise where it will
   // listen, which is a constant of the engine. Never the V2Ray settings
@@ -2064,7 +2068,7 @@ function WhiteDNSVPNPage({
     otherRuntimeActive ||
     (startsConnection && pending !== null);
   const connectedFrontingIP = active ? runtime.frontingIp : "";
-  const dashboardTitle = otherRuntimeActive
+  const dashboardTitle = runtime.releasePending ? t("vpn.card.failed") : otherRuntimeActive
     ? t("vpn.card.otherRuntime")
     : connectState === "connecting"
       ? t("vpn.card.connecting")
@@ -2075,7 +2079,7 @@ function WhiteDNSVPNPage({
           : connectState === "retry"
             ? t("vpn.card.failed")
             : t("vpn.card.ready");
-  const dashboardDescription = otherRuntimeActive
+  const dashboardDescription = runtime.releasePending ? t("connect.cleanupPending") : otherRuntimeActive
     ? t("vpn.card.otherRuntime.description")
     : connectState === "connecting"
       ? runtime.status === "connecting" && runtime.progress.phase
@@ -2420,6 +2424,14 @@ function WhiteDNSVPNPage({
                 wrote to the V2Ray settings profile, which only the Xray path
                 reads. Under the engine this app now runs they changed nothing.
                 One place to change a setting is worth more than two. */}
+            <DashboardRow
+              icon={<SlidersHorizontal className="size-4" />}
+              label={t("fragments.title")}
+              value={runtime.status === "connected" && runtime.fragmentMode
+                ? t(`fragments.mode.${runtime.fragmentMode}` as StringKey)
+                : t(state.whiteVpn.fragments?.enabled ? "fragments.on" : "fragments.off")}
+              onClick={() => { sessionStorage.setItem("whitevpn-settings-section", "fragments"); onNavigate("settings"); }}
+            />
             <p className="pt-1 text-xs text-muted-foreground">{t("vpn.moreSettings")}</p>
             <Button variant="outline" size="sm" className="justify-self-start" onClick={() => onNavigate("settings")}>
               <Settings className="size-3.5" />
@@ -2664,6 +2676,14 @@ function NodesPage({
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [shareNode, setShareNode] = useState<WhiteVPNNode | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
+  const [exportLinks, setExportLinks] = useState<string[]>([]);
+  const [exportSkipped, setExportSkipped] = useState(0);
+  const shareRequest = useRef(0);
+  useEffect(() => {
+    shareRequest.current += 1;
+    setShareNode(null); setExportOpen(false); setExportLinks([]);
+    return () => { shareRequest.current += 1; };
+  }, [subscriptionId]);
   // Base64 of the whole list is what a subscription URL serves, and several
   // clients take it pasted straight in. Plain links are what everything takes,
   // so that is the default and this is the option.
@@ -2843,11 +2863,10 @@ function NodesPage({
     () => (selectedNames.length ? visible.filter((node) => selected.has(node.name)) : visible),
     [visible, selected, selectedNames],
   );
-  const exportLinks = useMemo(() => exportNodes.map((node) => node.link).filter(Boolean), [exportNodes]);
+  const exportAvailableCount = exportNodes.filter((node) => node.shareAvailable).length;
   // A subscription served as a mihomo document has no share link per node, so
   // some rows cannot be exported. Counted and said, rather than a shorter list
   // than the one that was selected appearing with no explanation.
-  const exportSkipped = exportNodes.length - exportLinks.length;
   const exportText = useMemo(() => {
     const plain = exportLinks.join("\n");
     if (!exportBase64 || !plain) {
@@ -2858,6 +2877,27 @@ function NodesPage({
     return btoa(String.fromCharCode(...new TextEncoder().encode(plain)));
   }, [exportLinks, exportBase64]);
   const exportFilename = `whitevpn-${exportLinks.length}-configs${exportBase64 ? "-base64" : ""}.txt`;
+
+  async function openExport() {
+    const requestId = ++shareRequest.current;
+    try {
+      const links = await backend.exportNodeLinks(subscriptionId, exportNodes.map((node) => node.name));
+      if (requestId !== shareRequest.current) { return; }
+      setExportLinks(links.map((node) => node.link));
+      setExportSkipped(exportNodes.length - links.length);
+      setExportOpen(true);
+    } catch (err) { if (requestId === shareRequest.current) { onError(messageFromError(err)); } }
+  }
+
+  async function openShare(node: WhiteVPNNode) {
+    const requestId = ++shareRequest.current;
+    try {
+      const links = await backend.exportNodeLinks(subscriptionId, [node.name]);
+      if (requestId !== shareRequest.current) { return; }
+      if (!links[0]) { onError(t("servers.share.none")); return; }
+      setShareNode({ ...node, link: links[0].link });
+    } catch (err) { if (requestId === shareRequest.current) { onError(messageFromError(err)); } }
+  }
 
   async function copyExport() {
     try {
@@ -3048,12 +3088,12 @@ function NodesPage({
               {t("servers.hideSelected", { count: selectedHideable.length })}
             </Button>
           )}
-          {exportLinks.length > 0 && (
-            <Button variant="outline" onClick={() => setExportOpen(true)}>
+          {exportAvailableCount > 0 && (
+            <Button variant="outline" onClick={() => void openExport()}>
               <Download />
               {selectedNames.length
-                ? t("servers.exportSelected", { count: exportLinks.length })
-                : t("servers.exportAll", { count: exportLinks.length })}
+                ? t("servers.exportSelected", { count: exportAvailableCount })
+                : t("servers.exportAll", { count: exportAvailableCount })}
             </Button>
           )}
           {hiddenCount > 0 && (
@@ -3327,6 +3367,7 @@ function NodesPage({
                       <span className="block truncate" title={node.name}>
                         {node.label}
                       </span>
+                      {node.credentialRequired && <span className="text-xs text-amber-600">{t("profiles.detailsRequired")}</span>}
                     </td>
                     <td className="px-2 py-1.5">
                       <Badge variant="outline" className="h-5 px-1.5 text-[10px] uppercase">
@@ -3382,7 +3423,7 @@ function NodesPage({
                               variant="ghost"
                               size="icon-sm"
                               onClick={() => onSelectNode(node.name)}
-                              disabled={blockedByConnection}
+                              disabled={blockedByConnection || node.credentialRequired}
                               aria-label={t("servers.use")}
                             >
                               <Play />
@@ -3395,17 +3436,17 @@ function NodesPage({
                             <Button
                               variant="ghost"
                               size="icon-sm"
-                              onClick={() => setShareNode(node)}
+                              onClick={() => void openShare(node)}
                               // A node read out of a provider's own
                               // configuration has no share link to give: the
                               // document carried settings, not a URL.
-                              disabled={!node.link}
+                              disabled={!node.shareAvailable}
                               aria-label={t("servers.share")}
                             >
                               <Share2 />
                             </Button>
                           </TooltipTrigger>
-                          <TooltipContent>{node.link ? t("servers.share") : t("servers.share.none")}</TooltipContent>
+                          <TooltipContent>{node.shareAvailable ? t("servers.share") : t("servers.share.none")}</TooltipContent>
                         </Tooltip>
                         {/* A subscription's node cannot be edited — a refresh
                             rebuilds it — so it gets the two things that do
@@ -3418,14 +3459,14 @@ function NodesPage({
                                   variant="ghost"
                                   size="icon-sm"
                                   onClick={() => void copyToManual(node)}
-                                  disabled={!node.link}
+                                  disabled={!node.shareAvailable}
                                   aria-label={t("servers.copyToManual")}
                                 >
                                   <Copy />
                                 </Button>
                               </TooltipTrigger>
                               <TooltipContent>
-                                {node.link ? t("servers.copyToManual") : t("servers.copyToManual.none")}
+                                {node.shareAvailable ? t("servers.copyToManual") : t("servers.copyToManual.none")}
                               </TooltipContent>
                             </Tooltip>
                             <Tooltip>
@@ -3573,7 +3614,7 @@ function NodesPage({
       {/* Exporting what a test run selected. The reason this exists is to carry
           the survivors of a test to another device — a phone, a television —
           and doing that one share dialog at a time is why it was asked for. */}
-      <Dialog open={exportOpen} onOpenChange={setExportOpen}>
+      <Dialog open={exportOpen} onOpenChange={(open) => { setExportOpen(open); if (!open) { setExportLinks([]); } }}>
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>{t("servers.export")}</DialogTitle>
@@ -3593,7 +3634,7 @@ function NodesPage({
               {t("servers.export.base64")}
             </label>
             <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-              <Button variant="outline" onClick={() => setExportOpen(false)}>
+              <Button variant="outline" onClick={() => { setExportOpen(false); setExportLinks([]); }}>
                 {t("common.close")}
               </Button>
               <Button
@@ -3681,6 +3722,8 @@ function V2RaySubscriptionsPage({
   const [deleteTarget, setDeleteTarget] = useState<V2RaySubscription | null>(null);
   const [refreshingSubscriptionIds, setRefreshingSubscriptionIds] = useState<Record<string, boolean>>({});
   const [selectingSubscription, setSelectingSubscription] = useState(false);
+  const subscriptionEditRequest = useRef(0);
+  useEffect(() => () => { subscriptionEditRequest.current += 1; }, []);
   const profileIndex = useMemo(
     () => buildV2RayProfileIndex(state.v2rayProfiles, {}, {}),
     [state.v2rayProfiles]
@@ -3694,15 +3737,21 @@ function V2RaySubscriptionsPage({
   }, [editorOpen, fallbackDraft]);
 
   function openNewSubscription() {
+    subscriptionEditRequest.current += 1;
     onError("");
     setDraft(defaultV2RaySubscriptionDraft());
     setEditorOpen(true);
   }
 
-  function openExistingSubscription(subscription: V2RaySubscription) {
+  async function openExistingSubscription(subscription: V2RaySubscription) {
+    const requestId = ++subscriptionEditRequest.current;
     onError("");
-    setDraft(normalizeV2RaySubscription(subscription));
-    setEditorOpen(true);
+    try {
+      const edited = await backend.getV2RaySubscriptionForEdit(subscription.id);
+      if (requestId !== subscriptionEditRequest.current) { return; }
+      setDraft(normalizeV2RaySubscription(edited));
+      setEditorOpen(true);
+    } catch (err) { if (requestId === subscriptionEditRequest.current) { onError(messageFromError(err)); } }
   }
 
   async function saveSubscription() {
@@ -3748,9 +3797,6 @@ function V2RaySubscriptionsPage({
     try {
       const result = await backend.refreshV2RaySubscription(subscription.id);
       onState(result.state);
-      if (draft.id === subscription.id) {
-        setDraft(normalizeV2RaySubscription(result.subscription));
-      }
       if (result.ok) {
         onSuccess(result.message || t("subs.imported", { count: result.imported }));
       } else {
@@ -3846,7 +3892,7 @@ function V2RaySubscriptionsPage({
                     // Said on the row rather than once when it was added: a
                     // server list fetched in the clear can be read and replaced
                     // by anyone on the path, and that stays true every day.
-                    const inTheClear = subscription.url.toLowerCase().startsWith("http://");
+                    const inTheClear = (subscription.displayUrl || "").toLowerCase().startsWith("http://");
                     // The built-in catalogue comes back on the next connect,
                     // so removing it is an offer the app cannot keep.
                     const deleteDisabled =
@@ -3893,7 +3939,7 @@ function V2RaySubscriptionsPage({
                                   : subscription.id === whiteVPNPrivateSubscriptionID
                                     ? t("subs.builtIn.private")
                                     : t("subs.builtIn.public")
-                                : subscription.url}
+                                : subscription.credentialRequired ? t("profiles.detailsRequired") : subscription.displayUrl}
                             </span>
                           </span>
                         </td>
@@ -4145,6 +4191,7 @@ function v2rayDelaySortValue(result?: V2RayPingResult): number {
 }
 
 function v2rayProfileCredentialReady(profile: V2RayProfile): boolean {
+  if (profile.publicOnly) { return Boolean(profile.credentialsReady) && !profile.credentialRequired; }
   switch (normalizeV2RayProtocol(profile.protocol)) {
     case "trojan":
       return Boolean(profile.password.trim());
@@ -4310,7 +4357,7 @@ function FullBackupPage({
               label={t("backup.json")}
               value={restoreText}
               onChange={setRestoreText}
-              placeholder={'{\n  "schema": "whitedns.desktop.backup",\n  "version": 1\n}'}
+              placeholder={'{\n  "schema": "whitedns.desktop.backup",\n  "version": 2\n}'}
               className="h-[min(45svh,20rem)] min-h-0 resize-none overflow-auto font-mono text-xs"
             />
           </div>
@@ -6247,6 +6294,8 @@ function WhiteVPNSettingsPage({
 }) {
   const stored = state.whiteVpn;
   const [draft, setDraft] = useState<WhiteVPNSettings>(stored);
+  const [editorStored, setEditorStored] = useState<WhiteVPNSettings | null>(null);
+  const [editorReload, setEditorReload] = useState(0);
   // Tunnel mode needs the core raised to root, and that is implemented on
   // Windows only. Asked of the backend rather than guessed from the interface,
   // so the day another platform gains it this needs no change here.
@@ -6291,9 +6340,14 @@ function WhiteVPNSettingsPage({
   // A real change elsewhere still wins, which is what this is for.
   const storedSnapshot = useMemo(() => JSON.stringify(stored), [stored]);
   useEffect(() => {
-    setDraft(stored);
+    let current = true;
+    setEditorStored(null);
+    void backend.getWhiteVpnSettingsForEdit().then((settings) => {
+      if (current) { setEditorStored(settings); setDraft(settings); }
+    }).catch((err) => { if (current) { onError(messageFromError(err)); } });
+    return () => { current = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [storedSnapshot]);
+  }, [storedSnapshot, editorReload]);
 
   // What the form holds right now, for the handlers that cannot wait for the
   // next render to find out.
@@ -6302,12 +6356,15 @@ function WhiteVPNSettingsPage({
     draftRef.current = draft;
   }, [draft]);
 
-  const dirty = useMemo(() => JSON.stringify(draft) !== storedSnapshot, [draft, storedSnapshot]);
+  const dirty = useMemo(() => editorStored !== null && JSON.stringify(draft) !== JSON.stringify(editorStored), [draft, editorStored]);
 
   async function save(next: WhiteVPNSettings) {
+    if (!editorStored) { return; }
     setSaving(true);
     try {
       onState(await backend.saveWhiteVpnSettings(next));
+      const updated = await backend.getWhiteVpnSettingsForEdit();
+      setEditorStored(updated); setDraft(updated);
       onSuccess(t("settings.saved"));
     } catch (err) {
       onError(messageFromError(err));
@@ -6392,13 +6449,27 @@ function WhiteVPNSettingsPage({
 
   const dnsMode = draft.dnsPrivacy.mode;
 
+  useEffect(() => {
+    if (editorStored && sessionStorage.getItem("whitevpn-settings-section") === "fragments") {
+      sessionStorage.removeItem("whitevpn-settings-section");
+      document.getElementById("fragment-settings")?.scrollIntoView({ block: "start" });
+    }
+  }, [editorStored]);
+
+  if (!editorStored) {
+    return <PageShell eyebrow="WhiteVPN" title={t("settings.title")}>
+      <p className="text-sm text-muted-foreground">{t("settings.editor.loading")}</p>
+      <Button variant="outline" onClick={() => setEditorReload((value) => value + 1)}>{t("settings.editor.retry")}</Button>
+    </PageShell>;
+  }
+
   return (
     <PageShell
       eyebrow="WhiteVPN"
       title={t("settings.title")}
       actions={
         <>
-          <Button variant="outline" onClick={() => setDraft(stored)} disabled={!dirty || saving}>
+          <Button variant="outline" onClick={() => setDraft(editorStored)} disabled={!dirty || saving}>
             {t("settings.discard")}
           </Button>
           <Button onClick={() => void save(draft)} disabled={!dirty || saving}>
@@ -6531,6 +6602,14 @@ function WhiteVPNSettingsPage({
         </div>
         <FieldDescription>{t("settings.tlsIntegrity.description")}</FieldDescription>
       </SettingsSection>
+
+      <div id="fragment-settings" className="scroll-mt-4">
+        <SettingsSection title={t("fragments.title")} description={t("fragments.description")}>
+          <FragmentSettingsPanel settings={draft.fragments} savedSettings={editorStored.fragments} saving={saving} t={t}
+            onChange={(fragments) => patch({ fragments })}
+            onApply={(fragments) => save({ ...draftRef.current, fragments })} />
+        </SettingsSection>
+      </div>
 
       <SettingsSection title={t("settings.dns.title")} description={t("settings.dns.description")}>
         <FieldGroup className="grid gap-4 md:grid-cols-3">

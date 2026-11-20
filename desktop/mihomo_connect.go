@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -47,193 +48,27 @@ func (m *mihomoState) current() *session.Session {
 	return m.session
 }
 
-// startWhiteDNSVPNWithMihomo connects using the engine the phone app uses.
-//
-// It reports connected only after session.Connect has proved a request travels
-// through the proxy, so the status the user sees is not the engine's opinion of
-// itself.
+// startWhiteDNSVPNWithMihomo uses the shared owner and serialized control gate.
 func (a *App) startWhiteDNSVPNWithMihomo() (model.AppState, error) {
-	ctx, cancel := a.beginConnect()
-	defer cancel()
+	return a.connectMihomo(false)
+}
 
-	corePath, err := findMihomoCore()
-	if err != nil {
-		a.reportConnectFailure(ctx, err.Error())
-		return a.GetAppState(), err
-	}
-
-	a.setMihomoRuntimeType()
-	a.handleRuntimeState(model.RuntimeConnecting, "Fetching subscription")
-
-	subscription, usedID, err := a.subscriptionBodyWithFallback(ctx)
-	if err != nil {
-		a.reportConnectFailure(ctx, err.Error())
-		return a.GetAppState(), err
-	}
-
-	homeDir := filepath.Join(a.configDir, "mihomo")
-
-	a.mu.Lock()
-	// settingsForThisMachine, not just Normalize: a settings file carried over
-	// from Windows, or written before the interface stopped offering the tunnel
-	// here, still says it is on. Connecting on that would ask the engine to raise
-	// a core it has no way to raise, and the user would be told their connection
-	// failed because of an unimplemented function.
-	settings := settingsForThisMachine(model.NormalizeWhiteVPNSettings(a.state.WhiteVPN))
-	a.mu.Unlock()
-
-	// The dashboard's choices are applied here, against the catalogue this
-	// attempt is about to use, so a node that has left the catalogue is caught
-	// now rather than by the engine.
-	nodes, err := whiteVPNNodesFromSubscription(subscription)
-	if err != nil {
-		a.reportConnectFailure(ctx, err.Error())
-		return a.GetAppState(), err
-	}
-	a.storeWhiteVPNNodes(usedID, nodes, time.Now().UTC())
-	prefer := preferredNodeNames(nodes, settings)
-	if len(prefer) == 0 && selectionIsNarrowed(settings) {
-		err := fmt.Errorf("no node matches the chosen location or connection; change it on the VPN page")
-		a.reportConnectFailure(ctx, err.Error())
-		return a.GetAppState(), err
-	}
-
-	// IP fronting. Until now this setting was read only by the Xray path, which
-	// is not the engine this app runs, so it was a control that changed nothing.
-	frontingIP := ""
-	if len(settings.FrontingIPs) > 0 {
-		frontingIP = settings.FrontingIPs[0]
-		a.appendRuntimeLog(fmt.Sprintf("fronting through %s", frontingIP))
-	}
-
-	a.handleRuntimeState(model.RuntimeConnecting, "Starting engine")
-
-	mixedPort, err := chooseProxyPort(settings)
-	if err != nil {
-		a.reportConnectFailure(ctx, err.Error())
-		return a.GetAppState(), err
-	}
-
-	connected, err := session.Connect(ctx, session.Options{
-		CorePath:     corePath,
-		HomeDir:      homeDir,
-		MixedPort:    mixedPort,
-		AllowLAN:     settings.AllowLAN,
-		Chain:        mihomoconf.Chain{ExitNode: settings.ChainExitNode},
-		Subscription: subscription,
-		Prefer:       prefer,
-		// Nodes the user hid never reach the configuration, so the engine cannot
-		// choose one on Automatic. Hidden from the list but still connectable
-		// would be the worst of both.
-		Exclude:     a.hiddenNodeNames(usedID),
-		SplitTunnel: splitTunnelFor(settings),
-		Direct:      directRouteFor(settings),
-		// The fourth control that was stored and never read. It refuses a node
-		// whose certificates do not verify through the tunnel — a connection
-		// that carries traffic while being read is the failure it exists for.
-		VerifyTLSIntegrity: settings.TLSIntegrityEnabled,
-		Noise:              amneziaNoiseFor(settings),
-		FrontingIP:         frontingIP,
-		DNSPrivacy:         dnsPrivacyMode(settings.DNSPrivacy.Mode),
-		DoHURL:             settings.DNSPrivacy.DoHURL,
-		DoTEndpoint:        settings.DNSPrivacy.DoTEndpoint,
-		Tun:                tunOptionsFor(settings),
-		CoreStdout:         mihomoLogWriter{app: a},
-		CoreStderr:         mihomoLogWriter{app: a},
-	})
-	if err != nil {
-		a.reportConnectFailure(ctx, err.Error())
-		return a.GetAppState(), err
-	}
-
-	if !a.adoptSession(ctx, connected) {
-		// Stopped while the last steps were running. Nothing may be left
-		// running behind an interface that says disconnected.
-		_ = connected.Close()
-		a.handleRuntimeState(model.RuntimeDisconnected, "Disconnected")
-		return a.GetAppState(), nil
-	}
-
-	// Shared over the network, the address another device needs is this machine's
-	// on the LAN. PublicProxyIP is the field for it — documented as exactly that
-	// and never filled in until now — and the dashboard already prefers it, so
-	// what gets copied off the screen is what a phone can actually be pointed at.
-	sharedAddress := ""
-	if settings.AllowLAN {
-		if sharedAddress = lanAddress(); sharedAddress != "" {
-			a.appendRuntimeLog(fmt.Sprintf(
-				"shared on the network: other devices can use %s:%d", sharedAddress, connected.MixedPort()))
-		} else {
-			// Listening on every interface and not one of them reachable. Said
-			// plainly rather than leaving a switch that appears to have worked.
-			a.appendRuntimeLog("sharing is on, but this machine has no local network address to share on")
-		}
-	}
-
-	a.mu.Lock()
-	a.state.Runtime.ListenIP = "127.0.0.1"
-	a.state.Runtime.ListenPort = connected.MixedPort()
-	a.state.Runtime.ProxyProtocol = "mixed"
-	a.state.Runtime.LocalProxyIP = "127.0.0.1"
-	a.state.Runtime.PublicProxyIP = sharedAddress
-	a.mu.Unlock()
-	a.recordConnectedNode(connected.Selected())
-	if proxyOnly(settings) {
-		// Nothing on the machine has been redirected, which is the point: the
-		// engine listens and the user points one program at it. Said plainly,
-		// because a connection that changed nothing otherwise looks like one
-		// that did not work.
-		a.appendRuntimeLog(fmt.Sprintf(
-			"proxy-only: nothing on this machine was redirected — point your programs at 127.0.0.1:%d (HTTP or SOCKS5)",
-			connected.MixedPort()))
-	}
-	if !settings.TunEnabled && settings.SetSystemProxy {
-		// Proxy mode: without this the engine listens and nothing on the
-		// machine is talking to it. With the tunnel up the routing is the
-		// tunnel's job and a proxy as well would be one hop too many.
-		//
-		// SetSystemProxy is checked because it had been stored, defaulted and
-		// logged since this path was written, and never once read — so turning
-		// the tunnel off silently reconfigured the whole machine, and there was
-		// no way to ask for the engine to just listen.
-		if err := a.captureSystemProxy(connected.MixedPort()); err != nil {
-			// Not fatal. The connection is up and the proxy is listening; what
-			// failed is pointing the machine at it, and that is something a user
-			// can do by hand. Tearing down a working connection over it left the
-			// app with no usable mode at all on a desktop this cannot configure —
-			// which is what a Linux user got, having been told his connection had
-			// failed when it had not.
-			a.appendRuntimeLog(fmt.Sprintf("could not configure the system proxy: %v", err))
-			a.appendRuntimeLog(fmt.Sprintf(
-				"the connection is up — point your programs at 127.0.0.1:%d, or use tunnel mode", connected.MixedPort()))
-			a.emit("runtime:notice", fmt.Sprintf(
-				"Connected, but this desktop's proxy settings could not be changed. Set your browser's proxy to 127.0.0.1:%d.",
-				connected.MixedPort()))
-		}
-	}
-
-	if connected.Automatic() {
-		a.appendRuntimeLog(fmt.Sprintf(
-			"mihomo connected: %d nodes available, %d answered a delay test, engine picked %q, health %d",
-			connected.ProxyCount(), connected.Seeded(), connected.Selected(), connected.HealthStatus(),
-		))
+func (a *App) connectMihomo(replace bool) (model.AppState, error) {
+	manager := a.connectionManager()
+	var err error
+	if replace {
+		err = manager.Connect(context.Background(), a.managedRequest())
 	} else {
-		a.appendRuntimeLog(fmt.Sprintf(
-			"mihomo connected: %d nodes available, using %q, health %d",
-			connected.ProxyCount(), connected.Selected(), connected.HealthStatus(),
-		))
+		err = manager.ConnectNew(context.Background(), a.managedRequest())
 	}
-	if err := connected.TunnelUnverified(); err != nil {
-		// The tunnel is up but nothing confirmed its routes, so the log says so
-		// rather than leaving the impression it was checked.
-		a.appendRuntimeLog(fmt.Sprintf("the tunnel is running but was not verified: %v", err))
+	a.syncManagedRuntime()
+	if err == nil {
+		a.publishManagedMihomo()
 	}
-	a.handleRuntimeState(model.RuntimeConnected, fmt.Sprintf("Proxy listening on 127.0.0.1:%d", connected.MixedPort()))
-	a.resolveExitCountry()
-	a.sampleTraffic(connected)
-	a.watchHealth(connected)
-	a.retryBlockedSubscriptions()
-	return a.GetAppState(), nil
+	if errors.Is(err, context.Canceled) {
+		err = nil
+	}
+	return a.GetAppState(), err
 }
 
 // sampleTraffic keeps the dashboard's download and upload counters moving.
@@ -243,16 +78,24 @@ func (a *App) startWhiteDNSVPNWithMihomo() (model.AppState, error) {
 // was wired the two tiles sat at zero through a working connection, which reads
 // as a connection carrying nothing.
 func (a *App) sampleTraffic(current *session.Session) {
-	go func() {
+	if current.Engine() == nil {
+		return
+	}
+	a.launchMihomo(current, func(lifetime context.Context) {
 		ticker := time.NewTicker(time.Second)
 		defer ticker.Stop()
-		for range ticker.C {
+		for {
+			select {
+			case <-lifetime.Done():
+				return
+			case <-ticker.C:
+			}
 			// The session this sampler belongs to may have been replaced or
 			// stopped; its successor starts its own.
 			if a.mihomo.current() != current {
 				return
 			}
-			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			ctx, cancel := context.WithTimeout(lifetime, 3*time.Second)
 			upRate, downRate, rateErr := current.Engine().TrafficRate(ctx, false)
 			upTotal, downTotal, totalErr := current.Engine().TrafficTotal(ctx, false)
 			cancel()
@@ -265,15 +108,17 @@ func (a *App) sampleTraffic(current *session.Session) {
 					continue
 				}
 			}
-			a.handleStats(model.TrafficStats{
-				DownloadBytes:               downTotal,
-				UploadBytes:                 upTotal,
-				DownloadSpeedBytesPerSecond: downRate,
-				UploadSpeedBytesPerSecond:   upRate,
-				TotalDataUsageBytes:         upTotal + downTotal,
+			a.withMihomo(current, func() {
+				a.handleStats(model.TrafficStats{
+					DownloadBytes:               downTotal,
+					UploadBytes:                 upTotal,
+					DownloadSpeedBytesPerSecond: downRate,
+					UploadSpeedBytesPerSecond:   upRate,
+					TotalDataUsageBytes:         upTotal + downTotal,
+				})
 			})
 		}
-	}()
+	})
 }
 
 // recordConnectedNode notes which node is carrying traffic and where its own
@@ -304,32 +149,40 @@ func (a *App) recordConnectedNode(name string) {
 // flag in a node's name is that node's claim, while this is a measurement. When
 // the two disagree the interface shows this one.
 func (a *App) resolveExitCountry() {
-	go func() {
-		result, err := a.LookupProxyCountry()
-
-		a.mu.Lock()
-		if a.state.Runtime.Status != model.RuntimeConnected {
-			// Disconnected while the lookup was in flight; the answer is about
-			// a connection that no longer exists.
-			a.mu.Unlock()
+	current := a.mihomo.current()
+	if current == nil {
+		return
+	}
+	a.launchMihomo(current, func(lifetime context.Context) {
+		result, err := a.lookupProxyCountryContext(lifetime)
+		if lifetime.Err() != nil {
 			return
 		}
-		a.state.Runtime.ExitChecked = true
-		if err == nil && result.OK {
-			a.state.Runtime.ExitIP = result.IP
-			a.state.Runtime.ExitCountryCode = strings.ToUpper(strings.TrimSpace(result.CountryCode))
-		}
-		runtimeState := a.state.Runtime
-		a.mu.Unlock()
-		if err != nil {
-			// Worth a line: this is a request through the proxy, so its failure
-			// says something about the connection and not only about the badge.
-			a.appendRuntimeLog(fmt.Sprintf("could not measure where traffic leaves from: %v", err))
-		} else if !result.OK {
-			a.appendRuntimeLog("the exit check returned nothing recognisable")
-		}
-		a.emit("runtime:state", runtimeState)
-	}()
+		a.withMihomo(current, func() {
+			a.mu.Lock()
+			if a.state.Runtime.Status != model.RuntimeConnected {
+				// Disconnected while the lookup was in flight; the answer is about
+				// a connection that no longer exists.
+				a.mu.Unlock()
+				return
+			}
+			a.state.Runtime.ExitChecked = true
+			if err == nil && result.OK {
+				a.state.Runtime.ExitIP = result.IP
+				a.state.Runtime.ExitCountryCode = strings.ToUpper(strings.TrimSpace(result.CountryCode))
+			}
+			runtimeState := a.state.Runtime
+			a.mu.Unlock()
+			if err != nil {
+				// Worth a line: this is a request through the proxy, so its failure
+				// says something about the connection and not only about the badge.
+				a.appendRuntimeLog(fmt.Sprintf("could not measure where traffic leaves from: %v", err))
+			} else if !result.OK {
+				a.appendRuntimeLog("the exit check returned nothing recognisable")
+			}
+			a.emit("runtime:state", runtimeState)
+		})
+	})
 }
 
 // Cancelling a connect.

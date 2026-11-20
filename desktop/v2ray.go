@@ -33,7 +33,17 @@ const (
 func (a *App) SaveV2RayProfile(profile model.V2RayProfile) (model.AppState, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	if profile.PublicOnly {
+		return a.publicStateLocked(), fmt.Errorf("open the profile editor before saving connection details")
+	}
 	profile = profiles.NormalizeV2RayProfile(profile)
+	if profile.CredentialRequired {
+		candidate := profile
+		candidate.CredentialRequired = false
+		if _, err := profiles.ExportV2RayProfile(candidate); err == nil {
+			profile.CredentialRequired = false
+		}
+	}
 	if profile.ID == "" {
 		profile.ID = fmt.Sprintf("v2ray-%d", time.Now().UnixMilli())
 	}
@@ -61,7 +71,7 @@ func (a *App) ImportV2RayProfiles(rawText string) (model.V2RayImportResult, erro
 
 	imported, err := profiles.ParseV2RayProfileImports(rawText)
 	if err != nil {
-		return model.V2RayImportResult{State: a.state}, err
+		return model.V2RayImportResult{State: a.publicStateLocked()}, err
 	}
 	imported = slices.DeleteFunc(imported, func(profile model.V2RayProfile) bool {
 		switch profile.Protocol {
@@ -77,7 +87,7 @@ func (a *App) ImportV2RayProfiles(rawText string) (model.V2RayImportResult, erro
 		}
 	})
 	if len(imported) == 0 {
-		return model.V2RayImportResult{State: a.state}, fmt.Errorf("no configs supported by the WhiteVPN engine found")
+		return model.V2RayImportResult{State: a.publicStateLocked()}, fmt.Errorf("no configs supported by the WhiteVPN engine found")
 	}
 
 	existingIDs := make(map[string]struct{}, len(a.state.V2RayProfiles)+len(imported))
@@ -164,20 +174,25 @@ func (a *App) ImportV2RayWhiteIPProfiles(configText string, whiteIPText string) 
 func (a *App) SaveV2RaySubscription(subscription model.V2RaySubscription) (model.AppState, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	if subscription.PublicOnly {
+		return a.publicStateLocked(), fmt.Errorf("open the subscription editor before saving its address")
+	}
 
 	if model.IsBuiltInSubscription(strings.TrimSpace(subscription.ID)) {
 		// The built-in catalogue is the app's, not the user's: its address is a
 		// constant here and is deliberately not stored, so there is nothing for
 		// an edit to change and saving one would only blank what it has.
-		return a.state, fmt.Errorf("the built-in catalogue cannot be edited")
+		return a.publicStateLocked(), fmt.Errorf("the built-in catalogue cannot be edited")
 	}
 
 	nameProvided := strings.TrimSpace(subscription.Name) != ""
 	subscription = profiles.NormalizeV2RaySubscription(subscription)
 	parsedURL, err := validateV2RaySubscriptionURL(subscription.URL)
 	if err != nil {
-		return a.state, err
+		return a.publicStateLocked(), err
 	}
+	subscription.CredentialRequired = false
+	subscription.DisplayURL = ""
 	if !nameProvided {
 		subscription.Name = defaultV2RaySubscriptionName(parsedURL)
 	}
@@ -217,12 +232,12 @@ func (a *App) RefreshV2RaySubscription(id string) (model.V2RaySubscriptionRefres
 	a.mu.Lock()
 	subscription, ok := findV2RaySubscription(a.state, id)
 	if !ok {
-		state := a.state
+		state := a.publicStateLocked()
 		a.mu.Unlock()
 		return model.V2RaySubscriptionRefreshResult{State: state}, fmt.Errorf("V2Ray subscription not found")
 	}
 	if activeV2RaySubscriptionLocked(a.state, id) {
-		state := a.state
+		state := a.publicStateLocked()
 		a.mu.Unlock()
 		return model.V2RaySubscriptionRefreshResult{State: state, Subscription: subscription}, fmt.Errorf("active V2Ray subscription profile cannot be refreshed")
 	}
@@ -252,7 +267,7 @@ func (a *App) RefreshV2RaySubscription(id string) (model.V2RaySubscriptionRefres
 	defer a.mu.Unlock()
 	idx := findV2RaySubscriptionIndex(a.state.V2RaySubscriptions, id)
 	if idx == -1 {
-		return model.V2RaySubscriptionRefreshResult{State: a.state}, fmt.Errorf("V2Ray subscription not found")
+		return model.V2RaySubscriptionRefreshResult{State: a.publicStateLocked()}, fmt.Errorf("V2Ray subscription not found")
 	}
 
 	if fetchErr != nil || parseErr != nil {
@@ -317,13 +332,13 @@ func (a *App) DeleteV2RaySubscription(id string) (model.AppState, error) {
 	defer a.mu.Unlock()
 	id = strings.TrimSpace(id)
 	if id == "" {
-		return a.state, nil
+		return a.publicStateLocked(), nil
 	}
 	if model.IsBuiltInSubscription(id) {
-		return a.state, fmt.Errorf("the built-in catalogues cannot be removed")
+		return a.publicStateLocked(), fmt.Errorf("the built-in catalogues cannot be removed")
 	}
 	if activeV2RaySubscriptionLocked(a.state, id) {
-		return a.state, fmt.Errorf("active V2Ray subscription cannot be deleted")
+		return a.publicStateLocked(), fmt.Errorf("active V2Ray subscription cannot be deleted")
 	}
 	a.state.V2RaySubscriptions = slices.DeleteFunc(a.state.V2RaySubscriptions, func(subscription model.V2RaySubscription) bool {
 		return subscription.ID == id
@@ -359,7 +374,7 @@ func (a *App) DeleteDuplicateV2RayProfiles() (model.V2RayDuplicateRemovalResult,
 
 	remove := duplicateV2RayProfileIndexes(a.state.V2RayProfiles, a.state.SelectedV2RayProfileID, a.state.Runtime.ActiveConnectionID)
 	if len(remove) == 0 {
-		return model.V2RayDuplicateRemovalResult{State: a.state}, nil
+		return model.V2RayDuplicateRemovalResult{State: a.publicStateLocked()}, nil
 	}
 
 	nextProfiles := make([]model.V2RayProfile, 0, len(a.state.V2RayProfiles)-len(remove))
@@ -377,7 +392,7 @@ func (a *App) DeleteV2RayProfile(id string) (model.AppState, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.state.Runtime.Status != model.RuntimeDisconnected && a.state.Runtime.ActiveConnectionID == id {
-		return a.state, fmt.Errorf("active V2Ray profile cannot be deleted")
+		return a.publicStateLocked(), fmt.Errorf("active V2Ray profile cannot be deleted")
 	}
 	a.state.V2RayProfiles = slices.DeleteFunc(a.state.V2RayProfiles, func(profile model.V2RayProfile) bool {
 		return profile.ID == id
@@ -395,11 +410,11 @@ func (a *App) DeleteV2RayProfiles(ids []string) (model.AppState, error) {
 		}
 	}
 	if len(remove) == 0 {
-		return a.state, nil
+		return a.publicStateLocked(), nil
 	}
 	if a.state.Runtime.Status != model.RuntimeDisconnected {
 		if _, ok := remove[a.state.Runtime.ActiveConnectionID]; ok {
-			return a.state, fmt.Errorf("active V2Ray profile cannot be deleted")
+			return a.publicStateLocked(), fmt.Errorf("active V2Ray profile cannot be deleted")
 		}
 	}
 	a.state.V2RayProfiles = slices.DeleteFunc(a.state.V2RayProfiles, func(profile model.V2RayProfile) bool {
@@ -413,10 +428,10 @@ func (a *App) SelectV2RayProfile(id string) (model.AppState, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if !slices.ContainsFunc(a.state.V2RayProfiles, func(profile model.V2RayProfile) bool { return profile.ID == id }) {
-		return a.state, fmt.Errorf("V2Ray profile not found")
+		return a.publicStateLocked(), fmt.Errorf("V2Ray profile not found")
 	}
 	if a.connectionSelectionLockedLocked() {
-		return a.state, fmt.Errorf("V2Ray profile cannot be changed while connected")
+		return a.publicStateLocked(), fmt.Errorf("V2Ray profile cannot be changed while connected")
 	}
 	a.state.SelectedV2RayProfileID = id
 	return a.saveLocked()
@@ -429,7 +444,7 @@ func (a *App) ReorderV2RayProfiles(ids []string) (model.AppState, error) {
 		return profile.ID
 	}, "V2Ray profile")
 	if err != nil {
-		return a.state, err
+		return a.publicStateLocked(), err
 	}
 	a.state.V2RayProfiles = reordered
 	return a.saveLocked()
