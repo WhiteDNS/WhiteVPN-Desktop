@@ -362,7 +362,10 @@ func (a *App) everySubscriptionSource() []subscriptionSource {
 
 	sources := make([]subscriptionSource, 0, len(a.state.V2RaySubscriptions)+1)
 	for _, subscription := range a.state.V2RaySubscriptions {
-		if model.IsBuiltInSubscription(subscription.ID) && !a.builtInCatalogueUsableLocked(subscription.ID) {
+		// The All row is this list, not one of its sources: reading it here
+		// would have All fetch itself.
+		if model.IsEverySubscription(subscription.ID) ||
+			model.IsBuiltInSubscription(subscription.ID) && !a.builtInCatalogueUsableLocked(subscription.ID) {
 			continue
 		}
 		sources = append(sources, subscriptionSource{id: subscription.ID, name: subscription.Name})

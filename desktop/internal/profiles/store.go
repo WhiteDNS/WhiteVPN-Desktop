@@ -259,6 +259,9 @@ func NormalizeState(state model.AppState) model.AppState {
 	state.SettingsProfiles = normalizeSettingsProfiles(state.SettingsProfiles)
 	state.V2RayProfiles = normalizeV2RayProfiles(state.V2RayProfiles)
 	state.V2RaySubscriptions = normalizeV2RaySubscriptions(state.V2RaySubscriptions)
+	// Before the selection is corrected below: a legacy chain's exit was named
+	// in the subscription selected when it was stored.
+	state.WhiteVPN = model.MigrateLegacyChain(state.WhiteVPN, state.SelectedSubscriptionID)
 	// The dashboard's filter belongs to the subscription it was chosen in, so
 	// it moves when the selection is corrected. Without this a subscription
 	// deleted since the last run would leave "Germany" or "vless" applied to
