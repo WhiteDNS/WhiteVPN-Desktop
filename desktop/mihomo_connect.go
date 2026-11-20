@@ -270,6 +270,7 @@ func (a *App) stopMihomo() bool {
 	a.restoreSystemProxy()
 	a.mu.Lock()
 	a.state.Runtime.Engine = ""
+	a.state.Runtime.FragmentMode = ""
 	a.mu.Unlock()
 	a.handleRuntimeState(model.RuntimeDisconnected, "Disconnected")
 	return true

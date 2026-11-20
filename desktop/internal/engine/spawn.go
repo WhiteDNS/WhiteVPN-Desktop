@@ -260,8 +260,12 @@ func (p *Process) Stop(ctx context.Context) error {
 	defer p.stopMu.Unlock()
 	select {
 	case <-p.exitDone:
-		if p.Client!=nil { _=p.Client.Close() }
-		if p.listener!=nil { _=p.listener.Close() }
+		if p.Client != nil {
+			_ = p.Client.Close()
+		}
+		if p.listener != nil {
+			_ = p.listener.Close()
+		}
 		return nil
 	default:
 	}
