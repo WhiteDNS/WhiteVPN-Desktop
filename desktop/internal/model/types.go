@@ -372,6 +372,8 @@ type RuntimeStatus struct {
 	// gave it, and the country from the flag in that name.
 	NodeName        string `json:"nodeName"`
 	NodeCountryCode string `json:"nodeCountryCode"`
+	// NodeECH says that node is dialled with ECH, its own or automatic.
+	NodeECH bool `json:"nodeEch"`
 	// ExitIP is the address the internet sees traffic coming from, measured
 	// through the proxy. It is not PublicProxyIP, which is where this machine's
 	// own proxy can be reached on the LAN — writing one into the other makes the

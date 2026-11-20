@@ -250,6 +250,7 @@ function normalizeRuntime(runtime: RuntimeStatus): RuntimeStatus {
     exitIp: runtime.exitIp || "",
     nodeName: runtime.nodeName || "",
     nodeCountryCode: runtime.nodeCountryCode || "",
+    nodeEch: Boolean(runtime.nodeEch),
     exitCountryCode: runtime.exitCountryCode || "",
     exitChecked: Boolean(runtime.exitChecked),
     autoProfilePresetId: runtime.autoProfilePresetId || "",
@@ -2431,6 +2432,12 @@ function WhiteDNSVPNPage({
                 ? t(`fragments.mode.${runtime.fragmentMode}` as StringKey)
                 : t(state.whiteVpn.fragments?.enabled ? "fragments.on" : "fragments.off")}
               onClick={() => { sessionStorage.setItem("whitevpn-settings-section", "fragments"); onNavigate("settings"); }}
+            />
+            <DashboardRow
+              icon={<Shield className="size-4" />}
+              label={t("vpn.ech")}
+              value={t((runtime.status === "connected" ? runtime.nodeEch : state.whiteVpn.autoEch) ? "fragments.on" : "fragments.off")}
+              onClick={() => onNavigate("settings")}
             />
             <p className="pt-1 text-xs text-muted-foreground">{t("vpn.moreSettings")}</p>
             <Button variant="outline" size="sm" className="justify-self-start" onClick={() => onNavigate("settings")}>
@@ -6599,8 +6606,14 @@ function WhiteVPNSettingsPage({
             checked={draft.tlsIntegrityEnabled}
             onCheckedChange={(checked) => patchAndSave({ tlsIntegrityEnabled: checked })}
           />
+          <SettingSwitchRow
+            label={t("settings.autoEch")}
+            checked={draft.autoEch}
+            onCheckedChange={(autoEch) => patchAndSave({ autoEch })}
+          />
         </div>
         <FieldDescription>{t("settings.tlsIntegrity.description")}</FieldDescription>
+        <FieldDescription>{isolateLatin(t("settings.autoEch.description"))}</FieldDescription>
       </SettingsSection>
 
       <div id="fragment-settings" className="scroll-mt-4">
@@ -7122,6 +7135,12 @@ function SettingsSection({
 
 // The same bordered row the VPN page uses for its controls, so a switch looks
 // and behaves the same wherever it appears.
+// Latin words in a Persian sentence each get their own direction, so a list
+// like "WebSocket، gRPC" keeps its order instead of reading back to front.
+function isolateLatin(text: string): ReactNode {
+  return text.split(/([A-Za-z][A-Za-z0-9.+-]*)/).map((part, i) => (i % 2 ? <bdi key={i}>{part}</bdi> : part));
+}
+
 function SettingSwitchRow({
   label,
   checked,

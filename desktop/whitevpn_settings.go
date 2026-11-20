@@ -51,6 +51,7 @@ func (a *App) SaveWhiteVPNSettings(settings model.WhiteVPNSettings) (model.AppSt
 	settings.Fragments = valid
 	a.mu.Lock()
 	previousFragments := a.state.WhiteVPN.Fragments
+	previousAutoECH := a.state.WhiteVPN.AutoECH
 	if settings.PublicOnly {
 		settings.DNSPrivacy.DoHURL = a.state.WhiteVPN.DNSPrivacy.DoHURL
 		settings.DNSPrivacy.DoTEndpoint = a.state.WhiteVPN.DNSPrivacy.DoTEndpoint
@@ -79,7 +80,8 @@ func (a *App) SaveWhiteVPNSettings(settings model.WhiteVPNSettings) (model.AppSt
 	}
 	// The tray speaks the app's language too.
 	a.notifyTray()
-	if previousFragments != normalized.Fragments && (previousFragments.Enabled || normalized.Fragments.Enabled) {
+	fragmentsChanged := previousFragments != normalized.Fragments && (previousFragments.Enabled || normalized.Fragments.Enabled)
+	if fragmentsChanged || previousAutoECH != normalized.AutoECH {
 		snapshot := a.connectionManager().Snapshot()
 		if snapshot.Phase == sessionmanager.Connected && snapshot.Route != nil && snapshot.Route.Kind == "mihomo" {
 			return a.connectMihomo(true)

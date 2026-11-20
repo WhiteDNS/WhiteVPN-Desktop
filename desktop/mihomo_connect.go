@@ -125,9 +125,14 @@ func (a *App) sampleTraffic(current *session.Session) {
 // name says it is. That answer costs nothing and is right immediately, which is
 // what the interface needs while the measured one is still being fetched.
 func (a *App) recordConnectedNode(name string) {
+	ech := false
+	if current := a.mihomo.current(); current != nil {
+		ech = current.ECH(name)
+	}
 	a.mu.Lock()
 	a.state.Runtime.NodeName = name
 	a.state.Runtime.NodeCountryCode = countryCodeFromNodeName(name)
+	a.state.Runtime.NodeECH = ech
 	// The measurement belongs to the node that has just been left.
 	a.state.Runtime.ExitIP = ""
 	a.state.Runtime.ExitCountryCode = ""

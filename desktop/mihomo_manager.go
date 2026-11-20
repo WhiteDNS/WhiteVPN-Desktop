@@ -89,7 +89,7 @@ func (b *mihomoBackend) Prepare(ctx context.Context, p sessionmanager.Plan) (ses
 		Subscription: body, Prefer: prefer, Exclude: a.hiddenNodeNames(usedID), AllowLAN: settings.AllowLAN,
 		Chain: mihomoconf.Chain{ExitNode: settings.ChainExitNode}, SplitTunnel: splitTunnelFor(settings), Direct: directRouteFor(settings),
 		VerifyTLSIntegrity: settings.TLSIntegrityEnabled, Noise: amneziaNoiseFor(settings), FrontingIP: fronting,
-		Fragments: settings.Fragments,
+		Fragments: settings.Fragments, AutoECH: settings.AutoECH,
 		DNSPrivacy: dnsPrivacyMode(settings.DNSPrivacy.Mode), DoHURL: settings.DNSPrivacy.DoHURL, DoTEndpoint: settings.DNSPrivacy.DoTEndpoint, Tun: tunOptionsFor(settings)}
 	p.Mode = "proxy"
 	if settings.TunEnabled {
@@ -231,7 +231,7 @@ func (a *App) syncManagedRuntimeLocked() {
 	a.mu.Lock()
 	if snapshot.Generation!=a.state.Runtime.SessionGeneration && snapshot.Phase==sessionmanager.Connecting {
 		a.state.Runtime.Stats=model.TrafficStats{}
-		a.state.Runtime.NodeName=""; a.state.Runtime.ExitIP=""; a.state.Runtime.ExitCountryCode=""; a.state.Runtime.ExitChecked=false
+		a.state.Runtime.NodeName=""; a.state.Runtime.NodeECH=false; a.state.Runtime.ExitIP=""; a.state.Runtime.ExitCountryCode=""; a.state.Runtime.ExitChecked=false
 	}
 	a.state.Runtime.SessionID = snapshot.SessionID
 	a.state.Runtime.SessionGeneration = snapshot.Generation

@@ -164,6 +164,7 @@ type WhiteVPNSettings struct {
 
 	// Settings sections, in the order the phone shows them.
 	TLSIntegrityEnabled bool                 `json:"tlsIntegrityEnabled"`
+	AutoECH             bool                 `json:"autoEch"`
 	Fragments           fragment.Settings    `json:"fragments"`
 	AmneziaNoise        AmneziaNoiseSettings `json:"amneziaNoise"`
 	FrontingIPs         []string             `json:"frontingIps"`
@@ -259,6 +260,7 @@ func DefaultWhiteVPNSettings() WhiteVPNSettings {
 		SplitTunnel:         SplitTunnelSettings{Mode: SplitTunnelOff, Processes: []string{}},
 		DirectRouting:       DefaultDirectRouting(),
 		TLSIntegrityEnabled: false,
+		AutoECH:             true,
 		Fragments:           fragment.Default(),
 		AmneziaNoise: AmneziaNoiseSettings{
 			Enabled: false,
@@ -287,7 +289,8 @@ func DefaultWhiteVPNSettings() WhiteVPNSettings {
 // one listener.
 const DefaultLocalProxyPort = 2080
 
-// UnmarshalJSON reads settings, treating an absent SetSystemProxy as on.
+// UnmarshalJSON reads settings, treating an absent SetSystemProxy or AutoECH
+// as on.
 //
 // Every settings file written before that field existed has no key for it, and
 // a plain bool reads a missing key as false — which is the new proxy-only mode.
@@ -306,12 +309,14 @@ func (s *WhiteVPNSettings) UnmarshalJSON(data []byte) error {
 	probe := struct {
 		*alias
 		SetSystemProxy *bool `json:"setSystemProxy"`
+		AutoECH        *bool `json:"autoEch"`
 	}{alias: (*alias)(s)}
 
 	if err := json.Unmarshal(data, &probe); err != nil {
 		return err
 	}
 	s.SetSystemProxy = probe.SetSystemProxy == nil || *probe.SetSystemProxy
+	s.AutoECH = probe.AutoECH == nil || *probe.AutoECH
 	return nil
 }
 
