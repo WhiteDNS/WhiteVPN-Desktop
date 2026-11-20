@@ -16,7 +16,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { isolateLatin } from "./bidi";
 import type { EngineAvailability, EngineKind, EngineProfile, EngineProfileSummary, PsiphonConfig, TorConfig } from "./engine-profiles";
 import type { Language, StringKey, TranslateFn } from "./i18n";
-import type { RuntimeStatus } from "./types";
+import type { RuntimeStatus, V2RaySubscription } from "./types";
 import { backend } from "./wails";
 
 export type EngineSelection = {
@@ -100,8 +100,21 @@ function countryLabel(code: string, language: Language, t: TranslateFn): string 
   }
 }
 
+// WARP is a subscription underneath, but to the user it is one more way to
+// connect, so it is listed and added here beside the engines.
+export type WarpRows = {
+  subscriptions: V2RaySubscription[];
+  selectedId: string;
+  adding: boolean;
+  onAdd: () => void;
+  onUse: (id: string) => void;
+  onEdit: (subscription: V2RaySubscription) => void;
+  onDelete: (subscription: V2RaySubscription) => void;
+};
+
 export function EngineProfilesSection({
   selection,
+  warp,
   runtime,
   language,
   t,
@@ -110,6 +123,7 @@ export function EngineProfilesSection({
   onSuccess,
 }: {
   selection: EngineSelection;
+  warp: WarpRows;
   runtime: RuntimeStatus;
   language: Language;
   t: TranslateFn;
@@ -248,6 +262,9 @@ export function EngineProfilesSection({
               <Button type="button" variant="outline" size="sm"><Plus />{t("engine.add")}</Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              <DropdownMenuItem disabled={warp.adding} onSelect={warp.onAdd}>
+                <bdi>{t(warp.adding ? "warp.registering" : "warp.add")}</bdi>
+              </DropdownMenuItem>
               {offeredKinds.map((kind) => (
                 <DropdownMenuItem key={kind} onSelect={() => setDraft(newDraft(kind as "psiphon" | "tor"))}>
                   <bdi>{engineKindTitle(kind)}</bdi>
@@ -258,7 +275,36 @@ export function EngineProfilesSection({
         </div>
       </div>
       {missingSelection && <p className="border-b px-3 py-2 text-xs text-destructive">{t("engine.missingProfile")}</p>}
-      {selection.profiles.length === 0 ? (
+      {warp.subscriptions.length > 0 && (
+        <div className="divide-y border-b">
+          {warp.subscriptions.map((subscription) => {
+            const selected = !selection.selectedId && subscription.id === warp.selectedId;
+            return (
+              <div key={subscription.id} className="flex flex-wrap items-center justify-between gap-3 px-3 py-3 text-sm">
+                <div className="min-w-0">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span className="truncate font-medium" dir="auto">{subscription.name}</span>
+                    {selected && <Badge className="shrink-0">{t("engine.selected")}</Badge>}
+                  </div>
+                  <p className="text-xs text-muted-foreground"><bdi>{t("warp.add")}</bdi> · <bdi>WireGuard</bdi></p>
+                </div>
+                <div className="flex flex-wrap gap-1">
+                  <Button type="button" size="sm" variant={selected ? "secondary" : "default"} disabled={selected || locked} onClick={() => warp.onUse(subscription.id)}>
+                    <Check />{selected ? t("engine.selected") : t("engine.select")}
+                  </Button>
+                  <Button type="button" size="icon-sm" variant="ghost" disabled={locked && selected} aria-label={t("engine.edit")} onClick={() => warp.onEdit(subscription)}>
+                    <Pencil />
+                  </Button>
+                  <Button type="button" size="icon-sm" variant="ghost" disabled={locked && selected} aria-label={t("engine.delete")} onClick={() => warp.onDelete(subscription)}>
+                    <Trash2 />
+                  </Button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {selection.profiles.length === 0 && warp.subscriptions.length === 0 ? (
         <div className="px-3 py-4 text-sm text-muted-foreground">{t("engine.empty")}</div>
       ) : (
         <div className="divide-y">

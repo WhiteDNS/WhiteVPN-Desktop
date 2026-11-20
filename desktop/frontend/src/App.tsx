@@ -27,6 +27,7 @@ import {
   Save,
   ScrollText,
   Search,
+  Server,
   Settings,
   Shield,
   Share2,
@@ -42,6 +43,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { FragmentSettingsPanel } from "./FragmentSettingsPanel";
 import { EngineProfilesSection, engineKindTitle, type EngineSelection } from "./EngineProfilesSection";
+import { ConnectionModePicker, ServerListDialog, connectionMode, serverListLabel } from "./ConnectionMode";
 import { isolateLatin } from "./bidi";
 import type { ReactNode } from "react";
 
@@ -1127,6 +1129,7 @@ function App() {
                 <WhiteDNSVPNPage
                   state={state}
                   engines={engines}
+                  onEnginesChanged={() => void loadEngines()}
                   proxyEndpoint={engineProxyEndpoint}
                   onState={applyState}
                   onError={showError}
@@ -2051,6 +2054,7 @@ function ConnectButtonIcon({ state }: { state: ConnectButtonState }) {
 function WhiteDNSVPNPage({
   state,
   engines,
+  onEnginesChanged,
   proxyEndpoint,
   onState,
   onError,
@@ -2060,6 +2064,7 @@ function WhiteDNSVPNPage({
 }: {
   state: AppState;
   engines: EngineSelection;
+  onEnginesChanged: () => void;
   proxyEndpoint: string;
   onState: (state: AppState) => void;
   onError: (message: string) => void;
@@ -2079,6 +2084,8 @@ function WhiteDNSVPNPage({
   const selection = state.whiteVpn.connection;
   // null: the subscription is the route; undefined: the selected engine was deleted.
   const selectedEngine = engines.selectedId ? engines.profiles.find((profile) => profile.id === engines.selectedId) : null;
+  const mode = connectionMode(state, engines);
+  const [serverListOpen, setServerListOpen] = useState(false);
   // A node is stored by name; the shorter label the row shows comes from the
   // catalogue, so a picked node means the catalogue is worth having loaded. It
   // is cached behind this call, so after the first time it costs nothing.
@@ -2445,9 +2452,18 @@ function WhiteDNSVPNPage({
             <CardDescription className="text-xs">{t("vpn.rows.description")}</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-2 p-3 pt-0">
-            {/* An engine replaces the subscription, so location and connection
-                do not apply to it (Android EngineSettingsPolicy). */}
-            {selectedEngine !== null && (
+            <ConnectionModePicker
+              state={state}
+              engines={engines}
+              locked={runtimeBusy}
+              t={t}
+              onState={onState}
+              onEnginesChanged={onEnginesChanged}
+              onError={onError}
+            />
+            {/* Only the rows the chosen way of connecting uses: an engine has no
+                location, a chain names its own nodes, WARP is one server. */}
+            {(mode === "psiphon" || mode === "tor") && (
               <DashboardRow
                 icon={<Cpu className="size-4" />}
                 label={t("engine.profileLabel")}
@@ -2456,12 +2472,17 @@ function WhiteDNSVPNPage({
                 onClick={() => onNavigate("subscriptions")}
               />
             )}
-            {/* A chain names its own two nodes, so the location and connection
-                rows would be choices that change nothing. */}
-            {state.whiteVpn.chain && state.whiteVpn.chain.exit.mode !== "off" ? (
-              <ChainRows state={state} engineSelected={selectedEngine !== null} onState={onState} onError={onError} t={t} />
-            ) : selectedEngine !== null ? null : (
+            {mode === "chain" && <ChainRows state={state} onState={onState} onError={onError} t={t} />}
+            {mode === "warp" && <p className="text-xs text-muted-foreground">{isolateLatin(t("mode.warp.note"))}</p>}
+            {mode === "servers" && (
               <>
+                <DashboardRow
+                  icon={<Server className="size-4" />}
+                  label={t("mode.serverList")}
+                  value={serverListLabel(state, t)}
+                  disabled={runtimeBusy}
+                  onClick={() => setServerListOpen(true)}
+                />
                 <DashboardRow
                   icon={<Globe className="size-4" />}
                   label={t("vpn.location")}
@@ -2482,25 +2503,26 @@ function WhiteDNSVPNPage({
                 />
               </>
             )}
-
-            {/* The tunnel, DNS privacy and split tunnel used to sit here and
-                wrote to the V2Ray settings profile, which only the Xray path
-                reads. Under the engine this app now runs they changed nothing.
-                One place to change a setting is worth more than two. */}
-            <DashboardRow
-              icon={<SlidersHorizontal className="size-4" />}
-              label={t("fragments.title")}
-              value={runtime.status === "connected" && runtime.fragmentMode
-                ? t(`fragments.mode.${runtime.fragmentMode}` as StringKey)
-                : t(state.whiteVpn.fragments?.enabled ? "fragments.on" : "fragments.off")}
-              onClick={() => { sessionStorage.setItem("whitevpn-settings-section", "fragments"); onNavigate("settings"); }}
-            />
-            <DashboardRow
-              icon={<Shield className="size-4" />}
-              label={t("vpn.ech")}
-              value={t((runtime.status === "connected" ? runtime.nodeEch : state.whiteVpn.autoEch) ? "fragments.on" : "fragments.off")}
-              onClick={() => onNavigate("settings")}
-            />
+            {/* Fragments and ECH shape TLS to a server; WARP and the engines
+                have none for them to shape, so the rows would only mislead. */}
+            {(mode === "servers" || mode === "chain") && (
+              <>
+                <DashboardRow
+                  icon={<SlidersHorizontal className="size-4" />}
+                  label={t("fragments.title")}
+                  value={runtime.status === "connected" && runtime.fragmentMode
+                    ? t(`fragments.mode.${runtime.fragmentMode}` as StringKey)
+                    : t(state.whiteVpn.fragments?.enabled ? "fragments.on" : "fragments.off")}
+                  onClick={() => { sessionStorage.setItem("whitevpn-settings-section", "fragments"); onNavigate("settings"); }}
+                />
+                <DashboardRow
+                  icon={<Shield className="size-4" />}
+                  label={t("vpn.ech")}
+                  value={t((runtime.status === "connected" ? runtime.nodeEch : state.whiteVpn.autoEch) ? "fragments.on" : "fragments.off")}
+                  onClick={() => onNavigate("settings")}
+                />
+              </>
+            )}
             <p className="pt-1 text-xs text-muted-foreground">{t("vpn.moreSettings")}</p>
             <Button variant="outline" size="sm" className="justify-self-start" onClick={() => onNavigate("settings")}>
               <Settings className="size-3.5" />
@@ -2510,6 +2532,15 @@ function WhiteDNSVPNPage({
         </Card>
 
       </div>
+
+      <ServerListDialog
+        open={serverListOpen}
+        state={state}
+        t={t}
+        onOpenChange={setServerListOpen}
+        onState={onState}
+        onError={onError}
+      />
 
       <LocationDialog
         open={nodeDialog === "location"}
@@ -4284,6 +4315,11 @@ function V2RaySubscriptionsPage({
     }
   }
 
+  // WARP is listed with the engines, and "All lists" is a choice on the VPN
+  // page rather than a list anyone downloads, so neither is a row here.
+  const listedSubscriptions = state.v2raySubscriptions.filter(
+    (subscription) => !subscription.inline && subscription.id !== allSubscriptionsID,
+  );
   const deleteTargetConfigCount = deleteTarget?.id ? (profileIndex.subscriptionProfileIds[deleteTarget.id]?.length || 0) : 0;
 
   return (
@@ -4293,10 +4329,6 @@ function V2RaySubscriptionsPage({
         title={t("nav.subscriptions")}
         actions={
           <>
-            <Button type="button" variant="outline" disabled={warpAdding} onClick={() => void addWarp()}>
-              {warpAdding ? <RotateCcw className="animate-spin" /> : <Plus />}
-              {warpAdding ? t("warp.registering") : <bdi>{t("warp.add")}</bdi>}
-            </Button>
             <Button type="button" variant="outline" onClick={openNewSubscription}>
               <Plus />
               {t("subs.new")}
@@ -4308,10 +4340,10 @@ function V2RaySubscriptionsPage({
           <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-muted/30 px-3 py-2.5">
             <div className="min-w-0">
               <p className="text-sm font-semibold">{t("subs.groups")}</p>
-              <p className="text-xs text-muted-foreground">{t("subs.sources", { count: state.v2raySubscriptions.length })}</p>
+              <p className="text-xs text-muted-foreground">{t("subs.sources", { count: listedSubscriptions.length })}</p>
             </div>
           </div>
-          {state.v2raySubscriptions.length === 0 ? (
+          {listedSubscriptions.length === 0 ? (
             <div className="px-3 py-4 text-sm text-muted-foreground">{t("subs.empty")}</div>
           ) : (
             <div className="overflow-x-auto">
@@ -4333,7 +4365,7 @@ function V2RaySubscriptionsPage({
                   </tr>
                 </thead>
                 <tbody>
-                  {state.v2raySubscriptions.map((subscription) => {
+                  {listedSubscriptions.map((subscription) => {
                     const refreshing = Boolean(refreshingSubscriptionIds[subscription.id]);
                     const managedProfileIds = profileIndex.subscriptionProfileIds[subscription.id] || [];
                     const builtIn = isBuiltInSubscription(subscription.id);
@@ -4492,6 +4524,15 @@ function V2RaySubscriptionsPage({
         {/* Android lists engine profiles on the same page as subscriptions. */}
         <EngineProfilesSection
           selection={engines}
+          warp={{
+            subscriptions: state.v2raySubscriptions.filter((subscription) => subscription.inline),
+            selectedId: state.selectedSubscriptionId,
+            adding: warpAdding,
+            onAdd: () => void addWarp(),
+            onUse: (id) => void useSubscription(id),
+            onEdit: (subscription) => void openExistingSubscription(subscription),
+            onDelete: requestDeleteSubscription,
+          }}
           runtime={state.runtime}
           language={language}
           t={t}
