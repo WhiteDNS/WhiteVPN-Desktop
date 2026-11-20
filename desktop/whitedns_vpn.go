@@ -187,8 +187,10 @@ func fetchWhiteDNSVPNSubscriptionDocument(ctx context.Context, catalogue builtIn
 }
 
 func (a *App) StartWhiteDNSVPNConnection() (model.AppState, error) {
-	if err := a.sourceCredentialError(a.selectedSubscriptionID()); err != nil {
-		return a.GetAppState(), err
+	if a.selectedEngineRoute() == nil {
+		if err := a.sourceCredentialError(a.selectedSubscriptionID()); err != nil {
+			return a.GetAppState(), err
+		}
 	}
 	a.mu.Lock()
 	dns := a.state.WhiteVPN.DNSPrivacy
@@ -245,6 +247,10 @@ func (a *App) SaveWhiteDNSVPNFrontingIPs(rawText string) (model.AppState, error)
 // SelectSubscription chooses which server source the VPN connects through.
 func (a *App) SelectSubscription(id string) (model.AppState, error) {
 	id = strings.TrimSpace(id)
+	// Choosing a subscription replaces an engine selection, as on Android.
+	if err := a.clearEngineSelection(); err != nil {
+		return a.GetAppState(), err
+	}
 	a.mu.Lock()
 	manualAvailable := id == model.ManualServerSourceID && slices.ContainsFunc(a.state.V2RayProfiles, func(profile model.V2RayProfile) bool {
 		return profile.SubscriptionID == ""

@@ -192,6 +192,19 @@ func (s *Store) Select(ref RouteRef) error {
 	return s.commitLocked(next)
 }
 
+// ClearSelection returns the route to the subscription selection, which is
+// also what a catalog that never selected anything means.
+func (s *Store) ClearSelection() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.state.Selected == nil {
+		return nil
+	}
+	next := s.copyLocked()
+	next.Selected = nil
+	return s.commitLocked(next)
+}
+
 func (s *Store) copyLocked() catalog {
 	next := catalog{Schema: s.state.Schema, Profiles: make([]Profile, len(s.state.Profiles))}
 	for i, p := range s.state.Profiles {

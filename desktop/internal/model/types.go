@@ -340,6 +340,9 @@ type RuntimeStatus struct {
 	ActiveSourceID    string `json:"activeSourceId,omitempty"`
 	FragmentMode      string `json:"fragmentMode,omitempty"`
 	Status            string `json:"status"`
+	// EngineProfileID is the engine profile carrying the connection, when the
+	// route is an engine rather than a subscription.
+	EngineProfileID string `json:"engineProfileId,omitempty"`
 	// Engine names what is running: "mihomo" for the engine the phone app uses,
 	// empty for the Xray path.
 	//

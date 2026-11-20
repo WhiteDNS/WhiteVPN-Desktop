@@ -56,11 +56,14 @@ func (a *App) startWhiteDNSVPNWithMihomo() (model.AppState, error) {
 
 func (a *App) connectMihomo(replace bool) (model.AppState, error) {
 	manager := a.connectionManager()
-	var err error
+	request, err := a.managedRequest()
+	if err != nil {
+		return a.GetAppState(), err
+	}
 	if replace {
-		err = manager.Connect(context.Background(), a.managedRequest())
+		err = manager.Connect(context.Background(), request)
 	} else {
-		err = manager.ConnectNew(context.Background(), a.managedRequest())
+		err = manager.ConnectNew(context.Background(), request)
 	}
 	a.syncManagedRuntime()
 	if err == nil {

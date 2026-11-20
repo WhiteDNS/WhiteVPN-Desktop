@@ -96,6 +96,11 @@ type Options struct {
 	// it. Empty means everything goes through it.
 	SplitTunnel mihomoconf.SplitTunnel
 
+	// RejectUDP and Bypass serve a route through a local engine; see
+	// mihomoconf.Routing.
+	RejectUDP bool
+	Bypass    []string
+
 	// Noise pads WireGuard proxies so their shape is less recognisable. It
 	// reaches nothing else, because the noise is AmneziaWG's and mihomo has
 	// nowhere to put it on a vless or trojan proxy.
@@ -127,6 +132,7 @@ func (o Options) Clone() Options {
 	o.Direct.IPs = append([]string(nil), o.Direct.IPs...)
 	o.Chain.Entries = append([]string(nil), o.Chain.Entries...)
 	o.Chain.Exits = append([]string(nil), o.Chain.Exits...)
+	o.Bypass = append([]string(nil), o.Bypass...)
 	return o
 }
 
@@ -775,9 +781,11 @@ func PrepareConfig(opts Options) (string, []string, error) {
 		// Share links, which is what the WhiteDNS catalogue is. They carry nodes
 		// only, so the groups and rule have to be generated around them.
 		document, firstHop, buildErr := mihomoconf.BuildProxiesYAMLWithRouting(proxies, mihomoconf.Routing{
-			Direct: opts.Direct,
-			Split:  opts.SplitTunnel,
-			Chain:  opts.Chain,
+			Direct:    opts.Direct,
+			Split:     opts.SplitTunnel,
+			Chain:     opts.Chain,
+			RejectUDP: opts.RejectUDP,
+			Bypass:    opts.Bypass,
 		})
 		if buildErr != nil {
 			return "", nil, buildErr
@@ -830,6 +838,7 @@ func PrepareConfig(opts Options) (string, []string, error) {
 		ProxyGroup:  group,
 		Tun:         opts.Tun,
 		SplitTunnel: opts.SplitTunnel,
+		FindProcess: len(opts.Bypass) > 0,
 	})
 	return document, candidates, nil
 }

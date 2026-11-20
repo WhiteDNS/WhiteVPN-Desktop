@@ -183,6 +183,9 @@ type Options struct {
 	// connection belongs to. It is here only so `find-process-mode` can follow
 	// it; the rules themselves are built with the proxies.
 	SplitTunnel SplitTunnel
+	// FindProcess turns process lookup on for rules other than the split
+	// tunnel's, such as Routing.Bypass.
+	FindProcess bool
 }
 
 // Routing is how traffic is divided between the tunnel and everything else.
@@ -200,6 +203,14 @@ type Routing struct {
 	// Chain optionally sends traffic through a second node before it leaves.
 	// Its proxies are already among the ones given; see PlanChain.
 	Chain Chain
+	// RejectUDP refuses proxied UDP, for a route whose proxy is a TCP-only
+	// local engine (Android: rejectProxiedUdp). Direct and split rules still
+	// come first, so traffic that never enters the tunnel keeps its UDP.
+	RejectUDP bool
+	// Bypass names processes that always go direct, ahead of every other
+	// rule: the local engine itself, whose own connections must not loop back
+	// into the tunnel through the proxy it provides.
+	Bypass []string
 }
 
 // BuildProxiesYAML renders proxies plus the two default groups and a catch-all
@@ -287,7 +298,8 @@ func BuildProxiesYAMLWithRouting(proxies []Proxy, routing Routing) (string, []st
 		//
 		// The catch-all is last and may be absent, when the split tunnel has
 		// written its own.
-		"rules": concatRules(direct.Rules(), split.Rules(exitTarget), catchAllRules(split, exitTarget)),
+		"rules": concatRules(SplitTunnel{Mode: SplitTunnelBypass, Processes: routing.Bypass}.Rules(exitTarget),
+			direct.Rules(), split.Rules(exitTarget), rejectUDPRules(routing.RejectUDP, split), catchAllRules(split, exitTarget)),
 	}
 
 	encoded, err := yaml.Marshal(document)
@@ -319,6 +331,16 @@ func concatRules(groups ...[]string) []string {
 		rules = append(rules, group...)
 	}
 	return rules
+}
+
+// rejectUDPRules sits just above the catch-all. Under a vpn-only split there
+// is no catch-all of ours to precede; the listed programs' UDP then fails at
+// the proxy, which carries none.
+func rejectUDPRules(reject bool, split SplitTunnel) []string {
+	if !reject || split.Catches() {
+		return nil
+	}
+	return []string{"NETWORK,UDP,REJECT"}
 }
 
 // catchAllRules is what everything not matched already does.
@@ -413,7 +435,7 @@ func Render(subscriptionYAML string, opts Options) string {
 	// is only asked for when a rule needs the answer. `strict` is mihomo's own
 	// default and means exactly that; `off` stops it entirely, which is worth
 	// saying rather than leaving to the default in case that default moves.
-	if opts.SplitTunnel.Active() {
+	if opts.SplitTunnel.Active() || opts.FindProcess {
 		out.WriteString("find-process-mode: strict\n")
 	} else {
 		out.WriteString("find-process-mode: off\n")

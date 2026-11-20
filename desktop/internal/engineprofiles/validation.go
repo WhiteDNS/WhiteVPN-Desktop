@@ -83,6 +83,10 @@ func (p Profile) Validate() error {
 			return fmt.Errorf("too many CDN IPs")
 		}
 		for _, ip := range c.CDNIPs {
+			// Android's ipCandidates also takes IPv4 ranges for the CDN scan.
+			if prefix, err := netip.ParsePrefix(ip); err == nil && prefix.Addr().Is4() {
+				continue
+			}
 			if a, err := netip.ParseAddr(ip); err != nil || a.Zone() != "" {
 				return fmt.Errorf("invalid CDN IP address")
 			}

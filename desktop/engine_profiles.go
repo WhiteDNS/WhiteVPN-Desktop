@@ -1,12 +1,14 @@
 package main
 
 import (
+	"errors"
 	"path/filepath"
-	"runtime"
 
 	"whitevpn-desktop/internal/engineprofiles"
 	"whitevpn-desktop/internal/securestore"
 )
+
+var errEngineInUse = errors.New("stop the connection before editing the engine it is using")
 
 // The versioned path is independent of legacy state.json, so an older desktop
 // binary cannot overwrite the new engine catalog when saving its settings.
@@ -62,6 +64,9 @@ func (a *App) SaveEngineProfile(rawJSON string) (engineprofiles.Summary, error) 
 	if err != nil {
 		return engineprofiles.Summary{}, err
 	}
+	if p.ID != "" && a.engineProfileInUse(p.ID) {
+		return engineprofiles.Summary{}, errEngineInUse
+	}
 	// Release the data gate before invoking event hooks or Wails callbacks.
 	summary, err := func() (engineprofiles.Summary, error) {
 		a.engineDataMu.RLock()
@@ -79,6 +84,9 @@ func (a *App) SaveEngineProfile(rawJSON string) (engineprofiles.Summary, error) 
 }
 
 func (a *App) DeleteEngineProfile(id string, revision uint64) error {
+	if a.engineProfileInUse(id) {
+		return errEngineInUse
+	}
 	err := func() error {
 		a.engineDataMu.RLock()
 		defer a.engineDataMu.RUnlock()
@@ -96,19 +104,13 @@ func (a *App) DeleteEngineProfile(id string, revision uint64) error {
 	return err
 }
 
-// Availability reports implemented runtime support, not merely editable kinds.
-// Runtime backends are registered by subsequent integration steps.
+// Availability reports implemented runtime support, not merely editable kinds:
+// a registered engine (engine_runtime.go) whose binaries are in this build.
 func (a *App) GetEngineAvailability() []engineprofiles.Availability {
-	_, storeErr := a.engineProfileStore()
 	out := make([]engineprofiles.Availability, 0, 6)
 	for _, kind := range engineprofiles.Kinds() {
-		reason := "backend-not-installed"
-		if runtime.GOOS != "windows" {
-			reason = "platform-unsupported"
-		} else if storeErr != nil {
-			reason = "credential-vault-unavailable"
-		}
-		out = append(out, engineprofiles.Availability{Kind: kind, Reason: reason, Capabilities: engineprofiles.Policy(kind)})
+		reason := a.engineUnavailable(kind)
+		out = append(out, engineprofiles.Availability{Kind: kind, Available: reason == "", Reason: reason, Capabilities: engineprofiles.Policy(kind)})
 	}
 	return out
 }

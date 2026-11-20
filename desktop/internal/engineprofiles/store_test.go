@@ -168,3 +168,40 @@ func TestCorruptCatalogNeverDefaultsOrWrites(t *testing.T) {
 		t.Fatal("duplicate profile IDs accepted")
 	}
 }
+
+// Android RouteSelectionMigration: a catalog without a selection means the
+// subscription, so existing users stay on it; clearing persists.
+func TestClearSelectionReturnsToSubscription(t *testing.T) {
+	disk := &memoryDisk{}
+	s, _ := Open(disk)
+	if s.Selected() != nil {
+		t.Fatal("a new catalog selected a route")
+	}
+	summary, _ := s.Save(fixture(Psiphon))
+	if err := s.Select(RouteRef{Kind: "engine", ProfileID: summary.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if reopened, _ := Open(disk); reopened.Selected() == nil || reopened.Selected().ProfileID != summary.ID {
+		t.Fatal("selection did not persist")
+	}
+	if err := s.ClearSelection(); err != nil {
+		t.Fatal(err)
+	}
+	if reopened, _ := Open(disk); reopened.Selected() != nil {
+		t.Fatal("cleared selection came back")
+	}
+}
+
+func TestPsiphonCDNRangesAreAccepted(t *testing.T) {
+	p := fixture(Psiphon)
+	p.Config.Psiphon.CDNIPs = []string{"104.16.0.0/13", "1.2.3.4", "2606:4700::1"}
+	if err := p.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	for _, bad := range []string{"2606:4700::/32", "1.2.3.4/33", "example.com"} {
+		p.Config.Psiphon.CDNIPs = []string{bad}
+		if p.Validate() == nil {
+			t.Fatalf("%s accepted", bad)
+		}
+	}
+}

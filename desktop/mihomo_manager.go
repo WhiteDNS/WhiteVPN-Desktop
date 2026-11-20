@@ -27,6 +27,15 @@ func (a *App) connectionManager() *sessionmanager.Manager {
 		if err := a.connection.Register(sessionmanager.Mihomo, backend); err != nil {
 			panic(err)
 		}
+		if a.connectionBackend == nil {
+			for _, kind := range engineprofiles.Kinds() {
+				if kind.SOCKS() {
+					if err := a.connection.Register(kind, &engineBackend{app: a}); err != nil {
+						panic(err)
+					}
+				}
+			}
+		}
 	})
 	return a.connection
 }
@@ -141,7 +150,12 @@ func (b *mihomoBackend) prepare(ctx context.Context, p sessionmanager.Plan) (ses
 }
 
 func (b *mihomoBackend) Start(startup, lifetime context.Context, p sessionmanager.ActivePlan) (sessionmanager.Session, error) {
-	a := b.app
+	return b.app.startManagedMihomo(startup, lifetime, p)
+}
+
+// startManagedMihomo is shared by subscription and engine routes: an engine
+// route is the same Mihomo session whose only proxy is the engine's SOCKS port.
+func (a *App) startManagedMihomo(startup, lifetime context.Context, p sessionmanager.ActivePlan) (*managedMihomoSession, error) {
 	a.syncManagedRuntime()
 	opts := p.Mihomo.Clone()
 	opts.HomeDir = filepath.Join(opts.HomeDir, p.SessionID)
@@ -282,8 +296,10 @@ func (a *App) syncManagedRuntimeLocked() {
 			a.state.Runtime.FragmentMode = current.FragmentMode()
 		}
 	}
+	a.state.Runtime.EngineProfileID = ""
 	if snapshot.Route != nil {
 		a.state.Runtime.ActiveSourceID = snapshot.Route.SourceID
+		a.state.Runtime.EngineProfileID = snapshot.Route.ProfileID
 	}
 	a.mu.Unlock()
 	switch snapshot.Phase {
@@ -342,8 +358,23 @@ func (a *App) withMihomo(current *session.Session, fn func()) bool {
 	return true
 }
 
-func (a *App) managedRequest() sessionmanager.Plan {
-	return sessionmanager.Plan{Route: engineprofiles.RouteRef{Kind: "mihomo", SourceID: a.selectedSubscriptionID()}, Mode: "proxy", Mihomo: &session.Options{}}
+// managedRequest is the selected route: an engine profile when one is
+// selected (Android RouteSelectionMigration: the engine wins), otherwise the
+// subscription. A selected profile that no longer exists is an error, never a
+// silent fallback to the subscription.
+func (a *App) managedRequest() (sessionmanager.Plan, error) {
+	if ref := a.selectedEngineRoute(); ref != nil {
+		store, err := a.engineProfileStore()
+		if err != nil {
+			return sessionmanager.Plan{}, err
+		}
+		profile, err := store.ForEdit(ref.ProfileID)
+		if err != nil {
+			return sessionmanager.Plan{}, errSelectedEngineMissing
+		}
+		return sessionmanager.Plan{Route: *ref, Profile: profile, Mode: "proxy", Mihomo: &session.Options{}}, nil
+	}
+	return sessionmanager.Plan{Route: engineprofiles.RouteRef{Kind: "mihomo", SourceID: a.selectedSubscriptionID()}, Mode: "proxy", Mihomo: &session.Options{}}, nil
 }
 
 func (a *App) launchMihomo(current *session.Session, fn func(context.Context)) {
@@ -370,7 +401,12 @@ func (a *App) publishManagedMihomo() {
 		}
 		a.state.Runtime.FrontingIP = owned.plan.Mihomo.FrontingIP
 		a.mu.Unlock()
-		a.recordConnectedNode(current.Selected())
+		node := current.Selected()
+		if owned.plan.Route.Kind == "engine" {
+			// The only proxy is the engine, so name what the user selected.
+			node = owned.plan.Profile.Name
+		}
+		a.recordConnectedNode(node)
 		a.appendRuntimeLog(fmt.Sprintf("mihomo connected: %d nodes available; proxy listening on 127.0.0.1:%d", current.ProxyCount(), current.MixedPort()))
 	}) {
 		return

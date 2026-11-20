@@ -69,7 +69,7 @@ func (p Plan) validate() error {
 		}
 		return nil
 	}
-	if p.Mihomo != nil || p.Route.ProfileID != p.Profile.ID {
+	if p.Route.ProfileID != p.Profile.ID {
 		return fmt.Errorf("engine route does not match profile")
 	}
 	if err := p.Profile.Validate(); err != nil {
@@ -77,6 +77,11 @@ func (p Plan) validate() error {
 	}
 	if !p.Profile.Kind.SOCKS() && p.Mode != "tun" {
 		return fmt.Errorf("native engine requires TUN mode")
+	}
+	// A SOCKS engine is routed through Mihomo (Android EngineRuntimeYaml), so
+	// its plan may carry the Mihomo options; a native engine never does.
+	if p.Mihomo != nil && (!p.Profile.Kind.SOCKS() || (p.Mode == "tun") != p.Mihomo.Tun.Enabled) {
+		return fmt.Errorf("invalid engine plan")
 	}
 	return nil
 }
