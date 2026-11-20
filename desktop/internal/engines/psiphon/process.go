@@ -115,6 +115,12 @@ func Start(ctx context.Context, opts engines.StartOptions) (engines.Process, err
 		_ = os.Remove(configPath)
 		return nil, fmt.Errorf("psiphon: start worker: %w", err)
 	}
+	if err := bindToApp(cmd.Process.Pid); err != nil {
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+		_ = os.Remove(configPath)
+		return nil, fmt.Errorf("psiphon: tie worker to the app: %w", err)
+	}
 	go func() {
 		p.read(notices, opts.DataDir, logf)
 		_ = cmd.Wait()
