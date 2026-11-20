@@ -17,7 +17,11 @@ func TestARefusedConnectionKeepsItsReason(t *testing.T) {
 		Exit:  model.ChainHop{Mode: model.ChainHopFixed, SubscriptionID: "gone", Node: "B"},
 	}
 	b := &mihomoBackend{app: a}
-	_, err := b.Prepare(context.Background(), a.managedRequest())
+	request, err := a.managedRequest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = b.Prepare(context.Background(), request)
 	if err == nil {
 		t.Fatal("a chain over a list that does not exist was prepared")
 	}

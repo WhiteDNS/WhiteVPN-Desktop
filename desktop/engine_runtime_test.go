@@ -47,8 +47,16 @@ func TestEngineAvailabilityFollowsRegistrationAndBinaries(t *testing.T) {
 	if p := got[engineprofiles.Psiphon]; p.Available != present || (!present && p.Reason != "binary-missing") || !p.Capabilities.Country {
 		t.Fatalf("psiphon availability = %+v with binary present=%v", p, present)
 	}
-	if _, registered := engines.Lookup(engineprofiles.Tor); !registered && got[engineprofiles.Tor].Reason != "backend-not-installed" {
-		t.Fatalf("tor without a starter = %+v", got[engineprofiles.Tor])
+	torDir := "tor-" + runtime.GOOS + "-" + runtime.GOARCH + "/"
+	torPresent := shippedBinaryPresent(torDir+"tor.exe") && shippedBinaryPresent(torDir+"lyrebird.exe")
+	if tor := got[engineprofiles.Tor]; tor.Available != torPresent || (!torPresent && tor.Reason != "binary-missing") {
+		t.Fatalf("tor availability = %+v with binaries present=%v", tor, torPresent)
+	}
+	if bypass := torEngine().BypassProcesses(); strings.Join(bypass, ",") != "conjure-client.exe,tor.exe,lyrebird.exe" {
+		t.Fatalf("tor bypass = %v", bypass)
+	}
+	if _, err := shippedBinary("../escape.exe"); err == nil {
+		t.Fatal("a path outside cores/ was accepted")
 	}
 	for _, kind := range []engineprofiles.Kind{engineprofiles.SSH, engineprofiles.DNS, engineprofiles.AmneziaWG, engineprofiles.IKEv2} {
 		if got[kind].Available {

@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"path"
 	"sync"
 	"time"
 
@@ -50,9 +51,21 @@ type Starter func(ctx context.Context, opts StartOptions) (Process, error)
 
 type Engine struct {
 	Start Starter
-	// Binaries are the cores/ file names this engine needs on this platform.
-	// Availability requires every one of them to be shipped.
+	// Binaries are the slash-separated cores/ paths this engine needs on this
+	// platform. Availability requires every one of them to be shipped.
 	Binaries []string
+	// Processes names further executables the engine may start (optional
+	// helpers). They, and every binary, bypass the tunnel by process name.
+	Processes []string
+}
+
+// BypassProcesses are the executable names whose traffic must go direct.
+func (e Engine) BypassProcesses() []string {
+	out := append([]string{}, e.Processes...)
+	for _, b := range e.Binaries {
+		out = append(out, path.Base(b))
+	}
+	return out
 }
 
 var (

@@ -16,19 +16,56 @@ import (
 	"whitevpn-desktop/internal/engineprofiles"
 	"whitevpn-desktop/internal/engines"
 	"whitevpn-desktop/internal/engines/psiphon"
+	"whitevpn-desktop/internal/engines/tor"
 	"whitevpn-desktop/internal/mihomoconf"
 	"whitevpn-desktop/internal/model"
 	"whitevpn-desktop/internal/session"
 	"whitevpn-desktop/internal/sessionmanager"
 )
 
-// One line per engine package. Tor plugs in the same way once its package
-// exposes an engines.Engine whose Binaries name the staged tor and lyrebird
-// executables, for example:
-//
-//	engines.Register(engineprofiles.Tor, tor.Engine())
+// One line per engine package.
 func init() {
 	engines.Register(engineprofiles.Psiphon, psiphon.Engine())
+	engines.Register(engineprofiles.Tor, torEngine())
+}
+
+// torEngine adapts internal/engines/tor to the registry. scripts/build-tor-engine.sh
+// stages cores/tor-<goos>-<goarch>/ (tor.exe, lyrebird.exe, conjure-client.exe,
+// geoip, geoip6); it is unpacked as one folder because Tor finds its transports
+// and geoip files beside tor.exe.
+func torEngine() engines.Engine {
+	dir := fmt.Sprintf("tor-%s-%s/", runtime.GOOS, runtime.GOARCH)
+	return engines.Engine{
+		Binaries:  []string{dir + "tor.exe", dir + "lyrebird.exe"},
+		Processes: []string{"conjure-client.exe"},
+		Start: func(ctx context.Context, opts engines.StartOptions) (engines.Process, error) {
+			if opts.Profile.Config.Tor == nil {
+				return nil, fmt.Errorf("tor: invalid start options")
+			}
+			torPath, err := opts.Binary(dir + "tor.exe")
+			if err != nil {
+				return nil, err
+			}
+			if _, err := opts.Binary(dir + "lyrebird.exe"); err != nil {
+				return nil, err
+			}
+			for _, optional := range []string{"conjure-client.exe", "geoip", "geoip6"} {
+				_, _ = opts.Binary(dir + optional)
+			}
+			logf := func(format string, args ...any) {
+				if opts.Log != nil {
+					opts.Log("Tor: " + fmt.Sprintf(format, args...))
+				}
+			}
+			p, err := tor.Start(ctx, tor.Options{TorPath: torPath, PluginDir: filepath.Dir(torPath),
+				DataDir: filepath.Join(opts.DataDir, opts.Profile.ID), Config: *opts.Profile.Config.Tor,
+				DefaultBridges: tor.DefaultBridges, Logf: logf})
+			if err != nil {
+				return nil, err // a typed nil *tor.Process must not become a non-nil Process
+			}
+			return p, nil
+		},
+	}
 }
 
 // Test seams: the fake-engine end-to-end test runs without a Mihomo build.
@@ -39,15 +76,16 @@ var (
 
 var errSelectedEngineMissing = errors.New("the selected connection engine was deleted; choose a subscription or another engine")
 
-// shippedBinary locates an engine executable shipped in cores/. On Windows only
-// the copy embedded in the signed app is used, as for the Mihomo core.
+// shippedBinary locates a file shipped in cores/, by its slash-separated path
+// there. On Windows only the copy embedded in the signed app is used, as for
+// the Mihomo core, unpacked under the same relative path.
 func shippedBinary(name string) (string, error) {
-	if filepath.Base(name) != name {
+	if !fs.ValidPath(name) || name == "." {
 		return "", fmt.Errorf("invalid engine binary name")
 	}
 	if runtime.GOOS != "windows" {
 		if dir := findCoresDir(); dir != "" {
-			if candidate := filepath.Join(dir, name); fileExists(candidate) {
+			if candidate := filepath.Join(dir, filepath.FromSlash(name)); fileExists(candidate) {
 				return candidate, nil
 			}
 		}
@@ -60,11 +98,10 @@ func shippedBinary(name string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	dir = filepath.Join(dir, "cores")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	target := filepath.Join(dir, "cores", filepath.FromSlash(name))
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 		return "", err
 	}
-	target := filepath.Join(dir, name)
 	if err := writeEmbeddedFile(target, raw, 0o755); err != nil {
 		return "", fmt.Errorf("unpack %s: %w", name, err)
 	}
@@ -79,7 +116,7 @@ func shippedBinaryPresent(name string) bool {
 		return false
 	}
 	dir := findCoresDir()
-	return dir != "" && fileExists(filepath.Join(dir, name))
+	return dir != "" && fileExists(filepath.Join(dir, filepath.FromSlash(name)))
 }
 
 func fileExists(path string) bool {
@@ -199,7 +236,7 @@ func (a *App) GetPsiphonRegions(selected string) []string {
 	return psiphon.Options(a.engineDataDir(engineprofiles.Psiphon), selected)
 }
 
-// activeEngineProfile refuses edits to the profile carrying the connection
+// engineProfileInUse guards edits to the profile carrying the connection
 // (Android engine_stop_before_edit).
 func (a *App) engineProfileInUse(id string) bool {
 	snapshot := a.connectionManager().Snapshot()
@@ -218,6 +255,19 @@ func (b *engineBackend) Preflight(ctx context.Context, p sessionmanager.Plan) er
 // app split and proxy access. Chain, location, fronting, TLS integrity, noise,
 // fragments and automatic ECH belong to subscription nodes and do not apply.
 func (b *engineBackend) Prepare(ctx context.Context, p sessionmanager.Plan) (sessionmanager.Plan, error) {
+	// Recorded like mihomoBackend.Prepare, so the refusal can be shown.
+	prepared, err := b.prepare(ctx, p)
+	reason := ""
+	if err != nil {
+		reason = model.PublicText(err.Error())
+	}
+	b.app.mu.Lock()
+	b.app.preflightReason = reason
+	b.app.mu.Unlock()
+	return prepared, err
+}
+
+func (b *engineBackend) prepare(ctx context.Context, p sessionmanager.Plan) (sessionmanager.Plan, error) {
 	a := b.app
 	if reason := a.engineUnavailable(p.Profile.Kind); reason != "" {
 		return p, fmt.Errorf("this engine is not available on this device (%s)", reason)
@@ -252,7 +302,7 @@ func (b *engineBackend) Prepare(ctx context.Context, p sessionmanager.Plan) (ses
 	opts := session.Options{CorePath: core, HomeDir: filepath.Join(a.configDir, "mihomo"), MixedPort: port,
 		Subscription: placeholder, SplitTunnel: splitTunnelFor(settings), Direct: directRouteFor(settings),
 		DNSPrivacy: dnsPrivacyMode(settings.DNSPrivacy.Mode), DoHURL: settings.DNSPrivacy.DoHURL, DoTEndpoint: settings.DNSPrivacy.DoTEndpoint,
-		Tun: tunOptionsFor(settings), RejectUDP: true, Bypass: engine.Binaries}
+		Tun: tunOptionsFor(settings), RejectUDP: true, Bypass: engine.BypassProcesses()}
 	p.Mode = "proxy"
 	if settings.TunEnabled {
 		p.Mode = "tun"

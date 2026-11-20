@@ -23,8 +23,8 @@
       "runtimeKind": "worker",
       "repository": "https://github.com/CluvexStudio/psiphon-tunnel-core",
       "commit": "83aa73b9b982e7421e00117f5b0c5aceb5dda452",
-      "buildProbe": "library compiled for windows/amd64 and windows/arm64",
-      "integrationStatus": "pending"
+      "buildProbe": "ConsoleClient built for windows/amd64 by scripts/build-psiphon-engine.sh",
+      "integrationStatus": "worker integrated (internal/engines/psiphon); windows/arm64 not built yet"
     },
     {
       "kind": "tor",
