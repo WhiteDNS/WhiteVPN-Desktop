@@ -17,6 +17,7 @@ import (
 	"whitevpn-desktop/internal/mihomoconf"
 	"whitevpn-desktop/internal/model"
 	"whitevpn-desktop/internal/session"
+	"whitevpn-desktop/internal/sessionmanager"
 )
 
 // The engine.
@@ -67,6 +68,11 @@ func (a *App) connectMihomo(replace bool) (model.AppState, error) {
 	}
 	if errors.Is(err, context.Canceled) {
 		err = nil
+	}
+	if errors.Is(err, sessionmanager.ErrPreflight) {
+		if reason := a.lastPreflightReason(); reason != "" {
+			err = errors.New(reason)
+		}
 	}
 	return a.GetAppState(), err
 }

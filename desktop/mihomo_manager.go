@@ -41,6 +41,18 @@ func (b *mihomoBackend) Preflight(ctx context.Context, p sessionmanager.Plan) er
 }
 
 func (b *mihomoBackend) Prepare(ctx context.Context, p sessionmanager.Plan) (sessionmanager.Plan, error) {
+	prepared, err := b.prepare(ctx, p)
+	reason := ""
+	if err != nil {
+		reason = model.PublicText(err.Error())
+	}
+	b.app.mu.Lock()
+	b.app.preflightReason = reason
+	b.app.mu.Unlock()
+	return prepared, err
+}
+
+func (b *mihomoBackend) prepare(ctx context.Context, p sessionmanager.Plan) (sessionmanager.Plan, error) {
 	a := b.app
 	if err := a.sourceCredentialError(p.Route.SourceID); err != nil {
 		return p, err
@@ -285,6 +297,11 @@ func (a *App) syncManagedRuntimeLocked() {
 		a.handleRuntimeState(model.RuntimeStopping, "Disconnecting")
 	case sessionmanager.ReleasePending, sessionmanager.Failed:
 		message := "Connection failed; review the connection settings and try again"
+		if snapshot.ErrorCode == "preflight-failed" {
+			if reason := a.lastPreflightReason(); reason != "" {
+				message = reason
+			}
+		}
 		if snapshot.ReleasePending {
 			message = "Connection resources could not be confirmed released; disconnect again before reconnecting"
 		}
@@ -376,4 +393,10 @@ func (a *App) publishManagedMihomo() {
 	a.watchHealth(current)
 	a.resolveExitCountry()
 	a.retryBlockedSubscriptions()
+}
+
+func (a *App) lastPreflightReason() string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.preflightReason
 }

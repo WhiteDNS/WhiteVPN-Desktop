@@ -73,6 +73,10 @@ type App struct {
 	connectionOnce    sync.Once
 	connection        *sessionmanager.Manager
 	connectionBackend sessionmanager.Backend // test seam; production always uses the Mihomo adapter
+	// preflightReason is why the last connection was refused before it started.
+	// The session manager reports only that it was; this app made the reason, so
+	// it can show it (URLs scrubbed). Guarded by mu.
+	preflightReason string
 	connectionEvents  sync.Mutex
 	managedMu         sync.Mutex
 	managedMihomo     *managedMihomoSession
