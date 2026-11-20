@@ -742,6 +742,13 @@ const strings = {
     fa: "بعد از اتصال بررسی می‌کند که گواهی‌ها از داخل تونل معتبر بمانند. سروری که این بررسی را رد کند در حال شنود شدن است و پذیرفته نمی‌شود.",
   },
 
+  "settings.autoEch": { en: "Automatic ECH", fa: "ECH خودکار" },
+  "settings.autoEch.description": {
+    en: "Hides the site name of CDN connections (WebSocket, gRPC, XHTTP) when the server supports ECH. Falls back to normal TLS when it does not.",
+    fa: "اگر سرور از ECH پشتیبانی کند، نام سایت را در اتصال‌های CDN (WebSocket، gRPC و XHTTP) پنهان می‌کند. در غیر این صورت با TLS معمولی وصل می‌شود.",
+  },
+  "vpn.ech": { en: "ECH", fa: "ECH" },
+
   "settings.dns.title": { en: "DNS privacy", fa: "حریم خصوصی DNS" },
   "settings.dns.description": {
     en: "Where name lookups go, and over what.",

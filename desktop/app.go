@@ -465,6 +465,7 @@ func (a *App) handleRuntimeState(status, message string) {
 		a.state.Runtime.ExitIP = ""
 		a.state.Runtime.NodeName = ""
 		a.state.Runtime.NodeCountryCode = ""
+		a.state.Runtime.NodeECH = false
 		a.state.Runtime.ExitCountryCode = ""
 		a.state.Runtime.ExitChecked = false
 		a.state.Runtime.ResolverMTUScanPaused = false

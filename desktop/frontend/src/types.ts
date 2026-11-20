@@ -328,6 +328,8 @@ export interface RuntimeStatus {
   // The node carrying traffic, and where its own name says it is.
   nodeName: string;
   nodeCountryCode: string;
+  // That node is dialled with ECH, its own or automatic.
+  nodeEch: boolean;
   // The address the internet sees traffic coming from. Not publicProxyIp,
   // which is where this machine's own proxy can be reached on the LAN.
   exitIp: string;
@@ -791,6 +793,7 @@ export type WhiteVPNSettings = {
   splitTunnel: SplitTunnelSettings;
   directRouting: DirectRoutingSettings;
   tlsIntegrityEnabled: boolean;
+  autoEch: boolean;
   fragments: FragmentSettings;
   amneziaNoise: AmneziaNoiseSettings;
   frontingIps: string[];

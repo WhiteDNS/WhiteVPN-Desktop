@@ -101,6 +101,8 @@ type Options struct {
 	// nowhere to put it on a vless or trojan proxy.
 	Noise     mihomoconf.AmneziaNoise
 	Fragments fragment.Settings
+	// AutoECH adds optional ECH to CDN TLS nodes that do not set it themselves.
+	AutoECH bool
 
 	// FrontingIP reaches every eligible node through this address instead of the
 	// one its name resolves to, while still presenting the name. Empty means the
@@ -147,6 +149,9 @@ type Session struct {
 	seeded       int
 	fragmentMode string
 
+	// ech names the nodes whose configuration dials them with ECH.
+	ech map[string]bool
+
 	// tunnelUnverified is set when the tunnel was accepted without being checked,
 	// which happens on platforms that have no way to read an adapter's routes yet.
 	tunnelUnverified error
@@ -161,6 +166,22 @@ func (s *Session) Seeded() int { return s.seeded }
 
 // FragmentMode is the variant that actually connected, including fallback.
 func (s *Session) FragmentMode() string { return s.fragmentMode }
+
+// ECH reports whether the named node is dialled with ECH.
+func (s *Session) ECH(name string) bool { return s.ech[name] }
+
+// echNodes reads ECH off the written configuration, so it covers the
+// subscription's own ech-opts and automatic ECH alike.
+func echNodes(document string) map[string]bool {
+	proxies, _ := mihomoconf.ParseDocument(document)
+	ech := make(map[string]bool, len(proxies))
+	for _, proxy := range proxies {
+		if mihomoconf.ECHEnabled(proxy) {
+			ech[proxy.Name()] = true
+		}
+	}
+	return ech
+}
 
 // TunnelUnverified is non-nil when the tunnel is up but could not be inspected,
 // so the caller can say so instead of implying it was checked.
@@ -296,6 +317,7 @@ func connectOwnedOnce(ctx context.Context, opts Options) (*Session, error) {
 		// group, and a stated preference is the user choosing for themselves.
 		automatic: len(candidates) > 0 && len(opts.Prefer) == 0,
 		reasons:   reasons,
+		ech:       echNodes(document),
 	}
 	if err != nil {
 		return session, err
@@ -741,6 +763,7 @@ func PrepareConfig(opts Options) (string, []string, error) {
 		if err != nil {
 			return "", nil, fmt.Errorf("session: fragment settings: %w", err)
 		}
+		proxies = mihomoconf.ApplyAutoECH(proxies, opts.AutoECH)
 		if opts.FrontingIP != "" {
 			// Nodes fronting cannot be applied to are left reachable at their own
 			// address rather than dropped: a front that covers most of the list is
