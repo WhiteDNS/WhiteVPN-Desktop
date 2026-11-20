@@ -49,6 +49,11 @@ type AppApi = {
   SaveEngineProfile(rawJSON: string): Promise<EngineProfileSummary>;
   DeleteEngineProfile(id: string, revision: number): Promise<void>;
   GetEngineAvailability(): Promise<EngineAvailability[]>;
+  GetSelectedEngineProfileID(): Promise<string>;
+  SelectEngineProfile(id: string): Promise<void>;
+  UseSubscriptionConnection(): Promise<void>;
+  GetPsiphonRegions(selected: string): Promise<string[]>;
+  TestEngineProfile(id: string): Promise<string>;
   GetAppState(): Promise<AppState>;
   CheckFirewallStatus(): Promise<FirewallStatus>;
   GetSystemLANIP(): Promise<string>;
@@ -163,6 +168,11 @@ export const backend = {
   saveEngineProfile: (profile: EngineProfile) => app().SaveEngineProfile(JSON.stringify(profile)),
   deleteEngineProfile: (id: string, revision: number) => app().DeleteEngineProfile(id, revision),
   getEngineAvailability: () => app().GetEngineAvailability(),
+  getSelectedEngineProfileId: () => app().GetSelectedEngineProfileID(),
+  selectEngineProfile: (id: string) => app().SelectEngineProfile(id),
+  useSubscriptionConnection: () => app().UseSubscriptionConnection(),
+  getPsiphonRegions: (selected: string) => app().GetPsiphonRegions(selected),
+  testEngineProfile: (id: string) => app().TestEngineProfile(id),
   getAppState: () => app().GetAppState(),
   checkFirewallStatus: () => app().CheckFirewallStatus(),
   getSystemLANIP: () => app().GetSystemLANIP(),

@@ -316,6 +316,8 @@ export interface RuntimeStatus {
   connectionPhase?: string;
   releasePending?: boolean;
   activeSourceId?: string;
+  // Set when the connection runs through an engine profile instead of a subscription.
+  engineProfileId?: string;
   fragmentMode?: "full" | "fragments-only" | "normal";
   status: RuntimeStatusName;
   engine: string;

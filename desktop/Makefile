@@ -122,7 +122,7 @@ $(error --version requires a value; use `make all -- --version 1.0.0`)
 endif
 endif
 
-.PHONY: help deps frontend-deps tidy dev build build-mac build-windows build-linux build-all all check-linux-builder frontend-build backend-build prepare-package prepare-macos-go-env prepare-embedded-core prepare-embedded-platform prepare-embedded-platforms prepare-embedded-macos-cores macos-app-bundle validate-version package package-mac package-windows package-linux package-linux-distros package-linux-all-docker package-linux-fedora-rpm-docker package-all stage-artifacts archive-artifacts package-helper package-assets test test-backend test-frontend xray-core xray-core-all xray-core-target mihomo-core mihomo-core-setup clean --version
+.PHONY: help deps frontend-deps tidy dev build build-mac build-windows build-linux build-all all check-linux-builder frontend-build backend-build prepare-package prepare-macos-go-env prepare-embedded-core prepare-embedded-platform prepare-embedded-platforms prepare-embedded-macos-cores macos-app-bundle validate-version package package-mac package-windows package-linux package-linux-distros package-linux-all-docker package-linux-fedora-rpm-docker package-all stage-artifacts archive-artifacts package-helper package-assets test test-backend test-frontend xray-core xray-core-all xray-core-target mihomo-core mihomo-core-setup psiphon-engine clean --version
 ifneq ($(VERSION_FROM_ARGS),)
 .PHONY: $(VERSION_FROM_ARGS)
 endif
@@ -278,7 +278,10 @@ prepare-embedded-core:
 	if [ "$(TARGET_GOOS)" = "windows" ]; then core="$$core.exe"; fi; \
 	$(MAKE) mihomo-core TARGET_GOOS="$(TARGET_GOOS)" TARGET_GOARCH="$(TARGET_GOARCH)"; \
 	chmod 755 "cores/$$core"; \
-	printf 'Embedding engine %s\n' "cores/$$core"
+	printf 'Embedding engine %s\n' "cores/$$core"; \
+	if [ "$(TARGET_GOOS)" = "windows" ]; then \
+		$(MAKE) psiphon-engine TARGET_GOOS="$(TARGET_GOOS)" TARGET_GOARCH="$(TARGET_GOARCH)"; \
+	fi
 
 prepare-embedded-platform:
 	@if [ -z "$(TARGET_GOOS)" ] || [ -z "$(TARGET_GOARCH)" ]; then \
@@ -507,6 +510,10 @@ mihomo-core-setup:
 
 mihomo-core: mihomo-core-setup
 	TARGET_GOOS="$(TARGET_GOOS)" TARGET_GOARCH="$(TARGET_GOARCH)" ./scripts/build-mihomo-core.sh
+
+# The Psiphon worker (internal/engines/psiphon), pinned like Android's engine.
+psiphon-engine:
+	TARGET_GOOS="$(TARGET_GOOS)" TARGET_GOARCH="$(TARGET_GOARCH)" ./scripts/build-psiphon-engine.sh
 
 xray-core:
 	$(MAKE) prepare-embedded-core TARGET_GOOS=$(GOOS_VALUE) TARGET_GOARCH=$(GOARCH_VALUE)

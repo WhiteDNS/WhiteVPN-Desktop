@@ -41,6 +41,8 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { FragmentSettingsPanel } from "./FragmentSettingsPanel";
+import { EngineProfilesSection, engineKindTitle, type EngineSelection } from "./EngineProfilesSection";
+import { isolateLatin } from "./bidi";
 import type { ReactNode } from "react";
 
 import {
@@ -744,6 +746,26 @@ function App() {
   const [nodeTestRunning, setNodeTestRunning] = useState(false);
   const runtimeLogBufferRef = useRef<RuntimeLogEntry[]>([]);
   const runtimeLogFlushTimerRef = useRef<number | null>(null);
+  // Saved engine profiles and which one, if any, replaces the subscription.
+  const [engines, setEngines] = useState<EngineSelection>({ selectedId: "", profiles: [], availability: [] });
+
+  async function loadEngines() {
+    try {
+      const [selectedId, profiles, availability] = await Promise.all([
+        backend.getSelectedEngineProfileId(),
+        backend.listEngineProfiles().catch(() => []),
+        backend.getEngineAvailability(),
+      ]);
+      setEngines({ selectedId, profiles, availability });
+    } catch {
+      // Outside Wails, or the vault is unavailable: the subscription stays the route.
+    }
+  }
+
+  useEffect(() => {
+    void loadEngines();
+    return onRuntimeEvent<unknown>("engine-profiles:changed", () => void loadEngines());
+  }, []);
 
   // Which subscription the Servers page is showing: the one the user picked
   // there, or the connected one until they pick. A pick that no longer exists
@@ -1104,6 +1126,7 @@ function App() {
               {activePage === "vpn" && (
                 <WhiteDNSVPNPage
                   state={state}
+                  engines={engines}
                   proxyEndpoint={engineProxyEndpoint}
                   onState={applyState}
                   onError={showError}
@@ -1142,9 +1165,12 @@ function App() {
               {activePage === "subscriptions" && (
                 <V2RaySubscriptionsPage
                   state={state}
+                  engines={engines}
+                  onEnginesChanged={() => void loadEngines()}
                   onState={applyState}
                   onError={showError}
                   onSuccess={showSuccess}
+                  language={language}
                   t={t}
                 />
               )}
@@ -1667,12 +1693,15 @@ function DashboardRow({
   icon,
   label,
   value,
+  error,
   disabled,
   onClick,
 }: {
   icon: ReactNode;
   label: string;
   value: string;
+  // Shown in red under the label, with the row outlined, as Android marks a row that cannot apply.
+  error?: string;
   disabled?: boolean;
   onClick: () => void;
 }) {
@@ -1681,14 +1710,20 @@ function DashboardRow({
       type="button"
       disabled={disabled}
       onClick={onClick}
-      className="flex w-full items-center justify-between gap-3 rounded-md border bg-background/70 px-3 py-2.5 text-start transition-colors hover:bg-muted/60 disabled:cursor-not-allowed disabled:opacity-60"
+      className={cn(
+        "flex w-full items-center justify-between gap-3 rounded-md border bg-background/70 px-3 py-2.5 text-start transition-colors hover:bg-muted/60 disabled:cursor-not-allowed disabled:opacity-60",
+        error && "border-destructive/60 bg-destructive/5"
+      )}
     >
-      <span className="flex shrink-0 items-center gap-2 text-muted-foreground">
+      <span className="flex min-w-0 shrink-0 items-center gap-2 text-muted-foreground">
         {icon}
-        <span className="text-sm font-medium text-foreground">{label}</span>
+        <span className="grid">
+          <span className={cn("text-sm font-medium text-foreground", error && "text-destructive")}>{label}</span>
+          {error && <span className="text-xs text-destructive">{isolateLatin(error)}</span>}
+        </span>
       </span>
       <span className="flex min-w-0 items-center gap-2">
-        <span className="min-w-0 truncate text-sm text-muted-foreground">{value}</span>
+        <span className="min-w-0 truncate text-sm text-muted-foreground"><bdi>{value}</bdi></span>
         <ChevronRight className="size-4 shrink-0 text-muted-foreground rtl:rotate-180" />
       </span>
     </button>
@@ -2015,6 +2050,7 @@ function ConnectButtonIcon({ state }: { state: ConnectButtonState }) {
 
 function WhiteDNSVPNPage({
   state,
+  engines,
   proxyEndpoint,
   onState,
   onError,
@@ -2023,6 +2059,7 @@ function WhiteDNSVPNPage({
   t,
 }: {
   state: AppState;
+  engines: EngineSelection;
   proxyEndpoint: string;
   onState: (state: AppState) => void;
   onError: (message: string) => void;
@@ -2040,6 +2077,8 @@ function WhiteDNSVPNPage({
   const [selectionSaving, setSelectionSaving] = useState(false);
   const [measuring, setMeasuring] = useState(false);
   const selection = state.whiteVpn.connection;
+  // null: the subscription is the route; undefined: the selected engine was deleted.
+  const selectedEngine = engines.selectedId ? engines.profiles.find((profile) => profile.id === engines.selectedId) : null;
   // A node is stored by name; the shorter label the row shows comes from the
   // catalogue, so a picked node means the catalogue is worth having loaded. It
   // is cached behind this call, so after the first time it costs nothing.
@@ -2406,11 +2445,22 @@ function WhiteDNSVPNPage({
             <CardDescription className="text-xs">{t("vpn.rows.description")}</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-2 p-3 pt-0">
+            {/* An engine replaces the subscription, so location and connection
+                do not apply to it (Android EngineSettingsPolicy). */}
+            {selectedEngine !== null && (
+              <DashboardRow
+                icon={<Cpu className="size-4" />}
+                label={t("engine.profileLabel")}
+                value={selectedEngine ? `${engineKindTitle(selectedEngine.kind)} · ${selectedEngine.name}` : "—"}
+                error={selectedEngine ? undefined : t("engine.missingProfile")}
+                onClick={() => onNavigate("subscriptions")}
+              />
+            )}
             {/* A chain names its own two nodes, so the location and connection
                 rows would be choices that change nothing. */}
             {state.whiteVpn.chain && state.whiteVpn.chain.exit.mode !== "off" ? (
-              <ChainRows state={state} onState={onState} onError={onError} t={t} />
-            ) : (
+              <ChainRows state={state} engineSelected={selectedEngine !== null} onState={onState} onError={onError} t={t} />
+            ) : selectedEngine !== null ? null : (
               <>
                 <DashboardRow
                   icon={<Globe className="size-4" />}
@@ -2537,11 +2587,14 @@ function chainHopLabel(hop: ChainHop, state: AppState, t: TranslateFn): string {
 // and, while a chain is on, on the VPN page in place of the rows it overrides.
 function ChainRows({
   state,
+  engineSelected = false,
   onState,
   onError,
   t,
 }: {
   state: AppState;
+  // Engines do not chain: node 2 turns red and connecting ignores the chain.
+  engineSelected?: boolean;
   onState: (state: AppState) => void;
   onError: (message: string) => void;
   t: TranslateFn;
@@ -2577,6 +2630,7 @@ function ChainRows({
         icon={<Globe className="size-4" />}
         label={t("chain.node2")}
         value={chainHopLabel(chain.exit, state, t)}
+        error={engineSelected && chain.exit.mode !== "off" ? t("engine.chainUnsupported") : undefined}
         disabled={busy}
         onClick={() => setSlot("exit")}
       />
@@ -4039,15 +4093,21 @@ const warpServerPattern = /^[A-Za-z0-9.:[\]-]{1,253}$/;
 
 function V2RaySubscriptionsPage({
   state,
+  engines,
+  onEnginesChanged,
   onState,
   onError,
   onSuccess,
+  language,
   t,
 }: {
   state: AppState;
+  engines: EngineSelection;
+  onEnginesChanged: () => void;
   onState: (state: AppState) => void;
   onError: (message: string) => void;
   onSuccess: (message: string) => void;
+  language: Language;
   t: TranslateFn;
 }) {
   const fallbackDraft = useMemo(() => defaultV2RaySubscriptionDraft(), []);
@@ -4161,7 +4221,9 @@ function V2RaySubscriptionsPage({
     onError("");
     setSelectingSubscription(true);
     try {
+      // Choosing a subscription also drops an engine selection (backend).
       onState(await backend.selectSubscription(id));
+      onEnginesChanged();
     } catch (err) {
       onError(messageFromError(err));
     } finally {
@@ -4275,7 +4337,7 @@ function V2RaySubscriptionsPage({
                     const refreshing = Boolean(refreshingSubscriptionIds[subscription.id]);
                     const managedProfileIds = profileIndex.subscriptionProfileIds[subscription.id] || [];
                     const builtIn = isBuiltInSubscription(subscription.id);
-                    const inUse = subscription.id === state.selectedSubscriptionId;
+                    const inUse = !engines.selectedId && subscription.id === state.selectedSubscriptionId;
                     // Said on the row rather than once when it was added: a
                     // server list fetched in the clear can be read and replaced
                     // by anyone on the path, and that stays true every day.
@@ -4427,6 +4489,16 @@ function V2RaySubscriptionsPage({
             </div>
           )}
         </div>
+        {/* Android lists engine profiles on the same page as subscriptions. */}
+        <EngineProfilesSection
+          selection={engines}
+          runtime={state.runtime}
+          language={language}
+          t={t}
+          onChanged={onEnginesChanged}
+          onError={onError}
+          onSuccess={onSuccess}
+        />
       </PageShell>
 
       <Dialog open={editorOpen} onOpenChange={setEditorOpen}>
@@ -7520,11 +7592,6 @@ function SettingsSection({
 
 // The same bordered row the VPN page uses for its controls, so a switch looks
 // and behaves the same wherever it appears.
-// Latin words in a Persian sentence each get their own direction, so a list
-// like "WebSocket، gRPC" keeps its order instead of reading back to front.
-function isolateLatin(text: string): ReactNode {
-  return text.split(/([A-Za-z][A-Za-z0-9.+-]*)/).map((part, i) => (i % 2 ? <bdi key={i}>{part}</bdi> : part));
-}
 
 function SettingSwitchRow({
   label,
