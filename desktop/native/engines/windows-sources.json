@@ -40,6 +40,15 @@
         "commit": "ad08585d979f72a1019470e4e2b18e9ed2550274"
       },
       "snowflakeVersion": "v2.14.1",
+      "torExpertBundle": {
+        "comment": "What scripts/build-tor-engine.sh stages for windows/amd64: tor.exe, lyrebird.exe (obfs4 and snowflake), conjure-client.exe, geoip, geoip6. It ships tor 0.4.9.16, not the 0.4.9.13 source pin above. The sha256 matches sha256sums-signed-build.txt, whose signature was checked against signingKey.",
+        "version": "16.0.1",
+        "tor": "0.4.9.16",
+        "lyrebird": "0.10.0",
+        "url": "https://dist.torproject.org/torbrowser/16.0.1/tor-expert-bundle-windows-x86_64-16.0.1.tar.gz",
+        "sha256": "9eed3c3ff1fe43df034ce360196c9ec95472560d77ff55614d0cd5120edea27b",
+        "signingKey": "EF6E286DDA85EA2A4BA7DE684E2C6E8793298290"
+      },
       "conjure": {
         "repository": "https://gitlab.torproject.org/tpo/anti-censorship/pluggable-transports/conjure.git",
         "commit": "505cb48152e89e12a608ec6a0101af8a2d266fb1",
