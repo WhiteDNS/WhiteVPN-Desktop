@@ -250,6 +250,14 @@ const strings = {
     fa: "{name} و {count} کانفیگ V2Ray مرتبط حذف می‌شوند. این کار قابل بازگشت نیست.",
   },
   "subs.deleteConfirm": { en: "Delete subscription and configs", fa: "حذف اشتراک و کانفیگ‌ها" },
+  "warp.add": { en: "WARP (Cloudflare)", fa: "WARP (Cloudflare)" },
+  "warp.registering": { en: "Creating a WARP account…", fa: "در حال ساخت حساب WARP…" },
+  "warp.failed": { en: "Could not create a WARP account. Connect the VPN and try again.", fa: "ساخت حساب WARP ممکن نشد. VPN را وصل کنید و دوباره امتحان کنید." },
+  "warp.editTitle": { en: "Edit WARP", fa: "ویرایش WARP" },
+  "warp.server": { en: "Server IP (endpoint)", fa: "IP سرور (Endpoint)" },
+  "warp.portHelper": { en: "Common ports: 2408, 500, 1701, 4500, 854, 894", fa: "پورت‌های رایج: 2408، 500، 1701، 4500، 854، 894" },
+  "warp.noise": { en: "Anti-filter noise", fa: "نویز ضدفیلتر" },
+  "warp.invalid": { en: "Check the name, server IP and port.", fa: "نام، IP سرور و پورت را بررسی کنید." },
 
   // The White IP generator. Desktop-only, and the counts are interpolated
   // rather than concatenated: Persian does not put the number where English

@@ -11,6 +11,7 @@ import type {
   V2RayProfile,
   V2RaySubscription,
   V2RaySubscriptionRefreshResult,
+  WarpSettings,
   V2RayWhiteIPImportResult,
   ValidatorRangeOption,
   ValidatorRangeImportResult,
@@ -55,6 +56,9 @@ type AppApi = {
   ImportV2RayWhiteIPProfiles(configText: string, whiteIPText: string): Promise<V2RayWhiteIPImportResult>;
   SaveV2RaySubscription(subscription: V2RaySubscription): Promise<AppState>;
   GetV2RaySubscriptionForEdit(id: string): Promise<V2RaySubscription>;
+  AddWarpSubscription(): Promise<AppState>;
+  GetWarpSettings(id: string): Promise<WarpSettings>;
+  SaveWarpSettings(id: string, settings: WarpSettings): Promise<AppState>;
   GetWhiteVPNSettingsForEdit(): Promise<WhiteVPNSettings>;
   ExportNodeLinks(subscriptionId: string, names: string[]): Promise<{name: string; link: string}[]>;
   RefreshV2RaySubscription(id: string): Promise<V2RaySubscriptionRefreshResult>;
@@ -164,6 +168,9 @@ export const backend = {
   importV2RayWhiteIpProfiles: (configText: string, whiteIPText: string) => app().ImportV2RayWhiteIPProfiles(configText, whiteIPText),
   saveV2RaySubscription: (subscription: V2RaySubscription) => app().SaveV2RaySubscription(subscription),
   getV2RaySubscriptionForEdit: (id: string) => app().GetV2RaySubscriptionForEdit(id),
+  addWarpSubscription: () => app().AddWarpSubscription(),
+  getWarpSettings: (id: string) => app().GetWarpSettings(id),
+  saveWarpSettings: (id: string, settings: WarpSettings) => app().SaveWarpSettings(id, settings),
   getWhiteVpnSettingsForEdit: () => app().GetWhiteVPNSettingsForEdit(),
   exportNodeLinks: (subscriptionId: string, names: string[]) => app().ExportNodeLinks(subscriptionId, names),
   refreshV2RaySubscription: (id: string) => app().RefreshV2RaySubscription(id),

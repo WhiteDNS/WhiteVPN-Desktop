@@ -3703,6 +3703,8 @@ function NodeHeader({
   );
 }
 
+const warpServerPattern = /^[A-Za-z0-9.:[\]-]{1,253}$/;
+
 function V2RaySubscriptionsPage({
   state,
   onState,
@@ -3722,6 +3724,8 @@ function V2RaySubscriptionsPage({
   const [deleteTarget, setDeleteTarget] = useState<V2RaySubscription | null>(null);
   const [refreshingSubscriptionIds, setRefreshingSubscriptionIds] = useState<Record<string, boolean>>({});
   const [selectingSubscription, setSelectingSubscription] = useState(false);
+  const [warpAdding, setWarpAdding] = useState(false);
+  const [warpEdit, setWarpEdit] = useState<{ id: string; name: string; server: string; port: string; noise: boolean } | null>(null);
   const subscriptionEditRequest = useRef(0);
   useEffect(() => () => { subscriptionEditRequest.current += 1; }, []);
   const profileIndex = useMemo(
@@ -3729,6 +3733,12 @@ function V2RaySubscriptionsPage({
     [state.v2rayProfiles]
   );
   const saveDisabled = !draft.url.trim();
+  // Go validates the same way; this only keeps Save from offering what it will refuse.
+  const warpServerInvalid = Boolean(warpEdit?.server.trim()) && !warpServerPattern.test(warpEdit?.server.trim() || "");
+  const warpPort = Number(warpEdit?.port);
+  const warpValid =
+    Boolean(warpEdit?.name.trim()) && warpServerPattern.test(warpEdit?.server.trim() || "") &&
+    /^\d{1,5}$/.test(warpEdit?.port.trim() || "") && warpPort >= 1 && warpPort <= 65535;
 
   useEffect(() => {
     if (!editorOpen) {
@@ -3747,6 +3757,12 @@ function V2RaySubscriptionsPage({
     const requestId = ++subscriptionEditRequest.current;
     onError("");
     try {
+      if (subscription.inline) {
+        const settings = await backend.getWarpSettings(subscription.id);
+        if (requestId !== subscriptionEditRequest.current) { return; }
+        setWarpEdit({ id: subscription.id, ...settings, port: String(settings.port) });
+        return;
+      }
       const edited = await backend.getV2RaySubscriptionForEdit(subscription.id);
       if (requestId !== subscriptionEditRequest.current) { return; }
       setDraft(normalizeV2RaySubscription(edited));
@@ -3766,6 +3782,39 @@ function V2RaySubscriptionsPage({
         setDraft(normalizeV2RaySubscription(saved));
       }
       setEditorOpen(false);
+    } catch (err) {
+      onError(messageFromError(err));
+    }
+  }
+
+  async function addWarp() {
+    if (warpAdding) {
+      return;
+    }
+    onError("");
+    setWarpAdding(true);
+    try {
+      onState(await backend.addWarpSubscription());
+    } catch {
+      onError(t("warp.failed"));
+    } finally {
+      setWarpAdding(false);
+    }
+  }
+
+  async function saveWarp() {
+    if (!warpEdit || !warpValid) {
+      return;
+    }
+    onError("");
+    try {
+      onState(await backend.saveWarpSettings(warpEdit.id, {
+        name: warpEdit.name.trim(),
+        server: warpEdit.server.trim(),
+        port: warpPort,
+        noise: warpEdit.noise,
+      }));
+      setWarpEdit(null);
     } catch (err) {
       onError(messageFromError(err));
     }
@@ -3849,10 +3898,16 @@ function V2RaySubscriptionsPage({
         eyebrow="WhiteVPN"
         title={t("nav.subscriptions")}
         actions={
-          <Button type="button" variant="outline" onClick={openNewSubscription}>
-            <Plus />
-            {t("subs.new")}
-          </Button>
+          <>
+            <Button type="button" variant="outline" disabled={warpAdding} onClick={() => void addWarp()}>
+              {warpAdding ? <RotateCcw className="animate-spin" /> : <Plus />}
+              {warpAdding ? t("warp.registering") : <bdi>{t("warp.add")}</bdi>}
+            </Button>
+            <Button type="button" variant="outline" onClick={openNewSubscription}>
+              <Plus />
+              {t("subs.new")}
+            </Button>
+          </>
         }
       >
         <div className="overflow-hidden rounded-lg border bg-card">
@@ -3939,7 +3994,11 @@ function V2RaySubscriptionsPage({
                                   : subscription.id === whiteVPNPrivateSubscriptionID
                                     ? t("subs.builtIn.private")
                                     : t("subs.builtIn.public")
-                                : subscription.credentialRequired ? t("profiles.detailsRequired") : subscription.displayUrl}
+                                : subscription.credentialRequired
+                                  ? t("profiles.detailsRequired")
+                                  : subscription.inline
+                                    ? <bdi>{t("warp.add")}</bdi>
+                                    : subscription.displayUrl}
                             </span>
                           </span>
                         </td>
@@ -4098,6 +4157,46 @@ function V2RaySubscriptionsPage({
                 {t("common.save")}
               </Button>
             </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={Boolean(warpEdit)} onOpenChange={(open) => !open && setWarpEdit(null)}>
+        <DialogContent className="max-h-[calc(100svh-2rem)] overflow-hidden sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>{t("warp.editTitle")}</DialogTitle>
+          </DialogHeader>
+          {warpEdit && (
+            <FieldGroup className="grid gap-4">
+              <TextField label={t("subs.column.name")} value={warpEdit.name} onChange={(name) => setWarpEdit({ ...warpEdit, name })} />
+              <TextField
+                label={t("warp.server")}
+                value={warpEdit.server}
+                dir="ltr"
+                placeholder="162.159.192.1"
+                error={warpServerInvalid ? t("warp.invalid") : undefined}
+                onChange={(server) => setWarpEdit({ ...warpEdit, server })}
+              />
+              <TextField
+                label={t("servers.edit.port")}
+                value={warpEdit.port}
+                dir="ltr"
+                description={t("warp.portHelper")}
+                onChange={(port) => setWarpEdit({ ...warpEdit, port })}
+              />
+              <label className="flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-sm">
+                {t("warp.noise")}
+                <Switch checked={warpEdit.noise} onCheckedChange={(noise) => setWarpEdit({ ...warpEdit, noise })} />
+              </label>
+            </FieldGroup>
+          )}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setWarpEdit(null)}>
+              {t("common.cancel")}
+            </Button>
+            <Button type="button" disabled={!warpValid} onClick={() => void saveWarp()}>
+              <Save />
+              {t("common.save")}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -5545,6 +5644,7 @@ function TextField({
   description,
   error,
   disabled,
+  dir,
   onChange,
 }: {
   label: string;
@@ -5553,6 +5653,7 @@ function TextField({
   description?: string;
   error?: string;
   disabled?: boolean;
+  dir?: "ltr";
   onChange: (value: string) => void;
 }) {
   return (
@@ -5560,6 +5661,7 @@ function TextField({
       <FieldLabel>{label}</FieldLabel>
       <Input
         value={value}
+        dir={dir}
         placeholder={placeholder}
         disabled={disabled}
         aria-invalid={Boolean(error)}

@@ -477,7 +477,7 @@ func (a *App) fallbackSubscriptionIDs(exclude string) []string {
 		}
 	}
 	for _, subscription := range a.state.V2RaySubscriptions {
-		if !subscription.CredentialRequired && !model.IsBuiltInSubscription(subscription.ID) && strings.TrimSpace(subscription.URL) != "" {
+		if !subscription.CredentialRequired && !model.IsBuiltInSubscription(subscription.ID) && (strings.TrimSpace(subscription.URL) != "" || subscription.Body != "") {
 			add(subscription.ID)
 		}
 	}
