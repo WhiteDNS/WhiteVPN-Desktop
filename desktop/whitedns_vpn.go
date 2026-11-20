@@ -358,15 +358,16 @@ type subscriptionSource struct {
 // server survives.
 func (a *App) everySubscriptionSource() []subscriptionSource {
 	a.mu.Lock()
-	defer a.mu.Unlock()
-
 	sources := make([]subscriptionSource, 0, len(a.state.V2RaySubscriptions)+1)
+	unreachable := map[string]bool{}
 	for _, subscription := range a.state.V2RaySubscriptions {
 		// The All row is this list, not one of its sources: reading it here
 		// would have All fetch itself.
-		if model.IsEverySubscription(subscription.ID) ||
-			model.IsBuiltInSubscription(subscription.ID) && !a.builtInCatalogueUsableLocked(subscription.ID) {
+		if model.IsEverySubscription(subscription.ID) {
 			continue
+		}
+		if model.IsBuiltInSubscription(subscription.ID) && !a.builtInCatalogueUsableLocked(subscription.ID) {
+			unreachable[subscription.ID] = true
 		}
 		sources = append(sources, subscriptionSource{id: subscription.ID, name: subscription.Name})
 	}
@@ -376,7 +377,18 @@ func (a *App) everySubscriptionSource() []subscriptionSource {
 			break
 		}
 	}
-	return sources
+	a.mu.Unlock()
+
+	// A catalogue this build cannot fetch still counts while a saved copy of it
+	// exists, as on the phone: the chain picker and All read that copy. Checked
+	// after a.mu is released, because the snapshots have their own lock.
+	return slices.DeleteFunc(sources, func(source subscriptionSource) bool {
+		if !unreachable[source.id] {
+			return false
+		}
+		_, saved := a.lastKnownGoodSubscription(source.id)
+		return !saved
+	})
 }
 
 // builtInCatalogueUsableLocked reports whether this build can reach a catalogue

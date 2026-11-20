@@ -221,3 +221,33 @@ func TestTheAllRowGoesAwayWithTheListThatEarnedIt(t *testing.T) {
 		t.Fatalf("the selection stayed on a row that is gone: %q", app.state.SelectedSubscriptionID)
 	}
 }
+
+// A build without the catalogue address still lists a catalogue it has a saved
+// copy of, so the chain picker and All can offer its servers, as the phone does.
+func TestASavedCatalogueIsASourceWithoutItsAddress(t *testing.T) {
+	restore := whiteVPNPrivateSubscriptionURL
+	whiteVPNPrivateSubscriptionURL = ""
+	defer func() { whiteVPNPrivateSubscriptionURL = restore }()
+
+	app := newSnapshotTestApp(t)
+	app.state.V2RaySubscriptions = []model.V2RaySubscription{
+		{ID: whiteVPNPrivateSubscriptionID, Name: "WhiteVPN Private"},
+		{ID: "own", Name: "Own", URL: "https://own.example/list"},
+	}
+	ids := func() []string {
+		var out []string
+		for _, source := range app.everySubscriptionSource() {
+			out = append(out, source.id)
+		}
+		return out
+	}
+	if got := ids(); slices.Contains(got, whiteVPNPrivateSubscriptionID) {
+		t.Fatalf("a catalogue with no address and no saved copy was offered: %v", got)
+	}
+	if err := app.storeSubscriptionSnapshot(whiteVPNPrivateSubscriptionID, link("11111111-2222-3333-4444-555555555555", "p.example", "P1"), 1); err != nil {
+		t.Fatal(err)
+	}
+	if got := ids(); !slices.Equal(got, []string{whiteVPNPrivateSubscriptionID, "own"}) {
+		t.Fatalf("sources = %v, want the saved catalogue and the user's list", got)
+	}
+}
