@@ -253,7 +253,20 @@ func PlanChain(sources []ChainSource, entry, exit ChainHop) ([]Proxy, Chain, err
 	candidates := allChainCandidates(sources)
 	pick := func(hop ChainHop, which string) ([]chainCandidate, error) {
 		if hop.Automatic() {
-			return candidates, nil
+			if hop.Ref.SubscriptionID == "" {
+				return candidates, nil
+			}
+			// Automatic within one list: the fastest of that list's configs.
+			var inList []chainCandidate
+			for _, candidate := range candidates {
+				if candidate.ref.SubscriptionID == hop.Ref.SubscriptionID {
+					inList = append(inList, candidate)
+				}
+			}
+			if len(inList) == 0 {
+				return nil, &ChainError{Reason: fmt.Sprintf("no config in the list chosen for %s can be used in a chain — choose %s again", which, which)}
+			}
+			return inList, nil
 		}
 		if candidate, ok := findChainCandidate(candidates, hop.Ref); ok {
 			return []chainCandidate{candidate}, nil

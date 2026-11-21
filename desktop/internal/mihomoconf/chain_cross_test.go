@@ -374,3 +374,31 @@ func TestAnAutomaticNode2IsAURLTestGroupOfCopies(t *testing.T) {
 		}
 	}
 }
+
+// Automatic limited to one list draws only from that list's configs.
+func TestAutomaticWithinOneList(t *testing.T) {
+	sources := []ChainSource{
+		{ID: "warp", Name: "WARP", Proxies: []Proxy{proxyOf("WARP", "wireguard", "udp", true)}},
+		{ID: "pub", Name: "Public", Proxies: []Proxy{proxyOf("A", "trojan"), proxyOf("B", "trojan")}},
+		{ID: "other", Name: "Other", Proxies: []Proxy{proxyOf("C", "trojan")}},
+	}
+	document, firstHop := planDocument(t, sources, fixedHop("warp", "WARP"), ChainHop{Ref: ChainRef{SubscriptionID: "pub"}})
+	if !reflect.DeepEqual(firstHop, []string{"WARP"}) {
+		t.Fatalf("node 1 should be WARP alone: %v", firstHop)
+	}
+	text, _ := yaml.Marshal(document)
+	for _, want := range []string{"A.example", "B.example"} {
+		if !strings.Contains(string(text), want) {
+			t.Fatalf("node 2 is missing %s from the chosen list:\n%s", want, text)
+		}
+	}
+	if strings.Contains(string(text), "C.example") {
+		t.Fatalf("node 2 drew from a list it was not limited to:\n%s", text)
+	}
+
+	_, _, err := PlanChain(sources, fixedHop("warp", "WARP"), ChainHop{Ref: ChainRef{SubscriptionID: "gone"}})
+	var chainErr *ChainError
+	if !errors.As(err, &chainErr) {
+		t.Fatalf("a list with nothing usable must be refused with a reason, got %v", err)
+	}
+}

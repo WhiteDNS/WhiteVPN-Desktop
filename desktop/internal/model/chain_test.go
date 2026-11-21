@@ -17,9 +17,10 @@ func TestChainNormalization(t *testing.T) {
 
 	chain = NormalizeChainSettings(ChainSettings{
 		Entry: ChainHop{Mode: ChainHopFixed, Node: "missing its list"},
-		Exit:  ChainHop{Mode: ChainHopAutomatic, SubscriptionID: "stale", Node: "stale"},
+		Exit:  ChainHop{Mode: ChainHopAutomatic, SubscriptionID: "pub", Node: "stale"},
 	})
-	if chain.Entry != (ChainHop{Mode: ChainHopAutomatic}) || chain.Exit != (ChainHop{Mode: ChainHopAutomatic}) || !chain.Active() {
+	// Automatic keeps the list it is limited to and drops any node name.
+	if chain.Entry != (ChainHop{Mode: ChainHopAutomatic}) || chain.Exit != (ChainHop{Mode: ChainHopAutomatic, SubscriptionID: "pub"}) || !chain.Active() {
 		t.Fatalf("unexpected: %+v", chain)
 	}
 
@@ -88,4 +89,17 @@ func containsKey(encoded []byte, key string) bool {
 	_ = json.Unmarshal(encoded, &fields)
 	_, ok := fields[key]
 	return ok
+}
+
+func TestAutomaticKeepsTheListItIsLimitedTo(t *testing.T) {
+	got := NormalizeChainSettings(ChainSettings{
+		Entry: ChainHop{Mode: ChainHopAutomatic, SubscriptionID: " pub ", Node: "stale"},
+		Exit:  ChainHop{Mode: ChainHopAutomatic},
+	})
+	if got.Entry != (ChainHop{Mode: ChainHopAutomatic, SubscriptionID: "pub"}) {
+		t.Fatalf("entry = %+v, want Automatic within pub with no node", got.Entry)
+	}
+	if got.Exit != (ChainHop{Mode: ChainHopAutomatic}) {
+		t.Fatalf("exit = %+v, want Automatic over every list", got.Exit)
+	}
 }

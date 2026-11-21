@@ -61,7 +61,8 @@ func normalizeChainHop(hop ChainHop, unset string) ChainHop {
 			return hop
 		}
 	case ChainHopAutomatic:
-		return ChainHop{Mode: ChainHopAutomatic}
+		// A list id narrows Automatic to that list; no id means every list.
+		return ChainHop{Mode: ChainHopAutomatic, SubscriptionID: hop.SubscriptionID}
 	}
 	return ChainHop{Mode: unset}
 }

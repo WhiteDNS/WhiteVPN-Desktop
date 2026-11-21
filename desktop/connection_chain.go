@@ -34,6 +34,9 @@ func (a *App) chainSubscription(ctx context.Context, chain model.ChainSettings) 
 }
 
 func chainHopFor(hop model.ChainHop) mihomoconf.ChainHop {
+	if hop.Mode == model.ChainHopAutomatic {
+		return mihomoconf.ChainHop{Ref: mihomoconf.ChainRef{SubscriptionID: hop.SubscriptionID}}
+	}
 	if hop.Mode != model.ChainHopFixed {
 		return mihomoconf.ChainHop{}
 	}
@@ -49,11 +52,13 @@ func chainHopFor(hop model.ChainHop) mihomoconf.ChainHop {
 func (a *App) chainSources(ctx context.Context, chain model.ChainSettings) ([]mihomoconf.ChainSource, error) {
 	fixed := map[string]bool{}
 	var wanted []subscriptionSource
-	if chain.Entry.Mode == model.ChainHopAutomatic || chain.Exit.Mode == model.ChainHopAutomatic {
+	everyList := func(hop model.ChainHop) bool { return hop.Mode == model.ChainHopAutomatic && hop.SubscriptionID == "" }
+	if everyList(chain.Entry) || everyList(chain.Exit) {
 		wanted = a.everySubscriptionSource()
 	}
 	for _, hop := range []model.ChainHop{chain.Entry, chain.Exit} {
-		if hop.Mode != model.ChainHopFixed || fixed[hop.SubscriptionID] {
+		// A fixed node's list, or the one list an Automatic node is limited to.
+		if hop.Mode == model.ChainHopOff || hop.SubscriptionID == "" || fixed[hop.SubscriptionID] {
 			continue
 		}
 		fixed[hop.SubscriptionID] = true
