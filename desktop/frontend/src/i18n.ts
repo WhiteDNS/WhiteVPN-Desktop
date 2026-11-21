@@ -32,6 +32,9 @@ const strings = {
   "nav.backup": { en: "Full Backup", fa: "پشتیبان کامل" },
   "nav.source": { en: "Source: WhiteDNS Telegram", fa: "منبع: تلگرام وایت‌دی‌ان‌اس" },
   "nav.youtubeSubscribe": { en: "Subscribe on YouTube", fa: "عضویت در یوتیوب" },
+  "nav.telegramJoin": { en: "Join our Telegram", fa: "عضویت در تلگرام" },
+  "nav.telegram": { en: "Telegram", fa: "تلگرام" },
+  "nav.youtube": { en: "YouTube", fa: "یوتیوب" },
   "nav.loading": { en: "Loading command center", fa: "در حال بارگذاری" },
 
   // Connection status
@@ -680,6 +683,7 @@ const strings = {
   "mode.serverList.description": { en: "Where Automatic looks for a server.", fa: "حالت خودکار از کدام فهرست سرور انتخاب کند." },
   "mode.allLists": { en: "All lists", fa: "همهٔ فهرست‌ها" },
   "mode.allLists.detail": { en: "Every server from every list. Recommended.", fa: "همهٔ سرورهای همهٔ فهرست‌ها. پیشنهادی." },
+  "chain.automatic.list": { en: "Fastest working config in this list", fa: "سریع‌ترین کانفیگ سالم همین فهرست" },
   "chain.route": { en: "Device → Node 1 → Node 2 → Internet", fa: "دستگاه ← نود ۱ ← نود ۲ ← اینترنت" },
   "chain.help": {
     en: "A good pair: WARP as node 1 and a public config as node 2. Two hops are slower than one.",

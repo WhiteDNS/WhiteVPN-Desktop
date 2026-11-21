@@ -27,6 +27,7 @@ import {
   Save,
   ScrollText,
   Search,
+  Send,
   Server,
   Settings,
   Shield,
@@ -1525,19 +1526,31 @@ function AppSidebar({
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
-      <a
-        href={whiteDnsYoutubeUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        onClick={(event) => {
-          event.preventDefault();
-          openExternalUrl(whiteDnsYoutubeUrl);
-        }}
-        className="mx-2 flex min-h-11 w-auto items-center justify-center gap-2 rounded-lg bg-red-600 px-3 text-sm font-semibold whitespace-nowrap text-white hover:bg-red-700 focus-visible:ring-2 focus-visible:ring-foreground focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar focus-visible:outline-none active:bg-red-800 group-data-[collapsible=icon]:hidden"
-      >
-        <Youtube className="size-5 shrink-0" aria-hidden="true" />
-        <span>{t("nav.youtubeSubscribe")}</span>
-      </a>
+      {/* Side by side, so the channels take one row; the full invitation is
+          the accessible name and the tooltip. */}
+      <div className="mx-2 flex gap-2 group-data-[collapsible=icon]:hidden">
+        {[
+          { url: whiteDnsTelegramUrl, icon: Send, label: t("nav.telegram"), title: t("nav.telegramJoin"), color: "bg-[#229ED9] hover:bg-[#1c8ec4] active:bg-[#187fb0]" },
+          { url: whiteDnsYoutubeUrl, icon: Youtube, label: t("nav.youtube"), title: t("nav.youtubeSubscribe"), color: "bg-red-600 hover:bg-red-700 active:bg-red-800" },
+        ].map(({ url, icon: Icon, label, title, color }) => (
+          <a
+            key={url}
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            title={title}
+            aria-label={title}
+            onClick={(event) => {
+              event.preventDefault();
+              openExternalUrl(url);
+            }}
+            className={cn("flex min-h-11 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-lg px-2 text-sm font-semibold whitespace-nowrap text-white focus-visible:ring-2 focus-visible:ring-foreground focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar focus-visible:outline-none", color)}
+          >
+            <Icon className="size-5 shrink-0" aria-hidden="true" />
+            <span className="truncate">{label}</span>
+          </a>
+        ))}
+      </div>
       <SidebarSeparator />
       <SidebarFooter>
         <Item className="border-transparent bg-muted/50">
@@ -2608,7 +2621,8 @@ function chainHopLabel(hop: ChainHop, state: AppState, t: TranslateFn): string {
     return t("chain.none");
   }
   if (hop.mode === "automatic") {
-    return t("vpn.automatic");
+    const list = hop.subscriptionId && state.v2raySubscriptions.find((entry) => entry.id === hop.subscriptionId)?.name;
+    return list ? `${list} · ${t("vpn.automatic")}` : t("vpn.automatic");
   }
   const subscription = state.v2raySubscriptions.find((entry) => entry.id === hop.subscriptionId)?.name;
   return subscription ? `${subscription} · ${hop.node}` : hop.node || "";
@@ -2820,6 +2834,17 @@ function ChainPickerDialog({
             {running ? t("chain.testing") : t("chain.test")}
           </Button>
         </div>
+        {/* Let the app pick, but only from this list: the choice between
+            testing and choosing by hand, and handing it over, per list. */}
+        {!needle && group.nodes.length > 1 && (
+          <SelectableRow
+            selected={current?.mode === "automatic" && current.subscriptionId === group.subscriptionId}
+            onClick={() => onChoose({ mode: "automatic", subscriptionId: group.subscriptionId })}
+          >
+            <span className="text-sm font-medium">{t("vpn.automatic")}</span>
+            <span className="text-xs text-muted-foreground">{t("chain.automatic.list")}</span>
+          </SelectableRow>
+        )}
         {nodes.map((node) => {
           const issue = group.issues?.[node.name];
           const selected =
@@ -2890,7 +2915,7 @@ function ChainPickerDialog({
                     <span className="text-xs text-muted-foreground">{t("chain.none.detail")}</span>
                   </SelectableRow>
                 )}
-                <SelectableRow selected={current?.mode === "automatic"} onClick={() => onChoose({ mode: "automatic" })}>
+                <SelectableRow selected={current?.mode === "automatic" && !current.subscriptionId} onClick={() => onChoose({ mode: "automatic" })}>
                   <span className="text-sm font-medium">{t("vpn.automatic")}</span>
                   <span className="text-xs text-muted-foreground">{t("chain.automatic.detail")}</span>
                 </SelectableRow>
