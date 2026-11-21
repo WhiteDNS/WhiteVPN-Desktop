@@ -86,3 +86,36 @@ func TestPrepareConfigAppliesFragmentsToLinksAndDocuments(t *testing.T) {
 		}
 	}
 }
+
+func TestPrepareConfigAppliesAutoECHToLinksAndDocuments(t *testing.T) {
+	for _, body := range []string{
+		"trojan://pw@cdn.example.com:443?sni=cdn.example.com&type=ws&path=%2Fws#Node",
+		`proxies: [{name: Node, type: vless, server: 104.16.1.1, servername: cdn.example.com, port: 443, uuid: 11111111-2222-3333-4444-555555555555, tls: true, network: grpc}]`,
+	} {
+		for _, on := range []bool{true, false} {
+			doc, _, err := PrepareConfig(Options{Subscription: body, AutoECH: on})
+			if err != nil {
+				t.Fatal(err)
+			}
+			var parsed struct {
+				Proxies []map[string]any `yaml:"proxies"`
+			}
+			if err := yaml.Unmarshal([]byte(doc), &parsed); err != nil {
+				t.Fatal(err)
+			}
+			if len(parsed.Proxies) != 1 {
+				t.Fatalf("want one proxy, got %d", len(parsed.Proxies))
+			}
+			opts, _ := parsed.Proxies[0]["ech-opts"].(map[string]any)
+			if on && (opts["enable"] != true || opts["optional"] != true) {
+				t.Fatalf("%q: ech-opts missing: %#v", body, parsed.Proxies[0])
+			}
+			if !on && opts != nil {
+				t.Fatalf("%q: ech-opts with automatic ECH off: %#v", body, opts)
+			}
+			if got := echNodes(doc)["Node"]; got != on {
+				t.Fatalf("%q: echNodes = %v, want %v", body, got, on)
+			}
+		}
+	}
+}

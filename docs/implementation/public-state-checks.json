@@ -1,0 +1,78 @@
+{
+  "date": "2026-10-04",
+  "scope": "Public desktop state/editor boundaries and default credential-free legacy-state backup v2",
+  "goToolchain": "go1.26.5",
+  "windowsAMD64": {
+    "goBuildExit": 0,
+    "goVetExit": 0,
+    "testsPassed": 660,
+    "testsFailed": 0,
+    "testsSkipped": 8,
+    "packagesPassed": 14,
+    "racePackages": ["model", "profiles", "securestore", "engineprofiles", "sessionmanager"],
+    "packageRaceTestsExit": 0,
+    "appPublicStateMigrationProfileAndResetRaceTestsExit": 0,
+    "realDPAPITestsIncluded": true
+  },
+  "frontend": {
+    "typeScriptStrictAndNoUnusedExit": 0,
+    "productionBuildExit": 0,
+    "existingLargeChunkWarning": true,
+    "browserSmokeExit": 0,
+    "browser": "Chrome headless with an isolated disposable profile",
+    "backendBridge": "simulated Wails bridge populated by actual Go public API fixture",
+    "browserScenariosPassed": 7,
+    "javaScriptErrors": 0,
+    "scenarios": [
+      "initial dashboard uses public state only",
+      "Share obtains the requested node link explicitly",
+      "manual node editor preserves private credentials",
+      "bulk export works from public node metadata",
+      "late Share response is discarded after navigation",
+      "subscription editor preserves its full URL",
+      "secret-only DNS settings edit saves and reloads editor"
+    ],
+    "packagedWailsRuntimeTested": false
+  },
+  "crossBuild": {
+    "windowsARM64AllDesktopPackagesExit": 0,
+    "linuxAMD64InternalPackagesExit": 0,
+    "cgoEnabled": false
+  },
+  "acceptance": {
+    "definedAppStateCredentialInventoryRedacted": true,
+    "nodeListAndMeasurementJSONExcludeShareLinks": true,
+    "knownTokenURLsRedactedInStringEventsAndLogs": true,
+    "publicSnapshotsDoNotShareMutableStorage": true,
+    "explicitEditorsAndSharePreservePrivateData": true,
+    "publicSettingsUpdatesPreserveCustomDNS": true,
+    "defaultBackupVersion": 2,
+    "defaultBackupOmitsDefinedCredentialsAndRawConfig": true,
+    "legacyBackupV1ImportCompatible": true,
+    "restorePreservesCredentialRequiredReferences": true,
+    "unresolvedSelectedSourceBlocksFetchCacheAndFallback": true,
+    "ownedMihomoSessionBlocksRestore": true,
+    "restoreFailureRollsBackNewResolverFiles": true,
+    "completeP1GatePassed": false,
+    "newEngineCatalogMetadataIncludedInBackup": false,
+    "oldExecutableDowngradeTested": false,
+    "engineSelectionTransactionIntegrated": false,
+    "multiProcessWriteCoordinationTested": false,
+    "physicalPowerLossAndDiskFullTested": false,
+    "allArbitraryTextSecretsGuaranteedRedacted": false,
+    "mihomoManagerAdapterIntegrated": false,
+    "newEngineRuntimeIntegrated": false,
+    "nativeHelpersPackaged": false,
+    "physicalARM64RuntimeTested": false
+  },
+  "skippedTests": [
+    "TestEnsureAppDataWritableRepairsDarwinWithAdministratorPrompt",
+    "TestLiveCatalogueConverts",
+    "TestLiveAutomaticLetsTheEngineChoose",
+    "TestLiveConnectionOutlivesItsConnectContext",
+    "TestLiveConnectionCarriesTraffic",
+    "TestLiveMeasurerStartsAndMeasures",
+    "TestFindMihomoCoreExplainsItselfWhenAbsent",
+    "TestFindMihomoCoreAcceptsAnOverride"
+  ]
+}

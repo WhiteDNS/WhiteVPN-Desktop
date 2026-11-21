@@ -11,6 +11,7 @@ import type {
   V2RayProfile,
   V2RaySubscription,
   V2RaySubscriptionRefreshResult,
+  WarpSettings,
   V2RayWhiteIPImportResult,
   ValidatorRangeOption,
   ValidatorRangeImportResult,
@@ -25,7 +26,11 @@ import type {
   UpdateStatus,
   ConnectionSelection,
   NodeTestRequest,
+  ChainOptions,
+  ChainSettings,
+  ChainSlot,
 } from "./types";
+import type { EngineAvailability, EngineProfile, EngineProfileSummary } from "./engine-profiles";
 
 type WailsNotificationOptions = {
   id: string;
@@ -39,6 +44,16 @@ type AppApi = {
   GetFragmentPresets(): Promise<string[]>;
   GetDefaultFragmentSettings(): Promise<FragmentSettings>;
   ValidateFragmentSettings(settings: FragmentSettings): Promise<FragmentSettings>;
+  ListEngineProfiles(): Promise<EngineProfileSummary[]>;
+  GetEngineProfileForEdit(id: string): Promise<EngineProfile>;
+  SaveEngineProfile(rawJSON: string): Promise<EngineProfileSummary>;
+  DeleteEngineProfile(id: string, revision: number): Promise<void>;
+  GetEngineAvailability(): Promise<EngineAvailability[]>;
+  GetSelectedEngineProfileID(): Promise<string>;
+  SelectEngineProfile(id: string): Promise<void>;
+  UseSubscriptionConnection(): Promise<void>;
+  GetPsiphonRegions(selected: string): Promise<string[]>;
+  TestEngineProfile(id: string): Promise<string>;
   GetAppState(): Promise<AppState>;
   CheckFirewallStatus(): Promise<FirewallStatus>;
   GetSystemLANIP(): Promise<string>;
@@ -48,6 +63,12 @@ type AppApi = {
   GenerateV2RayWhiteIPProfiles(configText: string, whiteIPText: string): Promise<V2RayWhiteIPGenerateResult>;
   ImportV2RayWhiteIPProfiles(configText: string, whiteIPText: string): Promise<V2RayWhiteIPImportResult>;
   SaveV2RaySubscription(subscription: V2RaySubscription): Promise<AppState>;
+  GetV2RaySubscriptionForEdit(id: string): Promise<V2RaySubscription>;
+  AddWarpSubscription(): Promise<AppState>;
+  GetWarpSettings(id: string): Promise<WarpSettings>;
+  SaveWarpSettings(id: string, settings: WarpSettings): Promise<AppState>;
+  GetWhiteVPNSettingsForEdit(): Promise<WhiteVPNSettings>;
+  ExportNodeLinks(subscriptionId: string, names: string[]): Promise<{name: string; link: string}[]>;
   RefreshV2RaySubscription(id: string): Promise<V2RaySubscriptionRefreshResult>;
   DeleteV2RaySubscription(id: string): Promise<AppState>;
   SelectSubscription(id: string): Promise<AppState>;
@@ -94,6 +115,8 @@ type AppApi = {
   GetLocalProxyEndpoint(): Promise<string>;
   ListWhiteVPNNodes(refresh: boolean): Promise<WhiteVPNNodeList>;
   ListSubscriptionNodes(subscriptionId: string, refresh: boolean): Promise<WhiteVPNNodeList>;
+  ListChainOptions(slot: ChainSlot): Promise<ChainOptions>;
+  SaveConnectionChain(chain: ChainSettings): Promise<AppState>;
   ManualNodeProfile(profileId: string): Promise<V2RayProfile>;
   CopyNodeToManual(subscriptionId: string, nodeName: string): Promise<V2RayImportResult>;
   SetNodesHidden(subscriptionId: string, nodeNames: string[], hidden: boolean): Promise<WhiteVPNNodeList>;
@@ -140,6 +163,16 @@ function app(): AppApi {
 }
 
 export const backend = {
+  listEngineProfiles: () => app().ListEngineProfiles(),
+  getEngineProfileForEdit: (id: string) => app().GetEngineProfileForEdit(id),
+  saveEngineProfile: (profile: EngineProfile) => app().SaveEngineProfile(JSON.stringify(profile)),
+  deleteEngineProfile: (id: string, revision: number) => app().DeleteEngineProfile(id, revision),
+  getEngineAvailability: () => app().GetEngineAvailability(),
+  getSelectedEngineProfileId: () => app().GetSelectedEngineProfileID(),
+  selectEngineProfile: (id: string) => app().SelectEngineProfile(id),
+  useSubscriptionConnection: () => app().UseSubscriptionConnection(),
+  getPsiphonRegions: (selected: string) => app().GetPsiphonRegions(selected),
+  testEngineProfile: (id: string) => app().TestEngineProfile(id),
   getAppState: () => app().GetAppState(),
   checkFirewallStatus: () => app().CheckFirewallStatus(),
   getSystemLANIP: () => app().GetSystemLANIP(),
@@ -149,6 +182,12 @@ export const backend = {
   generateV2RayWhiteIpProfiles: (configText: string, whiteIPText: string) => app().GenerateV2RayWhiteIPProfiles(configText, whiteIPText),
   importV2RayWhiteIpProfiles: (configText: string, whiteIPText: string) => app().ImportV2RayWhiteIPProfiles(configText, whiteIPText),
   saveV2RaySubscription: (subscription: V2RaySubscription) => app().SaveV2RaySubscription(subscription),
+  getV2RaySubscriptionForEdit: (id: string) => app().GetV2RaySubscriptionForEdit(id),
+  addWarpSubscription: () => app().AddWarpSubscription(),
+  getWarpSettings: (id: string) => app().GetWarpSettings(id),
+  saveWarpSettings: (id: string, settings: WarpSettings) => app().SaveWarpSettings(id, settings),
+  getWhiteVpnSettingsForEdit: () => app().GetWhiteVPNSettingsForEdit(),
+  exportNodeLinks: (subscriptionId: string, names: string[]) => app().ExportNodeLinks(subscriptionId, names),
   refreshV2RaySubscription: (id: string) => app().RefreshV2RaySubscription(id),
   deleteV2RaySubscription: (id: string) => app().DeleteV2RaySubscription(id),
   selectSubscription: (id: string) => app().SelectSubscription(id),
@@ -197,6 +236,8 @@ export const backend = {
   getLocalProxyEndpoint: () => app().GetLocalProxyEndpoint(),
   listWhiteVpnNodes: (refresh: boolean) => app().ListWhiteVPNNodes(refresh),
   listSubscriptionNodes: (subscriptionId: string, refresh: boolean) => app().ListSubscriptionNodes(subscriptionId, refresh),
+  listChainOptions: (slot: ChainSlot) => app().ListChainOptions(slot),
+  saveConnectionChain: (chain: ChainSettings) => app().SaveConnectionChain(chain),
   manualNodeProfile: (profileId: string) => app().ManualNodeProfile(profileId),
   copyNodeToManual: (subscriptionId: string, nodeName: string) => app().CopyNodeToManual(subscriptionId, nodeName),
   setNodesHidden: (subscriptionId: string, nodeNames: string[], hidden: boolean) =>

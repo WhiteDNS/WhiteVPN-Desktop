@@ -65,6 +65,12 @@ func (a *App) ListSubscriptionNodes(subscriptionID string, refresh bool) (model.
 	if subscriptionID == "" {
 		subscriptionID = a.selectedSubscriptionID()
 	}
+	if err := a.sourceCredentialError(subscriptionID); err != nil {
+		if subscriptionID == model.ManualServerSourceID {
+			return a.pendingManualNodeList(), nil
+		}
+		return model.WhiteVPNNodeList{Nodes: []model.WhiteVPNNode{}}, err
+	}
 	if !refresh {
 		if cached, ok := a.cachedWhiteVPNNodes(subscriptionID, time.Now().UTC()); ok {
 			return cached, nil
@@ -92,6 +98,29 @@ func (a *App) ListSubscriptionNodes(subscriptionID string, refresh bool) (model.
 	}
 	a.markHiddenNodes(subscriptionID, nodes)
 	return a.storeWhiteVPNNodes(subscriptionID, nodes, time.Now().UTC()), nil
+}
+
+func (a *App) pendingManualNodeList() model.WhiteVPNNodeList {
+	nodes := []model.WhiteVPNNode{}
+	for _, p := range a.manualProfiles() {
+		if p.CredentialRequired {
+			nodes = append(nodes, model.WhiteVPNNode{Name: "credential-required:" + p.ID, Label: p.Name, Type: p.Protocol, Server: p.Server, Port: p.ServerPort, ProfileID: p.ID, CredentialRequired: true})
+			continue
+		}
+		link, err := profiles.ExportV2RayProfile(p)
+		if err != nil {
+			continue
+		}
+		parsed, err := whiteVPNNodesFromSubscription(link)
+		if err != nil {
+			continue
+		}
+		for i := range parsed {
+			parsed[i].ProfileID = p.ID
+		}
+		nodes = append(nodes, parsed...)
+	}
+	return a.storeWhiteVPNNodes(model.ManualServerSourceID, nodes, time.Now().UTC())
 }
 
 // markHiddenNodes flags the nodes the user has taken out of this subscription.
@@ -214,9 +243,11 @@ func (a *App) applySelectionToLiveSession(allowed []string) error {
 			break
 		}
 		if err := current.Select(ctx, name); err == nil {
-			a.appendRuntimeLog(fmt.Sprintf("switched to %q", name))
-			a.recordConnectedNode(name)
-			a.resolveExitCountry()
+			if !a.withMihomo(current,func(){
+				a.appendRuntimeLog(fmt.Sprintf("switched to %q", name))
+				a.recordConnectedNode(name)
+				a.resolveExitCountry()
+			}) { return context.Canceled }
 			return nil
 		} else {
 			lastErr = err

@@ -1,0 +1,17 @@
+{
+  "goBuild": 0,
+  "goVet": 0,
+  "goTests": 0,
+  "goTestsPassed": 581,
+  "goTestsFailed": 0,
+  "goTestsSkipped": 8,
+  "goPackagesPassed": 11,
+  "typescript": 0,
+  "frontendBuild": 0,
+  "windowsArm64InternalBuild": 0,
+  "wintunPEMachine": "0x8664",
+  "wintunSignature": "Valid",
+  "goToolchain": "go1.26.5",
+  "nodeVersion": "v24.19.0",
+  "npmVersion": "11.17.0"
+}

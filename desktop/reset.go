@@ -14,6 +14,7 @@ package main
 // first-run experience never gets checked.
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -32,6 +33,22 @@ import (
 // proxy settings are put back by disconnecting, which is required before this
 // can run at all.
 func (a *App) ResetAppData() (model.AppState, error) {
+	var state model.AppState
+	err := a.connectionManager().WhileIdle(context.Background(), func() error {
+		var err error
+		state, err = a.resetAppDataWhileIdle()
+		return err
+	})
+	if err != nil {
+		return a.GetAppState(), err
+	}
+	return state, nil
+}
+
+func (a *App) resetAppDataWhileIdle() (model.AppState, error) {
+	// A concurrent profile save must not resurrect credentials after reset.
+	a.engineDataMu.Lock()
+	defer a.engineDataMu.Unlock()
 	// Refused while anything is running, and not only for tidiness. The engine
 	// is executing from the directory this is about to delete, its tunnel
 	// adapter is up, and the machine's proxy settings are pointed at a port it
@@ -59,7 +76,13 @@ func (a *App) ResetAppData() (model.AppState, error) {
 		return a.GetAppState(), fmt.Errorf("refusing to delete %q: that is not this app's data directory", a.configDir)
 	}
 
-	if err := removeConfigDirContents(a.configDir); err != nil {
+	a.snapshotMu.Lock()
+	defer a.snapshotMu.Unlock()
+	removeErr := removeConfigDirContents(a.configDir)
+	// Reopen even after a partial reset, instead of retaining a stale catalog
+	// whose next save could recreate a vault that was already removed.
+	a.initEngineProfiles()
+	if err := removeErr; err != nil {
 		return a.GetAppState(), fmt.Errorf("could not remove the stored data: %w", err)
 	}
 
@@ -68,6 +91,14 @@ func (a *App) ResetAppData() (model.AppState, error) {
 	// next save would write them all back.
 	a.mu.Lock()
 	a.state = model.DefaultAppState()
+	if a.store.IsProtected() {
+		loaded, loadErr := a.store.Load()
+		if loadErr != nil {
+			a.mu.Unlock()
+			return a.GetAppState(), fmt.Errorf("the data was removed but private state could not be initialized: %w", loadErr)
+		}
+		a.state = loaded
+	}
 	a.ensureBuiltInCataloguesLocked()
 	// A reset is a fresh install, and a fresh install offers the legacy import
 	// again — but only if there is still something there to import.

@@ -15,7 +15,7 @@ func writeLegacyState(t *testing.T, dir string, state model.AppState) string {
 		t.Fatal(err)
 	}
 	path := filepath.Join(dir, "state.json")
-	raw, err := json.Marshal(state)
+	raw, err := json.Marshal(privateAppState(state))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -27,6 +27,8 @@ import {
   Save,
   ScrollText,
   Search,
+  Send,
+  Server,
   Settings,
   Shield,
   Share2,
@@ -41,6 +43,9 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { FragmentSettingsPanel } from "./FragmentSettingsPanel";
+import { EngineProfilesSection, engineKindTitle, type EngineSelection } from "./EngineProfilesSection";
+import { ConnectionModePicker, ServerListDialog, connectionMode, serverListLabel } from "./ConnectionMode";
+import { isolateLatin } from "./bidi";
 import type { ReactNode } from "react";
 
 import {
@@ -162,6 +167,10 @@ import type {
   V2RayProtocol,
   V2RaySettingsProfile,
   V2RaySubscription,
+  ChainHop,
+  ChainIssue,
+  ChainOptions,
+  ChainSlot,
 } from "./types";
 import { backend, initializeNotifications, onRuntimeEvent, openExternalUrl, sendFirewallNotification } from "./wails";
 
@@ -250,6 +259,7 @@ function normalizeRuntime(runtime: RuntimeStatus): RuntimeStatus {
     exitIp: runtime.exitIp || "",
     nodeName: runtime.nodeName || "",
     nodeCountryCode: runtime.nodeCountryCode || "",
+    nodeEch: Boolean(runtime.nodeEch),
     exitCountryCode: runtime.exitCountryCode || "",
     exitChecked: Boolean(runtime.exitChecked),
     autoProfilePresetId: runtime.autoProfilePresetId || "",
@@ -348,6 +358,9 @@ function normalizeV2RayProfile(profile: V2RayProfile): V2RayProfile {
 }
 
 const v2rayProfileStableKeys: Array<keyof V2RayProfile> = [
+  "publicOnly",
+  "credentialsReady",
+  "credentialRequired",
   "id",
   "name",
   "subscriptionId",
@@ -736,6 +749,26 @@ function App() {
   const [nodeTestRunning, setNodeTestRunning] = useState(false);
   const runtimeLogBufferRef = useRef<RuntimeLogEntry[]>([]);
   const runtimeLogFlushTimerRef = useRef<number | null>(null);
+  // Saved engine profiles and which one, if any, replaces the subscription.
+  const [engines, setEngines] = useState<EngineSelection>({ selectedId: "", profiles: [], availability: [] });
+
+  async function loadEngines() {
+    try {
+      const [selectedId, profiles, availability] = await Promise.all([
+        backend.getSelectedEngineProfileId(),
+        backend.listEngineProfiles().catch(() => []),
+        backend.getEngineAvailability(),
+      ]);
+      setEngines({ selectedId, profiles, availability });
+    } catch {
+      // Outside Wails, or the vault is unavailable: the subscription stays the route.
+    }
+  }
+
+  useEffect(() => {
+    void loadEngines();
+    return onRuntimeEvent<unknown>("engine-profiles:changed", () => void loadEngines());
+  }, []);
 
   // Which subscription the Servers page is showing: the one the user picked
   // there, or the connected one until they pick. A pick that no longer exists
@@ -1096,6 +1129,8 @@ function App() {
               {activePage === "vpn" && (
                 <WhiteDNSVPNPage
                   state={state}
+                  engines={engines}
+                  onEnginesChanged={() => void loadEngines()}
                   proxyEndpoint={engineProxyEndpoint}
                   onState={applyState}
                   onError={showError}
@@ -1134,9 +1169,12 @@ function App() {
               {activePage === "subscriptions" && (
                 <V2RaySubscriptionsPage
                   state={state}
+                  engines={engines}
+                  onEnginesChanged={() => void loadEngines()}
                   onState={applyState}
                   onError={showError}
                   onSuccess={showSuccess}
+                  language={language}
                   t={t}
                 />
               )}
@@ -1488,19 +1526,31 @@ function AppSidebar({
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
-      <a
-        href={whiteDnsYoutubeUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        onClick={(event) => {
-          event.preventDefault();
-          openExternalUrl(whiteDnsYoutubeUrl);
-        }}
-        className="mx-2 flex min-h-11 w-auto items-center justify-center gap-2 rounded-lg bg-red-600 px-3 text-sm font-semibold whitespace-nowrap text-white hover:bg-red-700 focus-visible:ring-2 focus-visible:ring-foreground focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar focus-visible:outline-none active:bg-red-800 group-data-[collapsible=icon]:hidden"
-      >
-        <Youtube className="size-5 shrink-0" aria-hidden="true" />
-        <span>{t("nav.youtubeSubscribe")}</span>
-      </a>
+      {/* Side by side, so the channels take one row; the full invitation is
+          the accessible name and the tooltip. */}
+      <div className="mx-2 flex gap-2 group-data-[collapsible=icon]:hidden">
+        {[
+          { url: whiteDnsTelegramUrl, icon: Send, label: t("nav.telegram"), title: t("nav.telegramJoin"), color: "bg-[#229ED9] hover:bg-[#1c8ec4] active:bg-[#187fb0]" },
+          { url: whiteDnsYoutubeUrl, icon: Youtube, label: t("nav.youtube"), title: t("nav.youtubeSubscribe"), color: "bg-red-600 hover:bg-red-700 active:bg-red-800" },
+        ].map(({ url, icon: Icon, label, title, color }) => (
+          <a
+            key={url}
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            title={title}
+            aria-label={title}
+            onClick={(event) => {
+              event.preventDefault();
+              openExternalUrl(url);
+            }}
+            className={cn("flex min-h-11 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-lg px-2 text-sm font-semibold whitespace-nowrap text-white focus-visible:ring-2 focus-visible:ring-foreground focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar focus-visible:outline-none", color)}
+          >
+            <Icon className="size-5 shrink-0" aria-hidden="true" />
+            <span className="truncate">{label}</span>
+          </a>
+        ))}
+      </div>
       <SidebarSeparator />
       <SidebarFooter>
         <Item className="border-transparent bg-muted/50">
@@ -1659,12 +1709,15 @@ function DashboardRow({
   icon,
   label,
   value,
+  error,
   disabled,
   onClick,
 }: {
   icon: ReactNode;
   label: string;
   value: string;
+  // Shown in red under the label, with the row outlined, as Android marks a row that cannot apply.
+  error?: string;
   disabled?: boolean;
   onClick: () => void;
 }) {
@@ -1673,14 +1726,20 @@ function DashboardRow({
       type="button"
       disabled={disabled}
       onClick={onClick}
-      className="flex w-full items-center justify-between gap-3 rounded-md border bg-background/70 px-3 py-2.5 text-start transition-colors hover:bg-muted/60 disabled:cursor-not-allowed disabled:opacity-60"
+      className={cn(
+        "flex w-full items-center justify-between gap-3 rounded-md border bg-background/70 px-3 py-2.5 text-start transition-colors hover:bg-muted/60 disabled:cursor-not-allowed disabled:opacity-60",
+        error && "border-destructive/60 bg-destructive/5"
+      )}
     >
-      <span className="flex shrink-0 items-center gap-2 text-muted-foreground">
+      <span className="flex min-w-0 shrink-0 items-center gap-2 text-muted-foreground">
         {icon}
-        <span className="text-sm font-medium text-foreground">{label}</span>
+        <span className="grid">
+          <span className={cn("text-sm font-medium text-foreground", error && "text-destructive")}>{label}</span>
+          {error && <span className="text-xs text-destructive">{isolateLatin(error)}</span>}
+        </span>
       </span>
       <span className="flex min-w-0 items-center gap-2">
-        <span className="min-w-0 truncate text-sm text-muted-foreground">{value}</span>
+        <span className="min-w-0 truncate text-sm text-muted-foreground"><bdi>{value}</bdi></span>
         <ChevronRight className="size-4 shrink-0 text-muted-foreground rtl:rotate-180" />
       </span>
     </button>
@@ -2007,6 +2066,8 @@ function ConnectButtonIcon({ state }: { state: ConnectButtonState }) {
 
 function WhiteDNSVPNPage({
   state,
+  engines,
+  onEnginesChanged,
   proxyEndpoint,
   onState,
   onError,
@@ -2015,6 +2076,8 @@ function WhiteDNSVPNPage({
   t,
 }: {
   state: AppState;
+  engines: EngineSelection;
+  onEnginesChanged: () => void;
   proxyEndpoint: string;
   onState: (state: AppState) => void;
   onError: (message: string) => void;
@@ -2032,6 +2095,10 @@ function WhiteDNSVPNPage({
   const [selectionSaving, setSelectionSaving] = useState(false);
   const [measuring, setMeasuring] = useState(false);
   const selection = state.whiteVpn.connection;
+  // null: the subscription is the route; undefined: the selected engine was deleted.
+  const selectedEngine = engines.selectedId ? engines.profiles.find((profile) => profile.id === engines.selectedId) : null;
+  const mode = connectionMode(state, engines);
+  const [serverListOpen, setServerListOpen] = useState(false);
   // A node is stored by name; the shorter label the row shows comes from the
   // catalogue, so a picked node means the catalogue is worth having loaded. It
   // is cached behind this call, so after the first time it costs nothing.
@@ -2049,9 +2116,9 @@ function WhiteDNSVPNPage({
   // Another runtime holding the machine is not this page's connection, so its
   // status must not drive this page's button.
   const otherRuntimeActive = runtimeBusy && !active;
-  const connectState = otherRuntimeActive ? "connect" : connectButtonState(runtime.status, pending);
+  const connectState = runtime.releasePending && pending !== "stop" ? "disconnect" : otherRuntimeActive ? "connect" : connectButtonState(runtime.status, pending);
   const startsConnection = connectState === "connect" || connectState === "retry";
-  const setupStatus = otherRuntimeActive ? "connecting" : connectCardStatus(connectState);
+  const setupStatus = runtime.releasePending ? "failed" : otherRuntimeActive ? "connecting" : connectCardStatus(connectState);
   const setupStatusLabel = otherRuntimeActive ? t("connect.busy") : translatedStatusLabel(t, setupStatus);
   // While connected, where it is actually listening; otherwise where it will
   // listen, which is a constant of the engine. Never the V2Ray settings
@@ -2065,7 +2132,7 @@ function WhiteDNSVPNPage({
     otherRuntimeActive ||
     (startsConnection && pending !== null);
   const connectedFrontingIP = active ? runtime.frontingIp : "";
-  const dashboardTitle = otherRuntimeActive
+  const dashboardTitle = runtime.releasePending ? t("vpn.card.failed") : otherRuntimeActive
     ? t("vpn.card.otherRuntime")
     : connectState === "connecting"
       ? t("vpn.card.connecting")
@@ -2076,7 +2143,7 @@ function WhiteDNSVPNPage({
           : connectState === "retry"
             ? t("vpn.card.failed")
             : t("vpn.card.ready");
-  const dashboardDescription = otherRuntimeActive
+  const dashboardDescription = runtime.releasePending ? t("connect.cleanupPending") : otherRuntimeActive
     ? t("vpn.card.otherRuntime.description")
     : connectState === "connecting"
       ? runtime.status === "connecting" && runtime.progress.phase
@@ -2398,37 +2465,77 @@ function WhiteDNSVPNPage({
             <CardDescription className="text-xs">{t("vpn.rows.description")}</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-2 p-3 pt-0">
-            <DashboardRow
-              icon={<Globe className="size-4" />}
-              label={t("vpn.location")}
-              value={
-                state.whiteVpn.countryCode
-                  ? `${flagFromCountryCode(state.whiteVpn.countryCode)} ${countryName(state.whiteVpn.countryCode, language, t("vpn.nodes.unknownCountry"))}`
-                  : t("vpn.automatic")
-              }
-              disabled={selectionSaving}
-              onClick={() => openNodeDialog("location")}
+            <ConnectionModePicker
+              state={state}
+              engines={engines}
+              locked={runtimeBusy}
+              t={t}
+              onState={onState}
+              onEnginesChanged={onEnginesChanged}
+              onError={onError}
             />
-            <DashboardRow
-              icon={<Wifi className="size-4" />}
-              label={t("vpn.connection")}
-              value={selectedNodeLabel}
-              disabled={selectionSaving}
-              onClick={() => openNodeDialog("connection")}
-            />
-
-            {/* The tunnel, DNS privacy and split tunnel used to sit here and
-                wrote to the V2Ray settings profile, which only the Xray path
-                reads. Under the engine this app now runs they changed nothing.
-                One place to change a setting is worth more than two. */}
-            <DashboardRow
-              icon={<SlidersHorizontal className="size-4" />}
-              label={t("fragments.title")}
-              value={runtime.status === "connected" && runtime.fragmentMode
-                ? t(`fragments.mode.${runtime.fragmentMode}` as StringKey)
-                : t(state.whiteVpn.fragments?.enabled ? "fragments.on" : "fragments.off")}
-              onClick={() => { sessionStorage.setItem("whitevpn-settings-section", "fragments"); onNavigate("settings"); }}
-            />
+            {/* Only the rows the chosen way of connecting uses: an engine has no
+                location, a chain names its own nodes, WARP is one server. */}
+            {(mode === "psiphon" || mode === "tor") && (
+              <DashboardRow
+                icon={<Cpu className="size-4" />}
+                label={t("engine.profileLabel")}
+                value={selectedEngine ? `${engineKindTitle(selectedEngine.kind)} · ${selectedEngine.name}` : "—"}
+                error={selectedEngine ? undefined : t("engine.missingProfile")}
+                onClick={() => onNavigate("subscriptions")}
+              />
+            )}
+            {mode === "chain" && <ChainRows state={state} onState={onState} onError={onError} t={t} />}
+            {mode === "warp" && <p className="text-xs text-muted-foreground">{isolateLatin(t("mode.warp.note"))}</p>}
+            {mode === "servers" && (
+              <>
+                <DashboardRow
+                  icon={<Server className="size-4" />}
+                  label={t("mode.serverList")}
+                  value={serverListLabel(state, t)}
+                  disabled={runtimeBusy}
+                  onClick={() => setServerListOpen(true)}
+                />
+                <DashboardRow
+                  icon={<Globe className="size-4" />}
+                  label={t("vpn.location")}
+                  value={
+                    state.whiteVpn.countryCode
+                      ? `${flagFromCountryCode(state.whiteVpn.countryCode)} ${countryName(state.whiteVpn.countryCode, language, t("vpn.nodes.unknownCountry"))}`
+                      : t("vpn.automatic")
+                  }
+                  disabled={selectionSaving}
+                  onClick={() => openNodeDialog("location")}
+                />
+                <DashboardRow
+                  icon={<Wifi className="size-4" />}
+                  label={t("vpn.connection")}
+                  value={selectedNodeLabel}
+                  disabled={selectionSaving}
+                  onClick={() => openNodeDialog("connection")}
+                />
+              </>
+            )}
+            {/* Fragments and ECH shape TLS to a server; WARP and the engines
+                have none for them to shape, so the rows would only mislead. */}
+            {(mode === "servers" || mode === "chain") && (
+              <>
+                <DashboardRow
+                  icon={<SlidersHorizontal className="size-4" />}
+                  label={t("fragments.title")}
+                  value={runtime.status === "connected" && runtime.fragmentMode
+                    ? t(`fragments.mode.${runtime.fragmentMode}` as StringKey)
+                    : t(state.whiteVpn.fragments?.enabled ? "fragments.on" : "fragments.off")}
+                  onClick={() => { sessionStorage.setItem("whitevpn-settings-section", "fragments"); onNavigate("settings"); }}
+                />
+                <DashboardRow
+                  icon={<Shield className="size-4" />}
+                  label={t("vpn.ech")}
+                  value={t((runtime.status === "connected" ? runtime.nodeEch : state.whiteVpn.autoEch) ? "fragments.on" : "fragments.off")}
+                  onClick={() => onNavigate("settings")}
+                />
+              </>
+            )}
             <p className="pt-1 text-xs text-muted-foreground">{t("vpn.moreSettings")}</p>
             <Button variant="outline" size="sm" className="justify-self-start" onClick={() => onNavigate("settings")}>
               <Settings className="size-3.5" />
@@ -2438,6 +2545,15 @@ function WhiteDNSVPNPage({
         </Card>
 
       </div>
+
+      <ServerListDialog
+        open={serverListOpen}
+        state={state}
+        t={t}
+        onOpenChange={setServerListOpen}
+        onState={onState}
+        onError={onError}
+      />
 
       <LocationDialog
         open={nodeDialog === "location"}
@@ -2497,6 +2613,335 @@ function WhiteDNSVPNPage({
         </Alert>
       )}
     </PageShell>
+  );
+}
+
+function chainHopLabel(hop: ChainHop, state: AppState, t: TranslateFn): string {
+  if (hop.mode === "off") {
+    return t("chain.none");
+  }
+  if (hop.mode === "automatic") {
+    const list = hop.subscriptionId && state.v2raySubscriptions.find((entry) => entry.id === hop.subscriptionId)?.name;
+    return list ? `${list} · ${t("vpn.automatic")}` : t("vpn.automatic");
+  }
+  const subscription = state.v2raySubscriptions.find((entry) => entry.id === hop.subscriptionId)?.name;
+  return subscription ? `${subscription} · ${hop.node}` : hop.node || "";
+}
+
+// The two chain nodes, as rows that open the picker. Shown on the settings page
+// and, while a chain is on, on the VPN page in place of the rows it overrides.
+function ChainRows({
+  state,
+  engineSelected = false,
+  onState,
+  onError,
+  t,
+}: {
+  state: AppState;
+  // Engines do not chain: node 2 turns red and connecting ignores the chain.
+  engineSelected?: boolean;
+  onState: (state: AppState) => void;
+  onError: (message: string) => void;
+  t: TranslateFn;
+}) {
+  const [slot, setSlot] = useState<ChainSlot | null>(null);
+  const chain = state.whiteVpn.chain;
+  const busy = state.runtime.status === "connecting" || state.runtime.status === "stopping";
+
+  async function choose(hop: ChainHop) {
+    if (!slot) {
+      return;
+    }
+    const next = { ...chain, [slot]: hop };
+    setSlot(null);
+    try {
+      onState(await backend.saveConnectionChain(next));
+    } catch (err) {
+      onError(messageFromError(err));
+    }
+  }
+
+  return (
+    <>
+      <p className="text-xs font-medium">{t("chain.route")}</p>
+      <DashboardRow
+        icon={<Shield className="size-4" />}
+        label={t("chain.node1")}
+        value={chainHopLabel(chain.entry, state, t)}
+        disabled={busy}
+        onClick={() => setSlot("entry")}
+      />
+      <DashboardRow
+        icon={<Globe className="size-4" />}
+        label={t("chain.node2")}
+        value={chainHopLabel(chain.exit, state, t)}
+        error={engineSelected && chain.exit.mode !== "off" ? t("engine.chainUnsupported") : undefined}
+        disabled={busy}
+        onClick={() => setSlot("exit")}
+      />
+      <p className="text-xs text-muted-foreground">{isolateLatin(t("chain.help"))}</p>
+      <ChainPickerDialog
+        slot={slot}
+        current={slot ? chain[slot] : null}
+        t={t}
+        onClose={() => setSlot(null)}
+        onChoose={(hop) => void choose(hop)}
+        onError={onError}
+      />
+    </>
+  );
+}
+
+function delayOrder(node: WhiteVPNNode): number {
+  return node.delayOk ? node.delayMs : Number.MAX_SAFE_INTEGER;
+}
+
+// One list of every subscription's configs, the user's own on top, as on the
+// phone. A config that cannot sit next to the other node's fixed choice is
+// shown, dimmed, with the reason, rather than hidden.
+function ChainPickerDialog({
+  slot,
+  current,
+  t,
+  onClose,
+  onChoose,
+  onError,
+}: {
+  slot: ChainSlot | null;
+  current: ChainHop | null;
+  t: TranslateFn;
+  onClose: () => void;
+  onChoose: (hop: ChainHop) => void;
+  onError: (message: string) => void;
+}) {
+  const [options, setOptions] = useState<ChainOptions | null>(null);
+  const [search, setSearch] = useState("");
+  const [testing, setTesting] = useState<string | null>(null);
+  const [sorted, setSorted] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!slot) {
+      return;
+    }
+    let live = true;
+    setOptions(null);
+    setSearch("");
+    backend
+      .listChainOptions(slot)
+      .then((loaded) => live && setOptions(loaded))
+      .catch(() => live && setOptions({ groups: [], incomplete: true }));
+    return () => {
+      live = false;
+    };
+  }, [slot]);
+
+  // A group's test reports one config at a time, through the same events the
+  // Servers page listens to.
+  useEffect(() => {
+    if (!slot) {
+      return;
+    }
+    const unsubscribers = [
+      onRuntimeEvent<NodeMeasurement>("nodes:test", (measurement) =>
+        setOptions((currentOptions) =>
+          currentOptions && {
+            ...currentOptions,
+            groups: currentOptions.groups.map((group) =>
+              group.subscriptionId !== measurement.subscriptionId
+                ? group
+                : { ...group, nodes: group.nodes.map((node) => (node.name === measurement.node.name ? measurement.node : node)) },
+            ),
+          },
+        ),
+      ),
+      onRuntimeEvent<unknown>("nodes:test-done", () => setTesting(null)),
+      onRuntimeEvent<string>("nodes:test-error", (message) => {
+        setTesting(null);
+        onError(message);
+      }),
+    ];
+    return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slot]);
+
+  async function test(subscriptionId: string, names: string[]) {
+    setTesting(subscriptionId);
+    setSorted((list) => (list.includes(subscriptionId) ? list : [...list, subscriptionId]));
+    try {
+      // Zeros are the backend's defaults.
+      await backend.startNodeTest({
+        subscriptionId,
+        nodes: names,
+        reachability: false,
+        delay: true,
+        speed: false,
+        reachabilityTimeoutMs: 0,
+        reachabilityWorkers: 0,
+        delayTimeoutMs: 0,
+        delayWorkers: 0,
+        delayUrl: "",
+        speedBudgetMs: 0,
+        speedUrl: "",
+      });
+    } catch (err) {
+      setTesting(null);
+      onError(messageFromError(err));
+    }
+  }
+
+  function issueText(issue: ChainIssue): string {
+    switch (issue) {
+      case "same":
+        return t("chain.issue.same");
+      case "shared":
+        return t("chain.issue.shared");
+      default:
+        return t(slot === "exit" ? "chain.issue.udpFirst" : "chain.issue.udpSecond");
+    }
+  }
+
+  const needle = search.trim().toLowerCase();
+  function renderGroup(group: ChainOptions["groups"][number]) {
+    let nodes = group.nodes.filter(
+      (node) =>
+        !needle ||
+        (node.label || node.name).toLowerCase().includes(needle) ||
+        node.name.toLowerCase().includes(needle) ||
+        node.type.toLowerCase().includes(needle),
+    );
+    if (!nodes.length) {
+      return null;
+    }
+    if (sorted.includes(group.subscriptionId)) {
+      nodes = [...nodes].sort((a, b) => delayOrder(a) - delayOrder(b));
+    }
+    const running = testing === group.subscriptionId;
+    return (
+      <div key={group.subscriptionId} className="grid gap-1.5">
+        <div className="flex items-center justify-between gap-2 pt-2">
+          <span className="min-w-0 truncate text-sm font-semibold" dir="auto">
+            {group.name} ({nodes.length})
+          </span>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="h-7 shrink-0 px-2.5 text-xs"
+            disabled={testing !== null}
+            onClick={() => void test(group.subscriptionId, group.nodes.map((node) => node.name))}
+          >
+            <Gauge className={cn("size-3.5", running && "animate-pulse")} />
+            {running ? t("chain.testing") : t("chain.test")}
+          </Button>
+        </div>
+        {/* Let the app pick, but only from this list: the choice between
+            testing and choosing by hand, and handing it over, per list. */}
+        {!needle && group.nodes.length > 1 && (
+          <SelectableRow
+            selected={current?.mode === "automatic" && current.subscriptionId === group.subscriptionId}
+            onClick={() => onChoose({ mode: "automatic", subscriptionId: group.subscriptionId })}
+          >
+            <span className="text-sm font-medium">{t("vpn.automatic")}</span>
+            <span className="text-xs text-muted-foreground">{t("chain.automatic.list")}</span>
+          </SelectableRow>
+        )}
+        {nodes.map((node) => {
+          const issue = group.issues?.[node.name];
+          const selected =
+            current?.mode === "fixed" && current.subscriptionId === group.subscriptionId && current.node === node.name;
+          return (
+            <button
+              type="button"
+              key={node.name}
+              disabled={Boolean(issue)}
+              onClick={() => onChoose({ mode: "fixed", subscriptionId: group.subscriptionId, node: node.name })}
+              className={cn(
+                "flex w-full flex-col gap-0.5 rounded-md border px-3 py-2 text-start transition-colors hover:bg-muted/60 disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:bg-transparent",
+                selected ? "border-emerald-500/60 bg-emerald-500/10" : "bg-background/60",
+              )}
+            >
+              <span className="flex min-w-0 items-center gap-2">
+                <span className="min-w-0 flex-1 truncate text-sm" dir="auto" title={node.name}>
+                  {node.label || node.name}
+                </span>
+                <Badge variant="outline" className="h-5 shrink-0 px-1.5 text-[10px] uppercase">
+                  {node.type}
+                </Badge>
+                {node.delayTested && (
+                  <span className="shrink-0 font-mono text-xs text-muted-foreground">
+                    {node.delayOk ? `${node.delayMs} ms` : t("chain.failed")}
+                  </span>
+                )}
+                {selected && <Check className="size-4 shrink-0 text-emerald-600" />}
+              </span>
+              {issue && <span className="text-xs font-medium text-destructive">{isolateLatin(issueText(issue))}</span>}
+            </button>
+          );
+        })}
+      </div>
+    );
+  }
+
+  const groups = options?.groups ?? [];
+  const mine = groups.filter((group) => group.userMade).map(renderGroup).filter(Boolean);
+  const builtIn = groups.filter((group) => !group.userMade).map(renderGroup).filter(Boolean);
+
+  return (
+    <Dialog open={slot !== null} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-h-[calc(100svh-4rem)] grid-rows-[auto_auto_minmax(0,1fr)_auto] overflow-hidden sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>{t(slot === "exit" ? "chain.node2" : "chain.node1")}</DialogTitle>
+          <DialogDescription>{t("chain.route")}</DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-2">
+          <div className="relative">
+            <Search className="pointer-events-none absolute start-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t("chain.search")} className="ps-8" />
+          </div>
+          {options?.incomplete && (
+            <Alert variant="destructive">
+              <AlertCircle />
+              <AlertDescription>{t("chain.picker.unavailable")}</AlertDescription>
+            </Alert>
+          )}
+        </div>
+        <ScrollArea className="min-h-0">
+          <div className="grid gap-1.5 pe-3">
+            {!needle && (
+              <>
+                {slot === "exit" && (
+                  <SelectableRow selected={current?.mode === "off"} onClick={() => onChoose({ mode: "off" })}>
+                    <span className="text-sm font-medium">{t("chain.none")}</span>
+                    <span className="text-xs text-muted-foreground">{t("chain.none.detail")}</span>
+                  </SelectableRow>
+                )}
+                <SelectableRow selected={current?.mode === "automatic" && !current.subscriptionId} onClick={() => onChoose({ mode: "automatic" })}>
+                  <span className="text-sm font-medium">{t("vpn.automatic")}</span>
+                  <span className="text-xs text-muted-foreground">{t("chain.automatic.detail")}</span>
+                </SelectableRow>
+              </>
+            )}
+            {mine.length > 0 && (
+              <>
+                <p className="pt-3 text-sm font-semibold">{t("chain.myProfiles")}</p>
+                <div className="grid gap-1.5 rounded-lg border border-emerald-500/40 bg-emerald-500/5 px-3 pb-3">{mine}</div>
+              </>
+            )}
+            {builtIn}
+            {!options && <p className="px-1 py-6 text-center text-sm text-muted-foreground">{t("vpn.nodes.loading")}</p>}
+            {options && !mine.length && !builtIn.length && (
+              <p className="px-1 py-6 text-center text-sm text-muted-foreground">{t("vpn.nodes.none")}</p>
+            )}
+          </div>
+          <ScrollBar orientation="vertical" />
+        </ScrollArea>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onClose}>
+            {t("common.close")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -2673,6 +3118,14 @@ function NodesPage({
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [shareNode, setShareNode] = useState<WhiteVPNNode | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
+  const [exportLinks, setExportLinks] = useState<string[]>([]);
+  const [exportSkipped, setExportSkipped] = useState(0);
+  const shareRequest = useRef(0);
+  useEffect(() => {
+    shareRequest.current += 1;
+    setShareNode(null); setExportOpen(false); setExportLinks([]);
+    return () => { shareRequest.current += 1; };
+  }, [subscriptionId]);
   // Base64 of the whole list is what a subscription URL serves, and several
   // clients take it pasted straight in. Plain links are what everything takes,
   // so that is the default and this is the option.
@@ -2852,11 +3305,10 @@ function NodesPage({
     () => (selectedNames.length ? visible.filter((node) => selected.has(node.name)) : visible),
     [visible, selected, selectedNames],
   );
-  const exportLinks = useMemo(() => exportNodes.map((node) => node.link).filter(Boolean), [exportNodes]);
+  const exportAvailableCount = exportNodes.filter((node) => node.shareAvailable).length;
   // A subscription served as a mihomo document has no share link per node, so
   // some rows cannot be exported. Counted and said, rather than a shorter list
   // than the one that was selected appearing with no explanation.
-  const exportSkipped = exportNodes.length - exportLinks.length;
   const exportText = useMemo(() => {
     const plain = exportLinks.join("\n");
     if (!exportBase64 || !plain) {
@@ -2867,6 +3319,27 @@ function NodesPage({
     return btoa(String.fromCharCode(...new TextEncoder().encode(plain)));
   }, [exportLinks, exportBase64]);
   const exportFilename = `whitevpn-${exportLinks.length}-configs${exportBase64 ? "-base64" : ""}.txt`;
+
+  async function openExport() {
+    const requestId = ++shareRequest.current;
+    try {
+      const links = await backend.exportNodeLinks(subscriptionId, exportNodes.map((node) => node.name));
+      if (requestId !== shareRequest.current) { return; }
+      setExportLinks(links.map((node) => node.link));
+      setExportSkipped(exportNodes.length - links.length);
+      setExportOpen(true);
+    } catch (err) { if (requestId === shareRequest.current) { onError(messageFromError(err)); } }
+  }
+
+  async function openShare(node: WhiteVPNNode) {
+    const requestId = ++shareRequest.current;
+    try {
+      const links = await backend.exportNodeLinks(subscriptionId, [node.name]);
+      if (requestId !== shareRequest.current) { return; }
+      if (!links[0]) { onError(t("servers.share.none")); return; }
+      setShareNode({ ...node, link: links[0].link });
+    } catch (err) { if (requestId === shareRequest.current) { onError(messageFromError(err)); } }
+  }
 
   async function copyExport() {
     try {
@@ -3057,12 +3530,12 @@ function NodesPage({
               {t("servers.hideSelected", { count: selectedHideable.length })}
             </Button>
           )}
-          {exportLinks.length > 0 && (
-            <Button variant="outline" onClick={() => setExportOpen(true)}>
+          {exportAvailableCount > 0 && (
+            <Button variant="outline" onClick={() => void openExport()}>
               <Download />
               {selectedNames.length
-                ? t("servers.exportSelected", { count: exportLinks.length })
-                : t("servers.exportAll", { count: exportLinks.length })}
+                ? t("servers.exportSelected", { count: exportAvailableCount })
+                : t("servers.exportAll", { count: exportAvailableCount })}
             </Button>
           )}
           {hiddenCount > 0 && (
@@ -3336,6 +3809,7 @@ function NodesPage({
                       <span className="block truncate" title={node.name}>
                         {node.label}
                       </span>
+                      {node.credentialRequired && <span className="text-xs text-amber-600">{t("profiles.detailsRequired")}</span>}
                     </td>
                     <td className="px-2 py-1.5">
                       <Badge variant="outline" className="h-5 px-1.5 text-[10px] uppercase">
@@ -3391,7 +3865,7 @@ function NodesPage({
                               variant="ghost"
                               size="icon-sm"
                               onClick={() => onSelectNode(node.name)}
-                              disabled={blockedByConnection}
+                              disabled={blockedByConnection || node.credentialRequired}
                               aria-label={t("servers.use")}
                             >
                               <Play />
@@ -3404,17 +3878,17 @@ function NodesPage({
                             <Button
                               variant="ghost"
                               size="icon-sm"
-                              onClick={() => setShareNode(node)}
+                              onClick={() => void openShare(node)}
                               // A node read out of a provider's own
                               // configuration has no share link to give: the
                               // document carried settings, not a URL.
-                              disabled={!node.link}
+                              disabled={!node.shareAvailable}
                               aria-label={t("servers.share")}
                             >
                               <Share2 />
                             </Button>
                           </TooltipTrigger>
-                          <TooltipContent>{node.link ? t("servers.share") : t("servers.share.none")}</TooltipContent>
+                          <TooltipContent>{node.shareAvailable ? t("servers.share") : t("servers.share.none")}</TooltipContent>
                         </Tooltip>
                         {/* A subscription's node cannot be edited — a refresh
                             rebuilds it — so it gets the two things that do
@@ -3427,14 +3901,14 @@ function NodesPage({
                                   variant="ghost"
                                   size="icon-sm"
                                   onClick={() => void copyToManual(node)}
-                                  disabled={!node.link}
+                                  disabled={!node.shareAvailable}
                                   aria-label={t("servers.copyToManual")}
                                 >
                                   <Copy />
                                 </Button>
                               </TooltipTrigger>
                               <TooltipContent>
-                                {node.link ? t("servers.copyToManual") : t("servers.copyToManual.none")}
+                                {node.shareAvailable ? t("servers.copyToManual") : t("servers.copyToManual.none")}
                               </TooltipContent>
                             </Tooltip>
                             <Tooltip>
@@ -3582,7 +4056,7 @@ function NodesPage({
       {/* Exporting what a test run selected. The reason this exists is to carry
           the survivors of a test to another device — a phone, a television —
           and doing that one share dialog at a time is why it was asked for. */}
-      <Dialog open={exportOpen} onOpenChange={setExportOpen}>
+      <Dialog open={exportOpen} onOpenChange={(open) => { setExportOpen(open); if (!open) { setExportLinks([]); } }}>
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>{t("servers.export")}</DialogTitle>
@@ -3602,7 +4076,7 @@ function NodesPage({
               {t("servers.export.base64")}
             </label>
             <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-              <Button variant="outline" onClick={() => setExportOpen(false)}>
+              <Button variant="outline" onClick={() => { setExportOpen(false); setExportLinks([]); }}>
                 {t("common.close")}
               </Button>
               <Button
@@ -3671,17 +4145,25 @@ function NodeHeader({
   );
 }
 
+const warpServerPattern = /^[A-Za-z0-9.:[\]-]{1,253}$/;
+
 function V2RaySubscriptionsPage({
   state,
+  engines,
+  onEnginesChanged,
   onState,
   onError,
   onSuccess,
+  language,
   t,
 }: {
   state: AppState;
+  engines: EngineSelection;
+  onEnginesChanged: () => void;
   onState: (state: AppState) => void;
   onError: (message: string) => void;
   onSuccess: (message: string) => void;
+  language: Language;
   t: TranslateFn;
 }) {
   const fallbackDraft = useMemo(() => defaultV2RaySubscriptionDraft(), []);
@@ -3690,11 +4172,21 @@ function V2RaySubscriptionsPage({
   const [deleteTarget, setDeleteTarget] = useState<V2RaySubscription | null>(null);
   const [refreshingSubscriptionIds, setRefreshingSubscriptionIds] = useState<Record<string, boolean>>({});
   const [selectingSubscription, setSelectingSubscription] = useState(false);
+  const [warpAdding, setWarpAdding] = useState(false);
+  const [warpEdit, setWarpEdit] = useState<{ id: string; name: string; server: string; port: string; noise: boolean } | null>(null);
+  const subscriptionEditRequest = useRef(0);
+  useEffect(() => () => { subscriptionEditRequest.current += 1; }, []);
   const profileIndex = useMemo(
     () => buildV2RayProfileIndex(state.v2rayProfiles, {}, {}),
     [state.v2rayProfiles]
   );
   const saveDisabled = !draft.url.trim();
+  // Go validates the same way; this only keeps Save from offering what it will refuse.
+  const warpServerInvalid = Boolean(warpEdit?.server.trim()) && !warpServerPattern.test(warpEdit?.server.trim() || "");
+  const warpPort = Number(warpEdit?.port);
+  const warpValid =
+    Boolean(warpEdit?.name.trim()) && warpServerPattern.test(warpEdit?.server.trim() || "") &&
+    /^\d{1,5}$/.test(warpEdit?.port.trim() || "") && warpPort >= 1 && warpPort <= 65535;
 
   useEffect(() => {
     if (!editorOpen) {
@@ -3703,15 +4195,27 @@ function V2RaySubscriptionsPage({
   }, [editorOpen, fallbackDraft]);
 
   function openNewSubscription() {
+    subscriptionEditRequest.current += 1;
     onError("");
     setDraft(defaultV2RaySubscriptionDraft());
     setEditorOpen(true);
   }
 
-  function openExistingSubscription(subscription: V2RaySubscription) {
+  async function openExistingSubscription(subscription: V2RaySubscription) {
+    const requestId = ++subscriptionEditRequest.current;
     onError("");
-    setDraft(normalizeV2RaySubscription(subscription));
-    setEditorOpen(true);
+    try {
+      if (subscription.inline) {
+        const settings = await backend.getWarpSettings(subscription.id);
+        if (requestId !== subscriptionEditRequest.current) { return; }
+        setWarpEdit({ id: subscription.id, ...settings, port: String(settings.port) });
+        return;
+      }
+      const edited = await backend.getV2RaySubscriptionForEdit(subscription.id);
+      if (requestId !== subscriptionEditRequest.current) { return; }
+      setDraft(normalizeV2RaySubscription(edited));
+      setEditorOpen(true);
+    } catch (err) { if (requestId === subscriptionEditRequest.current) { onError(messageFromError(err)); } }
   }
 
   async function saveSubscription() {
@@ -3731,6 +4235,39 @@ function V2RaySubscriptionsPage({
     }
   }
 
+  async function addWarp() {
+    if (warpAdding) {
+      return;
+    }
+    onError("");
+    setWarpAdding(true);
+    try {
+      onState(await backend.addWarpSubscription());
+    } catch {
+      onError(t("warp.failed"));
+    } finally {
+      setWarpAdding(false);
+    }
+  }
+
+  async function saveWarp() {
+    if (!warpEdit || !warpValid) {
+      return;
+    }
+    onError("");
+    try {
+      onState(await backend.saveWarpSettings(warpEdit.id, {
+        name: warpEdit.name.trim(),
+        server: warpEdit.server.trim(),
+        port: warpPort,
+        noise: warpEdit.noise,
+      }));
+      setWarpEdit(null);
+    } catch (err) {
+      onError(messageFromError(err));
+    }
+  }
+
   // Which subscription the VPN connects through. Changing it clears a node
   // picked by hand, because that pick named a node in the old list.
   async function useSubscription(id: string) {
@@ -3740,7 +4277,9 @@ function V2RaySubscriptionsPage({
     onError("");
     setSelectingSubscription(true);
     try {
+      // Choosing a subscription also drops an engine selection (backend).
       onState(await backend.selectSubscription(id));
+      onEnginesChanged();
     } catch (err) {
       onError(messageFromError(err));
     } finally {
@@ -3757,9 +4296,6 @@ function V2RaySubscriptionsPage({
     try {
       const result = await backend.refreshV2RaySubscription(subscription.id);
       onState(result.state);
-      if (draft.id === subscription.id) {
-        setDraft(normalizeV2RaySubscription(result.subscription));
-      }
       if (result.ok) {
         onSuccess(result.message || t("subs.imported", { count: result.imported }));
       } else {
@@ -3804,6 +4340,11 @@ function V2RaySubscriptionsPage({
     }
   }
 
+  // WARP is listed with the engines, and "All lists" is a choice on the VPN
+  // page rather than a list anyone downloads, so neither is a row here.
+  const listedSubscriptions = state.v2raySubscriptions.filter(
+    (subscription) => !subscription.inline && subscription.id !== allSubscriptionsID,
+  );
   const deleteTargetConfigCount = deleteTarget?.id ? (profileIndex.subscriptionProfileIds[deleteTarget.id]?.length || 0) : 0;
 
   return (
@@ -3812,20 +4353,22 @@ function V2RaySubscriptionsPage({
         eyebrow="WhiteVPN"
         title={t("nav.subscriptions")}
         actions={
-          <Button type="button" variant="outline" onClick={openNewSubscription}>
-            <Plus />
-            {t("subs.new")}
-          </Button>
+          <>
+            <Button type="button" variant="outline" onClick={openNewSubscription}>
+              <Plus />
+              {t("subs.new")}
+            </Button>
+          </>
         }
       >
         <div className="overflow-hidden rounded-lg border bg-card">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-muted/30 px-3 py-2.5">
             <div className="min-w-0">
               <p className="text-sm font-semibold">{t("subs.groups")}</p>
-              <p className="text-xs text-muted-foreground">{t("subs.sources", { count: state.v2raySubscriptions.length })}</p>
+              <p className="text-xs text-muted-foreground">{t("subs.sources", { count: listedSubscriptions.length })}</p>
             </div>
           </div>
-          {state.v2raySubscriptions.length === 0 ? (
+          {listedSubscriptions.length === 0 ? (
             <div className="px-3 py-4 text-sm text-muted-foreground">{t("subs.empty")}</div>
           ) : (
             <div className="overflow-x-auto">
@@ -3847,15 +4390,15 @@ function V2RaySubscriptionsPage({
                   </tr>
                 </thead>
                 <tbody>
-                  {state.v2raySubscriptions.map((subscription) => {
+                  {listedSubscriptions.map((subscription) => {
                     const refreshing = Boolean(refreshingSubscriptionIds[subscription.id]);
                     const managedProfileIds = profileIndex.subscriptionProfileIds[subscription.id] || [];
                     const builtIn = isBuiltInSubscription(subscription.id);
-                    const inUse = subscription.id === state.selectedSubscriptionId;
+                    const inUse = !engines.selectedId && subscription.id === state.selectedSubscriptionId;
                     // Said on the row rather than once when it was added: a
                     // server list fetched in the clear can be read and replaced
                     // by anyone on the path, and that stays true every day.
-                    const inTheClear = subscription.url.toLowerCase().startsWith("http://");
+                    const inTheClear = (subscription.displayUrl || "").toLowerCase().startsWith("http://");
                     // The built-in catalogue comes back on the next connect,
                     // so removing it is an offer the app cannot keep.
                     const deleteDisabled =
@@ -3902,7 +4445,11 @@ function V2RaySubscriptionsPage({
                                   : subscription.id === whiteVPNPrivateSubscriptionID
                                     ? t("subs.builtIn.private")
                                     : t("subs.builtIn.public")
-                                : subscription.url}
+                                : subscription.credentialRequired
+                                  ? t("profiles.detailsRequired")
+                                  : subscription.inline
+                                    ? <bdi>{t("warp.add")}</bdi>
+                                    : subscription.displayUrl}
                             </span>
                           </span>
                         </td>
@@ -3999,6 +4546,25 @@ function V2RaySubscriptionsPage({
             </div>
           )}
         </div>
+        {/* Android lists engine profiles on the same page as subscriptions. */}
+        <EngineProfilesSection
+          selection={engines}
+          warp={{
+            subscriptions: state.v2raySubscriptions.filter((subscription) => subscription.inline),
+            selectedId: state.selectedSubscriptionId,
+            adding: warpAdding,
+            onAdd: () => void addWarp(),
+            onUse: (id) => void useSubscription(id),
+            onEdit: (subscription) => void openExistingSubscription(subscription),
+            onDelete: requestDeleteSubscription,
+          }}
+          runtime={state.runtime}
+          language={language}
+          t={t}
+          onChanged={onEnginesChanged}
+          onError={onError}
+          onSuccess={onSuccess}
+        />
       </PageShell>
 
       <Dialog open={editorOpen} onOpenChange={setEditorOpen}>
@@ -4061,6 +4627,46 @@ function V2RaySubscriptionsPage({
                 {t("common.save")}
               </Button>
             </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={Boolean(warpEdit)} onOpenChange={(open) => !open && setWarpEdit(null)}>
+        <DialogContent className="max-h-[calc(100svh-2rem)] overflow-hidden sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>{t("warp.editTitle")}</DialogTitle>
+          </DialogHeader>
+          {warpEdit && (
+            <FieldGroup className="grid gap-4">
+              <TextField label={t("subs.column.name")} value={warpEdit.name} onChange={(name) => setWarpEdit({ ...warpEdit, name })} />
+              <TextField
+                label={t("warp.server")}
+                value={warpEdit.server}
+                dir="ltr"
+                placeholder="162.159.192.1"
+                error={warpServerInvalid ? t("warp.invalid") : undefined}
+                onChange={(server) => setWarpEdit({ ...warpEdit, server })}
+              />
+              <TextField
+                label={t("servers.edit.port")}
+                value={warpEdit.port}
+                dir="ltr"
+                description={t("warp.portHelper")}
+                onChange={(port) => setWarpEdit({ ...warpEdit, port })}
+              />
+              <label className="flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-sm">
+                {t("warp.noise")}
+                <Switch checked={warpEdit.noise} onCheckedChange={(noise) => setWarpEdit({ ...warpEdit, noise })} />
+              </label>
+            </FieldGroup>
+          )}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setWarpEdit(null)}>
+              {t("common.cancel")}
+            </Button>
+            <Button type="button" disabled={!warpValid} onClick={() => void saveWarp()}>
+              <Save />
+              {t("common.save")}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -4154,6 +4760,7 @@ function v2rayDelaySortValue(result?: V2RayPingResult): number {
 }
 
 function v2rayProfileCredentialReady(profile: V2RayProfile): boolean {
+  if (profile.publicOnly) { return Boolean(profile.credentialsReady) && !profile.credentialRequired; }
   switch (normalizeV2RayProtocol(profile.protocol)) {
     case "trojan":
       return Boolean(profile.password.trim());
@@ -4319,7 +4926,7 @@ function FullBackupPage({
               label={t("backup.json")}
               value={restoreText}
               onChange={setRestoreText}
-              placeholder={'{\n  "schema": "whitedns.desktop.backup",\n  "version": 1\n}'}
+              placeholder={'{\n  "schema": "whitedns.desktop.backup",\n  "version": 2\n}'}
               className="h-[min(45svh,20rem)] min-h-0 resize-none overflow-auto font-mono text-xs"
             />
           </div>
@@ -5507,6 +6114,7 @@ function TextField({
   description,
   error,
   disabled,
+  dir,
   onChange,
 }: {
   label: string;
@@ -5515,6 +6123,7 @@ function TextField({
   description?: string;
   error?: string;
   disabled?: boolean;
+  dir?: "ltr";
   onChange: (value: string) => void;
 }) {
   return (
@@ -5522,6 +6131,7 @@ function TextField({
       <FieldLabel>{label}</FieldLabel>
       <Input
         value={value}
+        dir={dir}
         placeholder={placeholder}
         disabled={disabled}
         aria-invalid={Boolean(error)}
@@ -6256,6 +6866,8 @@ function WhiteVPNSettingsPage({
 }) {
   const stored = state.whiteVpn;
   const [draft, setDraft] = useState<WhiteVPNSettings>(stored);
+  const [editorStored, setEditorStored] = useState<WhiteVPNSettings | null>(null);
+  const [editorReload, setEditorReload] = useState(0);
   // Tunnel mode needs the core raised to root, and that is implemented on
   // Windows only. Asked of the backend rather than guessed from the interface,
   // so the day another platform gains it this needs no change here.
@@ -6267,18 +6879,6 @@ function WhiteVPNSettingsPage({
       .catch(() => setTunnelAvailable(false));
   }, []);
 
-  // The nodes a second hop can be chosen from: the selected subscription's, the
-  // list the connection itself is built from. Loaded here rather than passed in,
-  // because this is the only page that needs them and a settings page that
-  // waits on the Servers page having been opened would be a settings page that
-  // sometimes offers nothing.
-  const [chainNodes, setChainNodes] = useState<WhiteVPNNode[]>([]);
-  useEffect(() => {
-    void backend
-      .listWhiteVpnNodes(false)
-      .then((list) => setChainNodes((list.nodes || []).filter((node) => !node.hidden)))
-      .catch(() => setChainNodes([]));
-  }, [state.selectedSubscriptionId]);
 
   const [frontingDraft, setFrontingDraft] = useState("");
   const [processDraft, setProcessDraft] = useState("");
@@ -6300,9 +6900,14 @@ function WhiteVPNSettingsPage({
   // A real change elsewhere still wins, which is what this is for.
   const storedSnapshot = useMemo(() => JSON.stringify(stored), [stored]);
   useEffect(() => {
-    setDraft(stored);
+    let current = true;
+    setEditorStored(null);
+    void backend.getWhiteVpnSettingsForEdit().then((settings) => {
+      if (current) { setEditorStored(settings); setDraft(settings); }
+    }).catch((err) => { if (current) { onError(messageFromError(err)); } });
+    return () => { current = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [storedSnapshot]);
+  }, [storedSnapshot, editorReload]);
 
   // What the form holds right now, for the handlers that cannot wait for the
   // next render to find out.
@@ -6311,12 +6916,15 @@ function WhiteVPNSettingsPage({
     draftRef.current = draft;
   }, [draft]);
 
-  const dirty = useMemo(() => JSON.stringify(draft) !== storedSnapshot, [draft, storedSnapshot]);
+  const dirty = useMemo(() => editorStored !== null && JSON.stringify(draft) !== JSON.stringify(editorStored), [draft, editorStored]);
 
   async function save(next: WhiteVPNSettings) {
+    if (!editorStored) { return; }
     setSaving(true);
     try {
       onState(await backend.saveWhiteVpnSettings(next));
+      const updated = await backend.getWhiteVpnSettingsForEdit();
+      setEditorStored(updated); setDraft(updated);
       onSuccess(t("settings.saved"));
     } catch (err) {
       onError(messageFromError(err));
@@ -6402,11 +7010,18 @@ function WhiteVPNSettingsPage({
   const dnsMode = draft.dnsPrivacy.mode;
 
   useEffect(() => {
-    if (stored && sessionStorage.getItem("whitevpn-settings-section") === "fragments") {
+    if (editorStored && sessionStorage.getItem("whitevpn-settings-section") === "fragments") {
       sessionStorage.removeItem("whitevpn-settings-section");
       document.getElementById("fragment-settings")?.scrollIntoView({ block: "start" });
     }
-  }, [stored]);
+  }, [editorStored]);
+
+  if (!editorStored) {
+    return <PageShell eyebrow="WhiteVPN" title={t("settings.title")}>
+      <p className="text-sm text-muted-foreground">{t("settings.editor.loading")}</p>
+      <Button variant="outline" onClick={() => setEditorReload((value) => value + 1)}>{t("settings.editor.retry")}</Button>
+    </PageShell>;
+  }
 
   return (
     <PageShell
@@ -6414,7 +7029,7 @@ function WhiteVPNSettingsPage({
       title={t("settings.title")}
       actions={
         <>
-          <Button variant="outline" onClick={() => setDraft(stored)} disabled={!dirty || saving}>
+          <Button variant="outline" onClick={() => setDraft(editorStored)} disabled={!dirty || saving}>
             {t("settings.discard")}
           </Button>
           <Button onClick={() => void save(draft)} disabled={!dirty || saving}>
@@ -6424,38 +7039,8 @@ function WhiteVPNSettingsPage({
         </>
       }
     >
-      <SettingsSection title={t("settings.chain.title")} description={t("settings.chain.description")}>
-        <Field>
-          <FieldLabel>{t("settings.chain.exit")}</FieldLabel>
-          <Select
-            value={draft.chainExitNode || "off"}
-            onValueChange={(value) => patch({ chainExitNode: value === "off" ? "" : value })}
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent position="popper">
-              <SelectItem value="off">{t("settings.chain.off")}</SelectItem>
-              {chainNodes.map((node) => (
-                <SelectItem key={node.name} value={node.name}>
-                  {node.label || node.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <FieldDescription>
-            {draft.chainExitNode ? t("settings.chain.on.description") : t("settings.chain.off.description")}
-          </FieldDescription>
-        </Field>
-        {/* The chosen node may have left the subscription since it was picked,
-            which the connect path refuses rather than works around — so it is
-            said here, where it can still be changed. */}
-        {draft.chainExitNode && !chainNodes.some((node) => node.name === draft.chainExitNode) && (
-          <Alert variant="destructive">
-            <AlertCircle />
-            <AlertDescription>{t("settings.chain.missing", { name: draft.chainExitNode })}</AlertDescription>
-          </Alert>
-        )}
+      <SettingsSection title={t("chain.title")} description={t("chain.description")}>
+        <ChainRows state={state} onState={onState} onError={onError} t={t} />
       </SettingsSection>
 
       <SettingsSection title={t("settings.connection.title")} description={t("settings.connection.description")}>
@@ -6544,13 +7129,19 @@ function WhiteVPNSettingsPage({
             checked={draft.tlsIntegrityEnabled}
             onCheckedChange={(checked) => patchAndSave({ tlsIntegrityEnabled: checked })}
           />
+          <SettingSwitchRow
+            label={t("settings.autoEch")}
+            checked={draft.autoEch}
+            onCheckedChange={(autoEch) => patchAndSave({ autoEch })}
+          />
         </div>
         <FieldDescription>{t("settings.tlsIntegrity.description")}</FieldDescription>
+        <FieldDescription>{isolateLatin(t("settings.autoEch.description"))}</FieldDescription>
       </SettingsSection>
 
       <div id="fragment-settings" className="scroll-mt-4">
         <SettingsSection title={t("fragments.title")} description={t("fragments.description")}>
-          <FragmentSettingsPanel settings={draft.fragments} savedSettings={stored.fragments} saving={saving} t={t}
+          <FragmentSettingsPanel settings={draft.fragments} savedSettings={editorStored.fragments} saving={saving} t={t}
             onChange={(fragments) => patch({ fragments })}
             onApply={(fragments) => save({ ...draftRef.current, fragments })} />
         </SettingsSection>
@@ -7067,6 +7658,7 @@ function SettingsSection({
 
 // The same bordered row the VPN page uses for its controls, so a switch looks
 // and behaves the same wherever it appears.
+
 function SettingSwitchRow({
   label,
   checked,

@@ -54,9 +54,10 @@ type AmneziaNoiseSettings struct {
 
 // DNSPrivacySettings is the encrypted-DNS choice.
 type DNSPrivacySettings struct {
-	Mode        string `json:"mode"`
-	DoHURL      string `json:"dohUrl"`
-	DoTEndpoint string `json:"dotEndpoint"`
+	CredentialRequired bool   `json:"credentialRequired,omitempty"`
+	Mode               string `json:"mode"`
+	DoHURL             string `json:"dohUrl"`
+	DoTEndpoint        string `json:"dotEndpoint"`
 }
 
 // ConnectionSelection is the dashboard's node choice: which node to connect
@@ -134,6 +135,7 @@ type SubscriptionSelection struct {
 
 // WhiteVPNSettings is everything the phone lets a user change.
 type WhiteVPNSettings struct {
+	PublicOnly bool `json:"publicOnly,omitempty"`
 	// Dashboard rows. CountryCode and Connection belong to whichever
 	// subscription is selected; see SubscriptionSelections.
 	CountryCode string              `json:"countryCode"`
@@ -162,6 +164,7 @@ type WhiteVPNSettings struct {
 
 	// Settings sections, in the order the phone shows them.
 	TLSIntegrityEnabled bool                 `json:"tlsIntegrityEnabled"`
+	AutoECH             bool                 `json:"autoEch"`
 	Fragments           fragment.Settings    `json:"fragments"`
 	AmneziaNoise        AmneziaNoiseSettings `json:"amneziaNoise"`
 	FrontingIPs         []string             `json:"frontingIps"`
@@ -173,15 +176,14 @@ type WhiteVPNSettings struct {
 	// shown Persian will assume the app is broken.
 	Language string `json:"language"`
 
-	// ChainExitNode sends traffic through a second node before it leaves.
-	//
-	// The node named here becomes the exit; the connection chosen on the VPN
-	// page becomes the hop beneath it, Automatic included. Empty means one hop,
-	// which is what everybody gets until they ask for otherwise.
-	//
-	// A name rather than an index, because a subscription refresh reorders the
-	// list and an index would quietly come to mean a different server.
-	ChainExitNode string `json:"chainExitNode"`
+	// Chain sends traffic through a second node before it leaves. No node 2,
+	// the default, is the ordinary one-hop connection.
+	Chain ChainSettings `json:"chain"`
+
+	// ChainExitNode is the chain as it was stored before nodes could come from
+	// two subscriptions: an exit in the selected one. It is only ever read, by
+	// MigrateLegacyChain, and is empty once that has run.
+	ChainExitNode string `json:"chainExitNode,omitempty"`
 
 	// Tunnel. Not a phone setting: there, VpnService always provides the tunnel.
 	// Here it can be turned off, and off is the only mode that works without
@@ -257,6 +259,7 @@ func DefaultWhiteVPNSettings() WhiteVPNSettings {
 		SplitTunnel:         SplitTunnelSettings{Mode: SplitTunnelOff, Processes: []string{}},
 		DirectRouting:       DefaultDirectRouting(),
 		TLSIntegrityEnabled: false,
+		AutoECH:             true,
 		Fragments:           fragment.Default(),
 		AmneziaNoise: AmneziaNoiseSettings{
 			Enabled: false,
@@ -271,6 +274,7 @@ func DefaultWhiteVPNSettings() WhiteVPNSettings {
 			DoTEndpoint: DefaultDoTEndpoint,
 		},
 		KillSwitch: KillSwitchSettings{Enabled: false},
+		Chain:      DefaultChainSettings(),
 		Language:   "",
 		TunEnabled: false,
 		// On by default, because that is what the app did before this was a
@@ -285,7 +289,8 @@ func DefaultWhiteVPNSettings() WhiteVPNSettings {
 // one listener.
 const DefaultLocalProxyPort = 2080
 
-// UnmarshalJSON reads settings, treating an absent SetSystemProxy as on.
+// UnmarshalJSON reads settings, treating an absent SetSystemProxy or AutoECH
+// as on.
 //
 // Every settings file written before that field existed has no key for it, and
 // a plain bool reads a missing key as false — which is the new proxy-only mode.
@@ -304,12 +309,14 @@ func (s *WhiteVPNSettings) UnmarshalJSON(data []byte) error {
 	probe := struct {
 		*alias
 		SetSystemProxy *bool `json:"setSystemProxy"`
+		AutoECH        *bool `json:"autoEch"`
 	}{alias: (*alias)(s)}
 
 	if err := json.Unmarshal(data, &probe); err != nil {
 		return err
 	}
 	s.SetSystemProxy = probe.SetSystemProxy == nil || *probe.SetSystemProxy
+	s.AutoECH = probe.AutoECH == nil || *probe.AutoECH
 	return nil
 }
 
@@ -370,12 +377,16 @@ func NormalizeWhiteVPNSettings(settings WhiteVPNSettings) WhiteVPNSettings {
 		settings.DNSPrivacy.Mode = DNSPrivacyAutomatic
 	}
 	if trimmed := strings.TrimSpace(settings.DNSPrivacy.DoHURL); trimmed == "" {
-		settings.DNSPrivacy.DoHURL = defaults.DNSPrivacy.DoHURL
+		if !settings.DNSPrivacy.CredentialRequired {
+			settings.DNSPrivacy.DoHURL = defaults.DNSPrivacy.DoHURL
+		}
 	} else {
 		settings.DNSPrivacy.DoHURL = trimmed
 	}
 	if trimmed := strings.TrimSpace(settings.DNSPrivacy.DoTEndpoint); trimmed == "" {
-		settings.DNSPrivacy.DoTEndpoint = defaults.DNSPrivacy.DoTEndpoint
+		if !settings.DNSPrivacy.CredentialRequired {
+			settings.DNSPrivacy.DoTEndpoint = defaults.DNSPrivacy.DoTEndpoint
+		}
 	} else {
 		settings.DNSPrivacy.DoTEndpoint = trimmed
 	}
@@ -407,6 +418,7 @@ func NormalizeWhiteVPNSettings(settings WhiteVPNSettings) WhiteVPNSettings {
 	}
 	settings.Language = strings.TrimSpace(settings.Language)
 	settings.ChainExitNode = strings.TrimSpace(settings.ChainExitNode)
+	settings.Chain = NormalizeChainSettings(settings.Chain)
 
 	// A port outside the range, or one of the reserved low ones no ordinary
 	// program may bind, becomes the default rather than reaching the engine and

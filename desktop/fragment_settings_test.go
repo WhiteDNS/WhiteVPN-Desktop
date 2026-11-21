@@ -3,17 +3,15 @@ package main
 import (
 	"encoding/json"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"whitevpn-desktop/internal/model"
-	"whitevpn-desktop/internal/profiles"
 )
 
 func TestFragmentSettingsSaveAndRejectInvalidEdits(t *testing.T) {
-	a := fragmentReleaseTestApp(t)
-	s := a.GetWhiteVPNSettings()
+	a := publicAPITestApp(t)
+	s := a.GetWhiteVPNSettingsForEdit()
 	s.Fragments = a.GetDefaultFragmentSettings()
 	s.Fragments.Enabled = true
 	s.Fragments.RawJSON = a.GetFragmentPresets()[4]
@@ -27,15 +25,15 @@ func TestFragmentSettingsSaveAndRejectInvalidEdits(t *testing.T) {
 	if loaded.WhiteVPN.Fragments != s.Fragments {
 		t.Fatal("fragment preset not persisted")
 	}
-	before := a.GetWhiteVPNSettings().Fragments
+	before := a.GetWhiteVPNSettingsForEdit().Fragments
 	s.Fragments.RawJSON = `{"tcp":[]}`
 	if _, err := a.SaveWhiteVPNSettings(s); err == nil {
 		t.Fatal("invalid fragment edit accepted")
 	}
-	if a.GetWhiteVPNSettings().Fragments != before {
+	if a.GetWhiteVPNSettingsForEdit().Fragments != before {
 		t.Fatal("invalid edit replaced working settings")
 	}
-	if a.GetWhiteVPNSettings().DNSPrivacy.DoHURL != "https://dns.example/dns-secret-marker" {
+	if a.GetWhiteVPNSettingsForEdit().DNSPrivacy.DoHURL != "https://dns.example/dns-secret-marker" {
 		t.Fatal("fragment save changed DNS credentials")
 	}
 	for _, raw := range a.GetFragmentPresets() {
@@ -51,7 +49,7 @@ func TestFragmentUIFixture(t *testing.T) {
 	if path == "" {
 		return
 	}
-	a := fragmentReleaseTestApp(t)
+	a := publicAPITestApp(t)
 	a.state.SelectedSubscriptionID = model.ManualServerSourceID
 	a.state.WhiteVPN.Language = "en"
 	a.state.WhiteVPN.Fragments = a.GetDefaultFragmentSettings()
@@ -59,7 +57,7 @@ func TestFragmentUIFixture(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fixture := map[string]any{"state": a.GetAppState(), "nodes": list, "settings": a.GetWhiteVPNSettings(), "presets": a.GetFragmentPresets(), "fragmentDefaults": a.GetDefaultFragmentSettings()}
+	fixture := map[string]any{"state": a.GetAppState(), "nodes": list, "settings": a.GetWhiteVPNSettingsForEdit(), "presets": a.GetFragmentPresets(), "fragmentDefaults": a.GetDefaultFragmentSettings()}
 	raw, err := json.Marshal(fixture)
 	if err != nil {
 		t.Fatal(err)
@@ -67,16 +65,4 @@ func TestFragmentUIFixture(t *testing.T) {
 	if err := os.WriteFile(path, raw, 0600); err != nil {
 		t.Fatal(err)
 	}
-}
-
-func fragmentReleaseTestApp(t *testing.T) *App {
-	a := newSnapshotTestApp(t)
-	a.store = profiles.NewStore(filepath.Join(a.configDir, "state.json"))
-	a.state.V2RayProfiles = []model.V2RayProfile{manualProfile("manual-1", "Demo node", "localhost")}
-	a.state.WhiteVPN.DNSPrivacy.DoHURL = "https://dns.example/dns-secret-marker"
-	a.state.WhiteVPN.AcceptedPrivacyPolicyVersion = model.CurrentPrivacyPolicyID
-	if _, err := a.saveLocked(); err != nil {
-		t.Fatal(err)
-	}
-	return a
 }

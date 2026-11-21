@@ -40,18 +40,18 @@ type Options struct {
 	// Direct names destinations that never enter the tunnel — the user's own
 	// domain and address lists. Empty means everything goes through.
 	//
-	// Like Chain, only the link-based path honours it: a subscription arriving
-	// as a whole mihomo document brings its own rules, and inserting ours above
+	// Only a subscription this app reads proxies out of honours it — share
+	// links, or a document with its proxies written inline. One passed through
+	// as it is (proxy-providers) brings its own rules, and inserting ours above
 	// them would be rewriting somebody else's routing.
 	Direct mihomoconf.DirectRoute
 
 	// Chain sends traffic through a second node before the internet. Empty means
 	// one hop, which is the ordinary case.
 	//
-	// Only the link-based path honours it. A subscription that arrives as a whole
-	// mihomo document brings its own groups and rules, and rewriting somebody
-	// else's routing to insert a hop is a different and much larger promise than
-	// the one this makes.
+	// It names proxies in Subscription, which for a chain is the document
+	// mihomoconf.PlanChain built from the two nodes' subscriptions — links or
+	// YAML, it does not matter by then.
 	Chain mihomoconf.Chain
 
 	DNSPrivacy  mihomoconf.DNSPrivacyMode
@@ -96,11 +96,18 @@ type Options struct {
 	// it. Empty means everything goes through it.
 	SplitTunnel mihomoconf.SplitTunnel
 
+	// RejectUDP and Bypass serve a route through a local engine; see
+	// mihomoconf.Routing.
+	RejectUDP bool
+	Bypass    []string
+
 	// Noise pads WireGuard proxies so their shape is less recognisable. It
 	// reaches nothing else, because the noise is AmneziaWG's and mihomo has
 	// nowhere to put it on a vless or trojan proxy.
 	Noise     mihomoconf.AmneziaNoise
 	Fragments fragment.Settings
+	// AutoECH adds optional ECH to CDN TLS nodes that do not set it themselves.
+	AutoECH bool
 
 	// FrontingIP reaches every eligible node through this address instead of the
 	// one its name resolves to, while still presenting the name. Empty means the
@@ -123,6 +130,9 @@ func (o Options) Clone() Options {
 	o.SplitTunnel.Processes = append([]string(nil), o.SplitTunnel.Processes...)
 	o.Direct.Domains = append([]string(nil), o.Direct.Domains...)
 	o.Direct.IPs = append([]string(nil), o.Direct.IPs...)
+	o.Chain.Entries = append([]string(nil), o.Chain.Entries...)
+	o.Chain.Exits = append([]string(nil), o.Chain.Exits...)
+	o.Bypass = append([]string(nil), o.Bypass...)
 	return o
 }
 
@@ -147,6 +157,9 @@ type Session struct {
 	seeded       int
 	fragmentMode string
 
+	// ech names the nodes whose configuration dials them with ECH.
+	ech map[string]bool
+
 	// tunnelUnverified is set when the tunnel was accepted without being checked,
 	// which happens on platforms that have no way to read an adapter's routes yet.
 	tunnelUnverified error
@@ -161,6 +174,22 @@ func (s *Session) Seeded() int { return s.seeded }
 
 // FragmentMode is the variant that actually connected, including fallback.
 func (s *Session) FragmentMode() string { return s.fragmentMode }
+
+// ECH reports whether the named node is dialled with ECH.
+func (s *Session) ECH(name string) bool { return s.ech[name] }
+
+// echNodes reads ECH off the written configuration, so it covers the
+// subscription's own ech-opts and automatic ECH alike.
+func echNodes(document string) map[string]bool {
+	proxies, _ := mihomoconf.ParseDocument(document)
+	ech := make(map[string]bool, len(proxies))
+	for _, proxy := range proxies {
+		if mihomoconf.ECHEnabled(proxy) {
+			ech[proxy.Name()] = true
+		}
+	}
+	return ech
+}
 
 // TunnelUnverified is non-nil when the tunnel is up but could not be inspected,
 // so the caller can say so instead of implying it was checked.
@@ -296,6 +325,7 @@ func connectOwnedOnce(ctx context.Context, opts Options) (*Session, error) {
 		// group, and a stated preference is the user choosing for themselves.
 		automatic: len(candidates) > 0 && len(opts.Prefer) == 0,
 		reasons:   reasons,
+		ech:       echNodes(document),
 	}
 	if err != nil {
 		return session, err
@@ -741,6 +771,7 @@ func PrepareConfig(opts Options) (string, []string, error) {
 		if err != nil {
 			return "", nil, fmt.Errorf("session: fragment settings: %w", err)
 		}
+		proxies = mihomoconf.ApplyAutoECH(proxies, opts.AutoECH)
 		if opts.FrontingIP != "" {
 			// Nodes fronting cannot be applied to are left reachable at their own
 			// address rather than dropped: a front that covers most of the list is
@@ -750,18 +781,20 @@ func PrepareConfig(opts Options) (string, []string, error) {
 		// Share links, which is what the WhiteDNS catalogue is. They carry nodes
 		// only, so the groups and rule have to be generated around them.
 		document, firstHop, buildErr := mihomoconf.BuildProxiesYAMLWithRouting(proxies, mihomoconf.Routing{
-			Direct: opts.Direct,
-			Split:  opts.SplitTunnel,
-			Chain:  opts.Chain,
+			Direct:    opts.Direct,
+			Split:     opts.SplitTunnel,
+			Chain:     opts.Chain,
+			RejectUDP: opts.RejectUDP,
+			Bypass:    opts.Bypass,
 		})
 		if buildErr != nil {
 			return "", nil, buildErr
 		}
 		proxiesYAML = document
 		// What the first hop may be, which is not every node once a chain is in
-		// play: the exit's own is taken out so both ends cannot be one machine,
-		// and a datagram exit narrows it to nodes that can carry UDP. Selecting
-		// outside this would name a proxy the group does not contain.
+		// play: only node 1's choices, already narrowed to those that can carry
+		// node 2. Selecting outside this would name a proxy the group does not
+		// contain.
 		candidates = append([]string(nil), firstHop...)
 		if len(opts.Prefer) > 0 {
 			preferred := intersect(candidates, opts.Prefer)
@@ -772,6 +805,9 @@ func PrepareConfig(opts Options) (string, []string, error) {
 		}
 		group = mihomoconf.SelectGroup
 	} else if looksLikeMihomoDocument(body) {
+		if opts.Chain.Active() {
+			return "", nil, fmt.Errorf("session: a chain needs inline proxy definitions")
+		}
 		if opts.Fragments.Enabled {
 			return "", nil, fmt.Errorf("session: fragments require inline proxy definitions; import the provider's nodes first")
 		}
@@ -802,6 +838,7 @@ func PrepareConfig(opts Options) (string, []string, error) {
 		ProxyGroup:  group,
 		Tun:         opts.Tun,
 		SplitTunnel: opts.SplitTunnel,
+		FindProcess: len(opts.Bypass) > 0,
 	})
 	return document, candidates, nil
 }

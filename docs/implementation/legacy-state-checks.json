@@ -1,0 +1,44 @@
+{
+  "date": "2026-10-04",
+  "scope": "Windows production legacy state and subscription snapshot migration to the user-scoped vault",
+  "goToolchain": "go1.26.5",
+  "windowsAMD64": {
+    "goBuildExit": 0,
+    "goVetExit": 0,
+    "testsPassed": 639,
+    "testsFailed": 0,
+    "testsSkipped": 8,
+    "packagesPassed": 14,
+    "racePackages": ["profiles", "securestore", "engineprofiles", "sessionmanager"],
+    "packageRaceTestsExit": 0,
+    "appMigrationAndProfileAPIRaceTestsExit": 0,
+    "realDPAPIMigrationAndStartupTests": true
+  },
+  "frontend": {
+    "typeScriptExit": 0,
+    "productionBuildExit": 0,
+    "existingLargeChunkWarning": true
+  },
+  "crossBuild": {
+    "windowsARM64AllDesktopPackagesExit": 0,
+    "linuxAMD64InternalPackagesExit": 0,
+    "cgoEnabled": false
+  },
+  "acceptanceLimits": {
+    "windowsExistingStateAndSnapshotsEncrypted": true,
+    "ownedLegacyMainAndRecognizedTemporaryFilesCleanedAfterProtection": true,
+    "legacyBackupImportWritesEncryptedState": true,
+    "legacyWriterFormatIsolationTested": true,
+    "oldExecutableDowngradeTested": false,
+    "completeP1GatePassed": false,
+    "globalPublicAppStateComplete": false,
+    "defaultPublicBackupSecretFree": false,
+    "engineSelectionTransactionIntegrated": false,
+    "multiProcessWriteCoordinationTested": false,
+    "physicalPowerLossAndDiskFullTested": false,
+    "mihomoManagerAdapterIntegrated": false,
+    "newEngineRuntimeIntegrated": false,
+    "nativeHelpersPackaged": false,
+    "physicalARM64RuntimeTested": false
+  }
+}

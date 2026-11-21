@@ -1,0 +1,32 @@
+[
+  {
+    "transport": "obfs4",
+    "architecture": "amd64",
+    "exit": 0
+  },
+  {
+    "transport": "snowflake",
+    "architecture": "amd64",
+    "exit": 0
+  },
+  {
+    "transport": "conjure",
+    "architecture": "amd64",
+    "exit": 1
+  },
+  {
+    "transport": "obfs4",
+    "architecture": "arm64",
+    "exit": 0
+  },
+  {
+    "transport": "snowflake",
+    "architecture": "arm64",
+    "exit": 0
+  },
+  {
+    "transport": "conjure",
+    "architecture": "arm64",
+    "exit": 1
+  }
+]

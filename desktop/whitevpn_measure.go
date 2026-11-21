@@ -331,6 +331,7 @@ func (a *App) startMeasurer(ctx context.Context, subscriptionID string) (*sessio
 		Subscription: subscription,
 		FrontingIP:   frontingIP,
 		Fragments:    settings.Fragments,
+		AutoECH:      settings.AutoECH,
 	})
 	if err != nil {
 		return nil, err

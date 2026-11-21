@@ -43,7 +43,12 @@ printf 'Building mihomo %s for %s/%s...\n' "${MIHOMO_TAG}" "${TARGET_GOOS}" "${T
   # date. Android's build script tidies for the same reason.
   go mod tidy
   go mod verify
-  CGO_ENABLED=0 go test -tags=with_gvisor github.com/metacubex/mihomo/adapter/outbound -run Fragment
+  # Same policy and socket-cleanup regressions Android runs on its build host.
+  CGO_ENABLED=0 go test -tags=with_gvisor \
+    github.com/metacubex/mihomo/config \
+    github.com/metacubex/mihomo/listener \
+    github.com/metacubex/mihomo/adapter/outbound \
+    -run 'WhiteVPN|Fragment|ECH|RebindWireGuard'
   CGO_ENABLED=0 GOOS="${TARGET_GOOS}" GOARCH="${TARGET_GOARCH}" \
     go build \
     -tags=with_gvisor \

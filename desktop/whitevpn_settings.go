@@ -4,15 +4,15 @@ import (
 	"fmt"
 
 	"whitevpn-desktop/internal/fragment"
-
 	"whitevpn-desktop/internal/model"
+	"whitevpn-desktop/internal/sessionmanager"
 )
 
 // GetWhiteVPNSettings returns the settings the phone app exposes.
 func (a *App) GetWhiteVPNSettings() model.WhiteVPNSettings {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	return settingsForThisMachine(model.NormalizeWhiteVPNSettings(a.state.WhiteVPN))
+	return model.PublicWhiteVPNSettings(settingsForThisMachine(model.NormalizeWhiteVPNSettings(a.state.WhiteVPN)))
 }
 
 // settingsForThisMachine drops what this build cannot do.
@@ -51,13 +51,27 @@ func (a *App) SaveWhiteVPNSettings(settings model.WhiteVPNSettings) (model.AppSt
 	settings.Fragments = valid
 	a.mu.Lock()
 	previousFragments := a.state.WhiteVPN.Fragments
-	connected := a.state.Runtime.Engine == EngineMihomo && a.state.Runtime.Status == model.RuntimeConnected
+	previousAutoECH := a.state.WhiteVPN.AutoECH
+	if settings.PublicOnly {
+		settings.DNSPrivacy.DoHURL = a.state.WhiteVPN.DNSPrivacy.DoHURL
+		settings.DNSPrivacy.DoTEndpoint = a.state.WhiteVPN.DNSPrivacy.DoTEndpoint
+		settings.DNSPrivacy.CredentialRequired = a.state.WhiteVPN.DNSPrivacy.CredentialRequired
+	} else if settings.DNSPrivacy.CredentialRequired {
+		if (settings.DNSPrivacy.Mode == model.DNSPrivacyDoH && settings.DNSPrivacy.DoHURL == "") || (settings.DNSPrivacy.Mode == model.DNSPrivacyDoT && settings.DNSPrivacy.DoTEndpoint == "") {
+			a.mu.Unlock()
+			return a.GetAppState(), model.ErrCredentialsRequired
+		}
+		settings.DNSPrivacy.CredentialRequired = false
+	}
+	settings.PublicOnly = false
 	// The parked selections are never taken from the caller. They are not a
 	// setting anybody edits — they are what the subscription switch put aside —
 	// and the interface does not carry the field at all, so a settings save
 	// from the page would arrive with it empty and wipe every other
 	// subscription's filter on the way past.
 	settings.SubscriptionSelections = a.state.WhiteVPN.SubscriptionSelections
+	// Likewise the chain, which has its own call: see SaveConnectionChain.
+	settings.Chain, settings.ChainExitNode = a.state.WhiteVPN.Chain, a.state.WhiteVPN.ChainExitNode
 	normalized := settingsForThisMachine(model.NormalizeWhiteVPNSettings(settings))
 	a.state.WhiteVPN = normalized
 	state, err := a.saveLocked()
@@ -68,8 +82,12 @@ func (a *App) SaveWhiteVPNSettings(settings model.WhiteVPNSettings) (model.AppSt
 	}
 	// The tray speaks the app's language too.
 	a.notifyTray()
-	if connected && previousFragments != normalized.Fragments && (previousFragments.Enabled || normalized.Fragments.Enabled) {
-		return a.RefreshWhiteDNSVPNConnection()
+	fragmentsChanged := previousFragments != normalized.Fragments && (previousFragments.Enabled || normalized.Fragments.Enabled)
+	if fragmentsChanged || previousAutoECH != normalized.AutoECH {
+		snapshot := a.connectionManager().Snapshot()
+		if snapshot.Phase == sessionmanager.Connected && snapshot.Route != nil && snapshot.Route.Kind == "mihomo" {
+			return a.connectMihomo(true)
+		}
 	}
 	return state, nil
 }

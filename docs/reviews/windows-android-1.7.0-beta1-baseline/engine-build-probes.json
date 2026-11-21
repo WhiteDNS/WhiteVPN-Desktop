@@ -1,0 +1,32 @@
+[
+  {
+    "package": "github.com/Psiphon-Labs/psiphon-tunnel-core/psiphon",
+    "architecture": "amd64",
+    "exit": 0
+  },
+  {
+    "package": "zeddns",
+    "architecture": "amd64",
+    "exit": 0
+  },
+  {
+    "package": "masterdnsvpn-go/mobile",
+    "architecture": "amd64",
+    "exit": 0
+  },
+  {
+    "package": "github.com/Psiphon-Labs/psiphon-tunnel-core/psiphon",
+    "architecture": "arm64",
+    "exit": 0
+  },
+  {
+    "package": "zeddns",
+    "architecture": "arm64",
+    "exit": 0
+  },
+  {
+    "package": "masterdnsvpn-go/mobile",
+    "architecture": "arm64",
+    "exit": 0
+  }
+]

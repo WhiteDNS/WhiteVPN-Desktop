@@ -31,7 +31,7 @@ Startup tries the requested options, fragments without ALPN/cipher overrides,
 then normal connection options, deduplicating identical attempts. Each fragment
 attempt has a 90-second startup budget. Cancellation prevents further attempts.
 Failed processes are stopped and TUN adapter removal is checked before retry;
-cleanup failure retains the owned engine for a later cleanup attempt.
+cleanup failure returns the owned session to the main connection manager.
 Fallback does not change the stored preference or TLS integrity checks. Logs and
 the dashboard distinguish full, fragments-only and normal fallback modes.
 

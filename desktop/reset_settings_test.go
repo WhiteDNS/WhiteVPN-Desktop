@@ -27,7 +27,7 @@ func TestResettingSettingsKeepsEverythingThatIsNotASetting(t *testing.T) {
 	app.state.WhiteVPN.Connection = model.ConnectionSelection{Node: "one node only", Types: []string{"vless"}}
 	app.state.WhiteVPN.DNSPrivacy = model.DNSPrivacySettings{Mode: model.DNSPrivacyDoH, DoHURL: "https://somewhere.example/dns"}
 	app.state.WhiteVPN.KillSwitch = model.KillSwitchSettings{Enabled: true}
-	app.state.WhiteVPN.ChainExitNode = "some exit"
+	app.state.WhiteVPN.Chain.Exit = model.ChainHop{Mode: model.ChainHopFixed, SubscriptionID: "provider", Node: "some exit"}
 	app.state.WhiteVPN.Language = "fa"
 	app.state.Theme = "dark"
 
@@ -59,7 +59,7 @@ func TestResettingSettingsKeepsEverythingThatIsNotASetting(t *testing.T) {
 	if state.WhiteVPN.KillSwitch.Enabled {
 		t.Fatal("the kill switch was not reset")
 	}
-	if state.WhiteVPN.ChainExitNode != "" {
+	if state.WhiteVPN.Chain.Active() {
 		t.Fatal("the second hop was not reset")
 	}
 	if state.WhiteVPN.Language != "" {

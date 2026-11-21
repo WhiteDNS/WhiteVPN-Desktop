@@ -42,6 +42,12 @@ import (
 // tunnel reaches everything, and not connected does not mean a direct fetch will
 // fail — so whichever answers first is the answer.
 func (a *App) fetchSubscriptionDocument(ctx context.Context, subscription model.V2RaySubscription) (string, error) {
+	if subscription.CredentialRequired || subscription.PublicOnly {
+		return "", model.ErrCredentialsRequired
+	}
+	if subscription.Body != "" {
+		return subscription.Body, nil
+	}
 	var directErr, proxiedErr error
 	skipVerify := subscription.AllowInsecureTLS
 
@@ -117,7 +123,7 @@ func subscriptionFetchError(directErr, proxiedErr error, skipVerify bool) error 
 		return explain(directErr, "this server's certificate could not be verified, so there is no proof this is the real address. If you trust this provider and this network, turn on \"Fetch without checking the certificate\" and try again.")
 	}
 	if !looksLikeInterference(directErr) {
-		return directErr
+		return explain(directErr, "subscription fetch failed")
 	}
 	// Turned on and still failing this way: the switch is not the missing piece
 	// and leaving someone to keep it on for nothing is the worst outcome.

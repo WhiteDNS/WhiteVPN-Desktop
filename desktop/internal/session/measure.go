@@ -41,6 +41,7 @@ type MeasureOptions struct {
 	// reflects how the node will actually be reached.
 	FrontingIP string
 	Fragments  fragment.Settings
+	AutoECH    bool
 
 	CoreStdout io.Writer
 	CoreStderr io.Writer
@@ -81,6 +82,7 @@ func StartMeasurer(ctx context.Context, opts MeasureOptions) (*Measurer, error) 
 		Subscription: opts.Subscription,
 		FrontingIP:   opts.FrontingIP,
 		Fragments:    opts.Fragments,
+		AutoECH:      opts.AutoECH,
 		MixedPort:    mixedPort,
 		ControlPort:  controlPort,
 		// No tunnel: a measuring engine must never touch the machine's routing,

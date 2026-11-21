@@ -31,12 +31,20 @@ const (
 // badge, zero bytes. Nothing was ever going to notice, because nothing was
 // looking after the first successful request.
 func (a *App) watchHealth(current *session.Session) {
-	go func() {
+	if current.Engine() == nil {
+		return
+	}
+	a.launchMihomo(current, func(lifetime context.Context) {
 		ticker := time.NewTicker(healthWatchInterval)
 		defer ticker.Stop()
 
 		failures := 0
-		for range ticker.C {
+		for {
+			select {
+			case <-lifetime.Done():
+				return
+			case <-ticker.C:
+			}
 			// This watcher belongs to one session; a replaced or stopped one
 			// gets its own.
 			if a.mihomo.current() != current {
@@ -50,7 +58,7 @@ func (a *App) watchHealth(current *session.Session) {
 				continue
 			}
 
-			ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
+			ctx, cancel := context.WithTimeout(lifetime, 12*time.Second)
 			ok := current.Healthy(ctx)
 			cancel()
 			if ok {
@@ -61,13 +69,15 @@ func (a *App) watchHealth(current *session.Session) {
 				// Under automatic selection the engine moves between nodes on its
 				// own, so the name on the dashboard has to be re-read rather than
 				// assumed to still be the one connecting settled on.
-				lookupCtx, lookupCancel := context.WithTimeout(context.Background(), 5*time.Second)
+				lookupCtx, lookupCancel := context.WithTimeout(lifetime, 5*time.Second)
 				node, moved := current.RefreshSelection(lookupCtx)
 				lookupCancel()
 				if moved {
-					a.appendRuntimeLog(fmt.Sprintf("the automatic group moved to %q", node))
-					a.recordConnectedNode(node)
-					a.resolveExitCountry()
+					a.withMihomo(current, func() {
+						a.appendRuntimeLog(fmt.Sprintf("the automatic group moved to %q", node))
+						a.recordConnectedNode(node)
+						a.resolveExitCountry()
+					})
 				}
 				continue
 			}
@@ -84,40 +94,43 @@ func (a *App) watchHealth(current *session.Session) {
 				// The node was chosen by hand. Moving off it would be answering
 				// a question the user already answered, so this only says so.
 				a.appendRuntimeLog("the chosen node is not carrying traffic; pick another on the VPN page")
-				a.emit("runtime:error", "The node you chose has stopped carrying traffic. Pick another, or set the connection back to Automatic.")
+				a.withMihomo(current, func() {
+					a.emit("runtime:error", "The node you chose has stopped carrying traffic. Pick another, or set the connection back to Automatic.")
+				})
 				continue
 			}
-			a.recoverConnection(current)
+			a.recoverConnection(lifetime, current)
 		}
-	}()
+	})
 }
 
 // recoverConnection moves a stranded connection onto a node that works.
-func (a *App) recoverConnection(current *session.Session) {
-	a.appendRuntimeLog("looking for a node that works")
-	a.handleRuntimeState(model.RuntimeConnecting, "The node stopped answering — finding another")
+func (a *App) recoverConnection(lifetime context.Context, current *session.Session) {
+	if !a.withMihomo(current, func() {
+		a.appendRuntimeLog("looking for a node that works")
+		a.handleRuntimeState(model.RuntimeConnecting, "The node stopped answering — finding another")
+	}) {
+		return
+	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	ctx, cancel := context.WithTimeout(lifetime, 90*time.Second)
 	defer cancel()
 
 	node, err := current.Recover(ctx, healthWatchAttempts)
-	if a.mihomo.current() != current {
-		// Stopped or replaced while this was running; its outcome is about a
-		// connection that no longer exists.
-		return
-	}
-	if err != nil {
-		a.appendRuntimeLog(err.Error())
-		// Still connected, on the node it had: the status goes back to what it
-		// was rather than to failed, because the proxy is up and the old node
-		// may recover.
-		a.handleRuntimeState(model.RuntimeConnected, fmt.Sprintf("Proxy listening on 127.0.0.1:%d", current.MixedPort()))
-		a.emit("runtime:error", "The connection stopped working and no other node answered either.")
-		return
-	}
+	a.withMihomo(current, func() {
+		if err != nil {
+			a.appendRuntimeLog(err.Error())
+			// Still connected, on the node it had: the status goes back to what it
+			// was rather than to failed, because the proxy is up and the old node
+			// may recover.
+			a.handleRuntimeState(model.RuntimeConnected, fmt.Sprintf("Proxy listening on 127.0.0.1:%d", current.MixedPort()))
+			a.emit("runtime:error", "The connection stopped working and no other node answered either.")
+			return
+		}
 
-	a.appendRuntimeLog(fmt.Sprintf("moved to %q", node))
-	a.recordConnectedNode(node)
-	a.handleRuntimeState(model.RuntimeConnected, fmt.Sprintf("Proxy listening on 127.0.0.1:%d", current.MixedPort()))
-	a.resolveExitCountry()
+		a.appendRuntimeLog(fmt.Sprintf("moved to %q", node))
+		a.recordConnectedNode(node)
+		a.handleRuntimeState(model.RuntimeConnected, fmt.Sprintf("Proxy listening on 127.0.0.1:%d", current.MixedPort()))
+		a.resolveExitCountry()
+	})
 }

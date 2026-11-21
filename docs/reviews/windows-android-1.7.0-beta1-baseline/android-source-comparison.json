@@ -1,0 +1,62 @@
+[
+  {
+    "file": "EngineProfiles.kt",
+    "originalMatchesRelease": true
+  },
+  {
+    "file": "EngineSettingsPolicy.kt",
+    "originalMatchesRelease": true
+  },
+  {
+    "file": "BackendOwnership.kt",
+    "originalMatchesRelease": true
+  },
+  {
+    "file": "AmneziaConfigImport.kt",
+    "originalMatchesRelease": true
+  },
+  {
+    "file": "AmneziaEngineBackend.kt",
+    "originalMatchesRelease": true
+  },
+  {
+    "file": "PlatformIkev2Controller.kt",
+    "originalMatchesRelease": false
+  },
+  {
+    "file": "EngineRuntimeYaml.kt",
+    "originalMatchesRelease": true
+  },
+  {
+    "file": "MobileEngineBackends.kt",
+    "originalMatchesRelease": true
+  },
+  {
+    "file": "SshEngineBackend.kt",
+    "originalMatchesRelease": true
+  },
+  {
+    "file": "EngineProfileStore.kt",
+    "originalMatchesRelease": true
+  },
+  {
+    "file": "EngineProfilesUi.kt",
+    "originalMatchesRelease": true
+  },
+  {
+    "file": "SavedProfilesUi.kt",
+    "originalMatchesRelease": false
+  },
+  {
+    "file": "TorEngineBackend.kt",
+    "originalMatchesRelease": true
+  },
+  {
+    "file": "EngineProfileTester.kt",
+    "originalMatchesRelease": true
+  },
+  {
+    "file": "PsiphonRegions.kt",
+    "originalMatchesRelease": true
+  }
+]

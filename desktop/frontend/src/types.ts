@@ -2,6 +2,8 @@ export type RuntimeStatusName = "disconnected" | "connecting" | "connected" | "s
 export type RuntimeType = "" | "masterdns" | "v2ray";
 
 export interface ConnectionProfile {
+  publicOnly?: boolean;
+  credentialRequired?: boolean;
   id: string;
   name: string;
   importType: ImportType;
@@ -27,6 +29,9 @@ export interface ResolverProfile {
 export type V2RayProtocol = "vless" | "vmess" | "trojan" | "shadowsocks" | "hysteria2" | "anytls" | "wireguard" | "socks" | "http";
 
 export interface V2RayProfile {
+  publicOnly?: boolean;
+  credentialRequired?: boolean;
+  credentialsReady?: boolean;
   id: string;
   name: string;
   subscriptionId: string;
@@ -96,6 +101,9 @@ export interface V2RaySettingsProfile {
 }
 
 export interface V2RaySubscription {
+  publicOnly?: boolean;
+  credentialRequired?: boolean;
+  displayUrl?: string;
   id: string;
   name: string;
   url: string;
@@ -103,6 +111,15 @@ export interface V2RaySubscription {
   lastError: string;
   importedCount: number;
   allowInsecureTls: boolean;
+  // Made by the app rather than fetched (WARP); the body itself stays in Go.
+  inline?: boolean;
+}
+
+export interface WarpSettings {
+  name: string;
+  server: string;
+  port: number;
+  noise: boolean;
 }
 
 export interface V2RayPingResult {
@@ -157,6 +174,8 @@ export interface V2RayWhiteIPGenerateResult {
 }
 
 export interface SettingsProfile {
+  publicOnly?: boolean;
+  credentialRequired?: boolean;
   id: string;
   name: string;
   importType: ImportType;
@@ -292,7 +311,14 @@ export interface ProxyCountryLookupResult {
 }
 
 export interface RuntimeStatus {
- fragmentMode?: "full" | "fragments-only" | "normal";
+  sessionId?: string;
+  sessionGeneration?: number;
+  connectionPhase?: string;
+  releasePending?: boolean;
+  activeSourceId?: string;
+  // Set when the connection runs through an engine profile instead of a subscription.
+  engineProfileId?: string;
+  fragmentMode?: "full" | "fragments-only" | "normal";
   status: RuntimeStatusName;
   engine: string;
   runtimeType: RuntimeType;
@@ -313,6 +339,8 @@ export interface RuntimeStatus {
   // The node carrying traffic, and where its own name says it is.
   nodeName: string;
   nodeCountryCode: string;
+  // That node is dialled with ECH, its own or automatic.
+  nodeEch: boolean;
   // The address the internet sees traffic coming from. Not publicProxyIp,
   // which is where this machine's own proxy can be reached on the LAN.
   exitIp: string;
@@ -635,6 +663,7 @@ export type AmneziaNoiseSettings = {
 };
 
 export type DNSPrivacySettings = {
+  credentialRequired?: boolean;
   mode: DNSPrivacyMode;
   dohUrl: string;
   dotEndpoint: string;
@@ -677,6 +706,8 @@ export type UpdateStatus = {
 // One node of the catalogue. `name` is its identity — what the engine selects
 // by — and `label` is the same name with the flag and channel marker removed.
 export type WhiteVPNNode = {
+  shareAvailable?: boolean;
+  credentialRequired?: boolean;
   name: string;
   label: string;
   type: string;
@@ -746,6 +777,26 @@ export type NodeTestRequest = {
   speedUrl: string;
 };
 
+// Mirrors model.ChainSettings: device → node 1 (entry) → node 2 (exit) →
+// internet. Node 2 off is the ordinary single-hop connection.
+export type ChainHopMode = "off" | "automatic" | "fixed";
+export type ChainHop = { mode: ChainHopMode; subscriptionId?: string; node?: string };
+export type ChainSettings = { entry: ChainHop; exit: ChainHop };
+export type ChainSlot = "entry" | "exit";
+export type ChainIssue = "same" | "shared" | "udp";
+
+export type ChainOptionGroup = {
+  subscriptionId: string;
+  name: string;
+  // Not a built-in catalogue: WARP, an added provider, saved configs.
+  userMade: boolean;
+  nodes: WhiteVPNNode[];
+  // By node name: why it cannot fill this slot next to the other fixed node.
+  issues?: Record<string, ChainIssue>;
+};
+
+export type ChainOptions = { groups: ChainOptionGroup[]; incomplete: boolean };
+
 export type WhiteVPNNodeList = {
   nodes: WhiteVPNNode[];
   updatedAt: string;
@@ -767,19 +818,21 @@ export type DirectRoutingSettings = {
 };
 
 export type WhiteVPNSettings = {
+  publicOnly?: boolean;
   countryCode: string;
   connection: ConnectionSelection;
   splitTunnel: SplitTunnelSettings;
   directRouting: DirectRoutingSettings;
   tlsIntegrityEnabled: boolean;
+  autoEch: boolean;
   fragments: FragmentSettings;
   amneziaNoise: AmneziaNoiseSettings;
   frontingIps: string[];
   dnsPrivacy: DNSPrivacySettings;
   killSwitch: KillSwitchSettings;
   language: string;
-  // The node traffic leaves from when chaining. Empty means one hop.
-  chainExitNode: string;
+  // Saved through saveConnectionChain only; a settings save keeps the stored one.
+  chain: ChainSettings;
   tunEnabled: boolean;
   setSystemProxy: boolean;
   allowLan: boolean;
@@ -787,4 +840,9 @@ export type WhiteVPNSettings = {
   acceptedPrivacyPolicyVersion: number;
 };
 
-export type FragmentSettings = { enabled: boolean; rawJson: string; alpn: string; cipherSuites: string; };
+export type FragmentSettings = {
+  enabled: boolean;
+  rawJson: string;
+  alpn: string;
+  cipherSuites: string;
+};

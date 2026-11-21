@@ -22,7 +22,7 @@ func TestFragmentSettingsLoadAndPublicRoundTrip(t *testing.T) {
 	s.Fragments.Enabled = true
 	s.Fragments.RawJSON = strings.ReplaceAll(s.Fragments.RawJSON, `"maxSplit":"256"`, `"maxSplit":"0"`)
 	s = NormalizeWhiteVPNSettings(s)
-	bytes, err := json.Marshal(s)
+	bytes, err := json.Marshal(PublicWhiteVPNSettings(s))
 	if err != nil {
 		t.Fatal(err)
 	}
