@@ -43,7 +43,9 @@ if [[ ! -f "${archive}" ]]; then
   curl -fL --proto '=https' -o "${archive}.part" "${url}"
   mv "${archive}.part" "${archive}"
 fi
-[[ "$(sha256sum "${archive}" | cut -d' ' -f1)" == "${want}" ]] || die "${archive}: sha256 does not match the pinned expert bundle"
+# shasum on the macOS runners that cross-build the Windows package.
+sha256() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1"; else shasum -a 256 "$1"; fi | cut -d' ' -f1; }
+[[ "$(sha256 "${archive}")" == "${want}" ]] || die "${archive}: sha256 does not match the pinned expert bundle"
 
 build_id="tor-expert-bundle-${version} ${want}"
 if [[ "${FORCE_TOR_ENGINE_BUILD:-0}" != "1" && -f "${DEST}/build-id" && "$(<"${DEST}/build-id")" == "${build_id}" ]]; then
@@ -56,8 +58,13 @@ trap 'rm -rf "${unpacked}"' EXIT
 tar -xzf "${archive}" -C "${unpacked}" tor/tor.exe tor/pluggable_transports/lyrebird.exe \
   tor/pluggable_transports/conjure-client.exe data/geoip data/geoip6
 
-reported="$("${unpacked}/tor/tor.exe" --version | head -n1 | tr -d '\r')" || die "tor.exe from the bundle does not run"
-[[ "${reported}" =~ ^Tor\ version\ 0\.4\.9\.[0-9]+ ]] || die "bundle tor.exe reports '${reported}', expected Tor 0.4.9.x"
+# The pinned sha256 already proves which tor.exe this is; running it is an
+# extra check only a Windows host can make.
+reported="Tor from expert bundle ${version}"
+if [[ "${OS:-}" == "Windows_NT" ]]; then
+  reported="$("${unpacked}/tor/tor.exe" --version | head -n1 | tr -d '\r')" || die "tor.exe from the bundle does not run"
+  [[ "${reported}" =~ ^Tor\ version\ 0\.4\.9\.[0-9]+ ]] || die "bundle tor.exe reports '${reported}', expected Tor 0.4.9.x"
+fi
 
 rm -rf "${DEST}"
 mkdir -p "${DEST}"
