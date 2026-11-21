@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"unsafe"
 
 	"golang.org/x/sys/windows"
 )
@@ -55,13 +56,30 @@ func TestPrivateDirectoryACLDoesNotAdmitOtherUsers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	descriptor := sd.String()
-	if !bytes.Contains([]byte(descriptor), []byte(user.User.Sid.String())) {
-		t.Fatal("exact user absent from DACL")
+	dacl, _, err := sd.DACL()
+	if err != nil {
+		t.Fatal(err)
 	}
-	for _, sid := range []string{";;;WD)", ";;;AU)", ";;;BU)", ";;;BA)"} {
-		if bytes.Contains([]byte(descriptor), []byte(sid)) {
-			t.Fatal("vault DACL admits a broader principal")
+	// SIDs compared, not SDDL text: the SDDL of the machine's built-in
+	// Administrator (CI runners run as it) is the alias "LA", not its SID.
+	broader := []windows.WELL_KNOWN_SID_TYPE{windows.WinWorldSid, windows.WinAuthenticatedUserSid, windows.WinBuiltinUsersSid, windows.WinBuiltinAdministratorsSid}
+	found := false
+	for i := uint32(0); ; i++ {
+		var ace *windows.ACCESS_ALLOWED_ACE
+		if windows.GetAce(dacl, i, &ace) != nil {
+			break
 		}
+		sid := (*windows.SID)(unsafe.Pointer(&ace.SidStart))
+		if sid.Equals(user.User.Sid) {
+			found = true
+		}
+		for _, kind := range broader {
+			if sid.IsWellKnown(kind) {
+				t.Fatalf("vault DACL admits a broader principal: %s", sid)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("exact user absent from DACL")
 	}
 }

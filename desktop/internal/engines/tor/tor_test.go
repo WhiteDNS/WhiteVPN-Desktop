@@ -144,7 +144,9 @@ func (l *logs) String() string {
 
 func fastTimeouts(t *testing.T) {
 	a, b, s, c := attachTimeout, bootstrapTimeout, socksTimeout, stopTimeout
-	attachTimeout, bootstrapTimeout, socksTimeout, stopTimeout = 5*time.Second, 5*time.Second, 5*time.Second, time.Second
+	// The graceful stop is generous: under -race on a busy CI runner the fake
+	// takes more than a second to notice its owner left, and a kill is a failure.
+	attachTimeout, bootstrapTimeout, socksTimeout, stopTimeout = 5*time.Second, 5*time.Second, 5*time.Second, 10*time.Second
 	t.Cleanup(func() { attachTimeout, bootstrapTimeout, socksTimeout, stopTimeout = a, b, s, c })
 }
 
@@ -235,6 +237,7 @@ func TestForcedStopIsReportedAndSticky(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	stopTimeout = time.Second // this fake never leaves, so waiting longer proves nothing
 	if err := p.Close(); err == nil || !strings.Contains(err.Error(), "killed") {
 		t.Fatalf("got %v", err)
 	}
