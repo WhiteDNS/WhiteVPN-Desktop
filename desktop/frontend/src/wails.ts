@@ -63,6 +63,8 @@ type AppApi = {
   GenerateV2RayWhiteIPProfiles(configText: string, whiteIPText: string): Promise<V2RayWhiteIPGenerateResult>;
   ImportV2RayWhiteIPProfiles(configText: string, whiteIPText: string): Promise<V2RayWhiteIPImportResult>;
   SaveV2RaySubscription(subscription: V2RaySubscription): Promise<AppState>;
+  ImportSubscriptionFile(title: string): Promise<AppState | null>;
+  ImportSubscriptionClipboard(): Promise<AppState>;
   GetV2RaySubscriptionForEdit(id: string): Promise<V2RaySubscription>;
   AddWarpSubscription(): Promise<AppState>;
   GetWarpSettings(id: string): Promise<WarpSettings>;
@@ -182,6 +184,8 @@ export const backend = {
   generateV2RayWhiteIpProfiles: (configText: string, whiteIPText: string) => app().GenerateV2RayWhiteIPProfiles(configText, whiteIPText),
   importV2RayWhiteIpProfiles: (configText: string, whiteIPText: string) => app().ImportV2RayWhiteIPProfiles(configText, whiteIPText),
   saveV2RaySubscription: (subscription: V2RaySubscription) => app().SaveV2RaySubscription(subscription),
+  importSubscriptionFile: (title: string) => app().ImportSubscriptionFile(title),
+  importSubscriptionClipboard: () => app().ImportSubscriptionClipboard(),
   getV2RaySubscriptionForEdit: (id: string) => app().GetV2RaySubscriptionForEdit(id),
   addWarpSubscription: () => app().AddWarpSubscription(),
   getWarpSettings: (id: string) => app().GetWarpSettings(id),

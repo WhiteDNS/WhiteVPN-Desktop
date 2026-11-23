@@ -229,11 +229,10 @@ type V2RaySubscription struct {
 	// about one address the user chose to trust, not about the app.
 	AllowInsecureTLS bool `json:"allowInsecureTls"`
 
-	// Body is a subscription the app made rather than fetched (WARP), held in
-	// place of a URL. It carries a private key, so it is never public.
-	Body string `json:"body,omitempty"`
-	// Inline is what the interface may know of Body: that there is one.
-	Inline bool `json:"inline,omitempty"`
+	// Body holds the private content of a local subscription in place of a URL.
+	Body      string `json:"body,omitempty"`
+	Inline    bool   `json:"inline,omitempty"`
+	LocalConfig bool   `json:"localConfig,omitempty"`
 }
 
 type V2RayPingResult struct {
