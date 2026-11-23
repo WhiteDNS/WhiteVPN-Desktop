@@ -20,8 +20,8 @@ export type ConnectionMode = "servers" | "chain" | "warp" | "psiphon" | "tor";
 
 const allListsID = "all";
 
-export function isWarpSubscription(subscription: { inline?: boolean } | undefined): boolean {
-  return Boolean(subscription?.inline);
+export function isWarpSubscription(subscription: { inline?: boolean; localConfig?: boolean } | undefined): boolean {
+  return Boolean(subscription?.inline && !subscription.localConfig);
 }
 
 export function connectionMode(state: AppState, engines: EngineSelection): ConnectionMode {

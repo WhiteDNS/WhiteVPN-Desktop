@@ -111,8 +111,9 @@ export interface V2RaySubscription {
   lastError: string;
   importedCount: number;
   allowInsecureTls: boolean;
-  // Made by the app rather than fetched (WARP); the body itself stays in Go.
+  // The stored configuration body itself stays in Go.
   inline?: boolean;
+  localConfig?: boolean;
 }
 
 export interface WarpSettings {

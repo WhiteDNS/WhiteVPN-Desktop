@@ -193,8 +193,7 @@ func (a *App) SaveV2RaySubscription(subscription model.V2RaySubscription) (model
 	}
 	subscription.CredentialRequired = false
 	subscription.DisplayURL = ""
-	// A subscription saved here is fetched from its URL; only warp.go writes a body.
-	subscription.Body, subscription.Inline = "", false
+	subscription.Body, subscription.Inline, subscription.LocalConfig = "", false, false
 	if !nameProvided {
 		subscription.Name = defaultV2RaySubscriptionName(parsedURL)
 	}
@@ -205,6 +204,9 @@ func (a *App) SaveV2RaySubscription(subscription model.V2RaySubscription) (model
 	found := false
 	for idx := range a.state.V2RaySubscriptions {
 		if a.state.V2RaySubscriptions[idx].ID == subscription.ID {
+			if a.state.V2RaySubscriptions[idx].LocalConfig {
+				return a.publicStateLocked(), fmt.Errorf("a local subscription has no editable URL")
+			}
 			subscription.LastUpdatedAt = firstNonEmpty(subscription.LastUpdatedAt, a.state.V2RaySubscriptions[idx].LastUpdatedAt)
 			subscription.LastError = firstNonEmpty(subscription.LastError, a.state.V2RaySubscriptions[idx].LastError)
 			if subscription.ImportedCount == 0 {

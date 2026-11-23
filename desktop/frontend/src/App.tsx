@@ -5,6 +5,7 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
+  ClipboardPaste,
   CheckCircle2,
   Globe,
   Copy,
@@ -44,7 +45,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { FragmentSettingsPanel } from "./FragmentSettingsPanel";
 import { EngineProfilesSection, engineKindTitle, type EngineSelection } from "./EngineProfilesSection";
-import { ConnectionModePicker, ServerListDialog, connectionMode, serverListLabel } from "./ConnectionMode";
+import { ConnectionModePicker, ServerListDialog, connectionMode, isWarpSubscription, serverListLabel } from "./ConnectionMode";
 import { isolateLatin } from "./bidi";
 import type { ReactNode } from "react";
 
@@ -4173,6 +4174,7 @@ function V2RaySubscriptionsPage({
   const [refreshingSubscriptionIds, setRefreshingSubscriptionIds] = useState<Record<string, boolean>>({});
   const [selectingSubscription, setSelectingSubscription] = useState(false);
   const [warpAdding, setWarpAdding] = useState(false);
+  const [importingSubscription, setImportingSubscription] = useState(false);
   const [warpEdit, setWarpEdit] = useState<{ id: string; name: string; server: string; port: string; noise: boolean } | null>(null);
   const subscriptionEditRequest = useRef(0);
   useEffect(() => () => { subscriptionEditRequest.current += 1; }, []);
@@ -4205,7 +4207,7 @@ function V2RaySubscriptionsPage({
     const requestId = ++subscriptionEditRequest.current;
     onError("");
     try {
-      if (subscription.inline) {
+      if (isWarpSubscription(subscription)) {
         const settings = await backend.getWarpSettings(subscription.id);
         if (requestId !== subscriptionEditRequest.current) { return; }
         setWarpEdit({ id: subscription.id, ...settings, port: String(settings.port) });
@@ -4232,6 +4234,24 @@ function V2RaySubscriptionsPage({
       setEditorOpen(false);
     } catch (err) {
       onError(messageFromError(err));
+    }
+  }
+
+  async function importLocalSubscription(source: "file" | "clipboard") {
+    setImportingSubscription(true);
+    onError("");
+    try {
+      const nextState = source === "file"
+        ? await backend.importSubscriptionFile(t("subs.importFile"))
+        : await backend.importSubscriptionClipboard();
+      if (nextState) {
+        onState(nextState);
+        onSuccess(t("subs.fileImported"));
+      }
+    } catch {
+      onError(t(source === "file" ? "subs.fileImportFailed" : "subs.clipboardImportFailed"));
+    } finally {
+      setImportingSubscription(false);
     }
   }
 
@@ -4343,7 +4363,7 @@ function V2RaySubscriptionsPage({
   // WARP is listed with the engines, and "All lists" is a choice on the VPN
   // page rather than a list anyone downloads, so neither is a row here.
   const listedSubscriptions = state.v2raySubscriptions.filter(
-    (subscription) => !subscription.inline && subscription.id !== allSubscriptionsID,
+    (subscription) => !isWarpSubscription(subscription) && subscription.id !== allSubscriptionsID,
   );
   const deleteTargetConfigCount = deleteTarget?.id ? (profileIndex.subscriptionProfileIds[deleteTarget.id]?.length || 0) : 0;
 
@@ -4357,6 +4377,14 @@ function V2RaySubscriptionsPage({
             <Button type="button" variant="outline" onClick={openNewSubscription}>
               <Plus />
               {t("subs.new")}
+            </Button>
+            <Button type="button" variant="outline" disabled={importingSubscription} onClick={() => void importLocalSubscription("file")}>
+              <Upload />
+              {t("subs.importFile")}
+            </Button>
+            <Button type="button" variant="outline" disabled={importingSubscription} onClick={() => void importLocalSubscription("clipboard")}>
+              <ClipboardPaste />
+              {t("subs.importClipboard")}
             </Button>
           </>
         }
@@ -4394,6 +4422,7 @@ function V2RaySubscriptionsPage({
                     const refreshing = Boolean(refreshingSubscriptionIds[subscription.id]);
                     const managedProfileIds = profileIndex.subscriptionProfileIds[subscription.id] || [];
                     const builtIn = isBuiltInSubscription(subscription.id);
+                    const editable = !builtIn && !subscription.localConfig;
                     const inUse = !engines.selectedId && subscription.id === state.selectedSubscriptionId;
                     // Said on the row rather than once when it was added: a
                     // server list fetched in the clear can be read and replaced
@@ -4409,12 +4438,12 @@ function V2RaySubscriptionsPage({
                     return (
                       <tr
                         key={subscription.id}
-                        role="button"
-                        tabIndex={0}
-                        className="cursor-pointer border-b text-sm transition-colors last:border-b-0 hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
-                        onClick={() => !builtIn && openExistingSubscription(subscription)}
+                        role={editable ? "button" : undefined}
+                        tabIndex={editable ? 0 : undefined}
+                        className={cn("border-b text-sm transition-colors last:border-b-0 hover:bg-muted/50", editable && "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset")}
+                        onClick={() => editable && openExistingSubscription(subscription)}
                         onKeyDown={(event) => {
-                          if (!builtIn && (event.key === "Enter" || event.key === " ")) {
+                          if (editable && (event.key === "Enter" || event.key === " ")) {
                             event.preventDefault();
                             openExistingSubscription(subscription);
                           }
@@ -4447,8 +4476,8 @@ function V2RaySubscriptionsPage({
                                     : t("subs.builtIn.public")
                                 : subscription.credentialRequired
                                   ? t("profiles.detailsRequired")
-                                  : subscription.inline
-                                    ? <bdi>{t("warp.add")}</bdi>
+                                  : subscription.localConfig
+                                    ? t("subs.localConfig")
                                     : subscription.displayUrl}
                             </span>
                           </span>
@@ -4498,7 +4527,7 @@ function V2RaySubscriptionsPage({
                                   type="button"
                                   variant="ghost"
                                   size="icon-sm"
-                                  disabled={refreshing}
+                                  disabled={refreshing || subscription.localConfig}
                                   aria-label={`Refresh ${subscription.name || "V2Ray subscription"}`}
                                   onClick={(event) => {
                                     event.stopPropagation();
@@ -4550,7 +4579,7 @@ function V2RaySubscriptionsPage({
         <EngineProfilesSection
           selection={engines}
           warp={{
-            subscriptions: state.v2raySubscriptions.filter((subscription) => subscription.inline),
+            subscriptions: state.v2raySubscriptions.filter(isWarpSubscription),
             selectedId: state.selectedSubscriptionId,
             adding: warpAdding,
             onAdd: () => void addWarp(),
