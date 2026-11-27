@@ -247,8 +247,8 @@ func parseVShare(uri splitURL, query map[string]string, names *nameRegistry, kin
 		if alpn := query["alpn"]; strings.TrimSpace(alpn) != "" {
 			proxy["alpn"] = strings.Split(alpn, ",")
 		}
-		if pcs := query["pcs"]; strings.TrimSpace(pcs) != "" {
-			proxy["fingerprint"] = pcs
+		if pin := firstPin(query["pcs"]); pin != "" {
+			proxy["fingerprint"] = pin
 		}
 	}
 	if sni := query["sni"]; strings.TrimSpace(sni) != "" {
@@ -258,6 +258,11 @@ func parseVShare(uri splitURL, query map[string]string, names *nameRegistry, kin
 		reality := map[string]any{"public-key": publicKey}
 		if shortID := query["sid"]; strings.TrimSpace(shortID) != "" {
 			reality["short-id"] = shortID
+		}
+		// Current REALITY servers reject a ClientHello without an X25519MLKEM768 key share,
+		// and mihomo strips that share unless this is set.
+		if v := strings.ToLower(query["support-x25519mlkem768"]); v == "true" || v == "1" {
+			reality["support-x25519mlkem768"] = true
 		}
 		proxy["reality-opts"] = reality
 	}
@@ -452,8 +457,8 @@ func parseTrojan(line string, names *nameRegistry) (Proxy, error) {
 		proxy["grpc-opts"] = map[string]any{"grpc-service-name": query["serviceName"]}
 	}
 	proxy["client-fingerprint"] = orDefault(query["fp"], "chrome")
-	if pcs := query["pcs"]; strings.TrimSpace(pcs) != "" {
-		proxy["fingerprint"] = pcs
+	if pin := firstPin(query["pcs"]); pin != "" {
+		proxy["fingerprint"] = pin
 	}
 	return proxy, nil
 }
@@ -766,8 +771,8 @@ func parseHysteria2(line string, names *nameRegistry) (Proxy, error) {
 		// Port hopping: the server listens across a range.
 		proxy["ports"] = ports
 	}
-	if fingerprint := strings.TrimSpace(query["pinSHA256"]); fingerprint != "" {
-		proxy["fingerprint"] = fingerprint
+	if pin := firstPin(query["pinSHA256"]); pin != "" {
+		proxy["fingerprint"] = pin
 	}
 	return proxy, nil
 }
@@ -1363,6 +1368,14 @@ func decodeBase64Text(value string) (string, bool) {
 func cut(value, separator string) (string, string) {
 	before, after, _ := strings.Cut(value, separator)
 	return before, after
+}
+
+// firstPin keeps the first SHA-256 of a comma list. A list passed as-is fails every TLS dial.
+// shortcut: mihomo pins one hash, so later ones are dropped (the leaf comes first on current
+// panels); keep them all once mihomo accepts several.
+func firstPin(value string) string {
+	pin, _, _ := strings.Cut(value, ",")
+	return strings.TrimSpace(pin)
 }
 
 func orDefault(value, fallback string) string {

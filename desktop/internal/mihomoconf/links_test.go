@@ -23,6 +23,28 @@ func convertOne(t *testing.T, link string) Proxy {
 	return proxies[0]
 }
 
+func TestLinksKeepOnePinAndPostQuantumRealityKeyShare(t *testing.T) {
+	leaf := "1ee096344a47b515d860ba3492d728ecaea486f014ea6a5dcc9e10da68a64d70"
+	pins := leaf + "%2Ca2372d06431e9716365eeed47ec020351497d182fcc038e457e58168a03cac07"
+
+	ws := convertOne(t, "vless://11111111-2222-3333-4444-555555555555@example.com:443"+
+		"?security=tls&type=ws&sni=example.com&pcs="+pins+"#WS")
+	if ws["fingerprint"] != leaf {
+		t.Fatalf("vless should keep only the first pin, got %#v", ws["fingerprint"])
+	}
+
+	hy2 := convertOne(t, "hysteria2://secret@example.com:443?sni=example.com&pinSHA256="+pins+"#HY2")
+	if hy2["fingerprint"] != leaf {
+		t.Fatalf("hysteria2 should keep only the first pin, got %#v", hy2["fingerprint"])
+	}
+
+	reality := convertOne(t, "vless://11111111-2222-3333-4444-555555555555@example.com:443"+
+		"?security=reality&type=tcp&sni=www.microsoft.com&pbk=abcdef&sid=00&support-x25519mlkem768=true#R")
+	if opts := reality["reality-opts"].(map[string]any); opts["support-x25519mlkem768"] != true {
+		t.Fatalf("reality-opts should carry the X25519MLKEM768 flag: %#v", opts)
+	}
+}
+
 func TestVlessRealityOverTCP(t *testing.T) {
 	proxy := convertOne(t,
 		"vless://11111111-2222-3333-4444-555555555555@example.com:443"+
