@@ -40,7 +40,11 @@ archive="${TOR_EXPERT_BUNDLE:-${ROOT_DIR}/third_party/tor-expert-bundle-${versio
 if [[ ! -f "${archive}" ]]; then
   [[ "${fetch}" == "1" ]] || die "${archive} is missing; pass --fetch-expert-bundle or set TOR_EXPERT_BUNDLE"
   mkdir -p "$(dirname "${archive}")"
-  curl -fL --proto '=https' -o "${archive}.part" "${url}"
+  # dist.torproject.org drops a version once the next one ships; the archive keeps the same
+  # file, and the sha256 check below still decides whether it is used.
+  mirror="https://archive.torproject.org/tor-package-archive/${url#https://dist.torproject.org/}"
+  curl -fL --proto '=https' -o "${archive}.part" "${url}" ||
+    curl -fL --proto '=https' -o "${archive}.part" "${mirror}"
   mv "${archive}.part" "${archive}"
 fi
 # shasum on the macOS runners that cross-build the Windows package.
